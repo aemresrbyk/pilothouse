@@ -16,22 +16,24 @@ Crafted for developers who want a tactile, hardware-inspired station instead of 
 
 ---
 
-## 🕹️ Why Claude Deck?
+## 🎛️ Key Features & Architecture
 
-Generic AI dashboards all look the same: cookie-cutter gray cards and standard checkboxes. 
-
-**Claude Deck** is designed with an industrial, tactile developer aesthetic:
-- **🎛️ Physical Hardware-Style Switch Matrix**: Rocker toggles with LED status lights (Armed Amber, Emerald, Cyan) for `--dangerously-skip-permissions`, `--continue`, and custom arguments.
-- **🔊 Tactile Audio Synthesizer**: Subtle mechanical click sounds synthesized directly via the Web Audio API on toggle and launch.
-- **📊 Real Claude Telemetry**: Pulls live data straight from `~/.claude.json` to show actual token usage, last model used (`opus-5-5`, `sonnet-5`), and dollar cost spent per project.
-- **⌨️ 100% Keyboard-Driven Studio Layout**: 
-  - `[↑ / ↓]` or `[J / K]` to navigate repositories
-  - `[SPACE]` to toggle `--dangerously-skip-permissions`
-  - `[C]` to toggle `--continue`
-  - `[↵ ENTER]` to deploy the terminal session
-  - `[⌘O]` to open Finder, `[⌘E]` for VS Code
-- **🖥️ Live CRT Command Monitor**: Reactive monospace display showing the exact bash/zsh command that will run in your terminal.
-- **📄 Embedded CLAUDE.md & File Inspector**: Instant peek into project memory, guidelines, and repository files without leaving the deck.
+- **🌐 Google Chrome-Style Terminal Tabs**:
+  - Open and manage multiple Claude Code projects in parallel tabs (`[ ⚡ arcmaxx ✕ ] [ ⚡ tradebot ✕ ] [ + ]`).
+  - Switch tabs via mouse or shortcuts (`⌘1`, `⌘2`, `⌘3` or `⌘T` for new tab, `⌘W` to close).
+  - Each tab preserves its own project path, live flags, and execution state.
+- **🔍 Smart Omnibar & Live Command Compiler**:
+  - Type extra flags, arguments, or custom prompts directly in the Omnibar (e.g. `--worktree feature-a`, `-p "fix auth bug"`, `/doctor`).
+  - The live command box immediately updates showing the exact compiled shell command:
+    `$ cd "/path/to/project" && claude --dangerously-skip-permissions --worktree feature-a`
+  - Pressing `Enter` runs that exact command in your terminal.
+- **🛡️ Instant Flag Toggle Pills**:
+  - `[✓ --dangerously-skip-permissions]`: Enabled by default to bypass permission confirmation prompts.
+  - `[✓ --continue]`: Resume the latest conversation session.
+  - Autocomplete quick-chips (`+--chrome`, `+--bare`, `+--verbose`, `+/doctor`).
+- **📊 Real Claude Telemetry**: Live extraction of total cost spent (`$0.35`, `$16.80`), active models (`opus-5-5`, `sonnet-5`), and token counts.
+- **📄 In-Tab CLAUDE.md & File Inspector**: Instant access to inspect project memory and browse repository files.
+- **🔊 Tactile Audio FX**: Crisp mechanical click synthesizers powered by the Web Audio API.
 
 ---
 
