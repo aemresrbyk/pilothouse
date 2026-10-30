@@ -376,6 +376,7 @@ export const App: React.FC = () => {
           onOpenFolder={handleOpenFolder}
           onOpenEditor={handleOpenEditor}
           defaultTerminal={settings.defaultTerminal}
+          onChangeTerminal={(terminalId) => handleSaveSettings({ defaultTerminal: terminalId })}
         />
       )}
 
@@ -389,7 +390,9 @@ export const App: React.FC = () => {
           onOpenFolder={handleOpenFolder}
           onOpenEditor={handleOpenEditor}
           onResumeSession={handleResumeSession}
+          onSetCustomInput={handleCustomInputChange}
           defaultTerminal={settings.defaultTerminal}
+          onChangeTerminal={(terminalId) => handleSaveSettings({ defaultTerminal: terminalId })}
         />
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center p-8 bg-[#0a0c10] select-none text-center">

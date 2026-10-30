@@ -1,10 +1,10 @@
-# ⚡ Claude Deck // Terminal Cockpit
+# ⚡ Claude Code Launcher // Terminal Cockpit
 
 <div align="center">
 
-**A bespoke, open-source terminal cockpit and command deck for Claude Code.**
+**A sleek, Google Chrome-tabs powered desktop cockpit and launcher for Claude Code CLI.**
 
-Crafted for developers who want a tactile, hardware-inspired station instead of generic dashboards. Organize your Claude Code repositories, toggle execution flags with tactile switches, inspect live telemetry from `~/.claude.json`, and deploy terminal sessions with a single keypress.
+Designed specifically for developers who manage multiple Claude Code repositories in parallel. Switch between project terminals via tabs, toggle `--dangerously-skip-permissions` with a click, compile custom flags in real-time, inspect files directly in the app, and dispatch sessions to your favorite terminal emulator.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-amber.svg)](https://opensource.org/licenses/MIT)
 [![Electron](https://img.shields.io/badge/Electron-45.x-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
@@ -18,45 +18,63 @@ Crafted for developers who want a tactile, hardware-inspired station instead of 
 
 ## 🎛️ Key Features & Architecture
 
-- **🌐 Google Chrome-Style Terminal Tabs**:
-  - Open and manage multiple Claude Code projects in parallel tabs (`[ ⚡ arcmaxx ✕ ] [ ⚡ tradebot ✕ ] [ + ]`).
-  - Switch tabs via mouse or shortcuts (`⌘1`, `⌘2`, `⌘3` or `⌘T` for new tab, `⌘W` to close).
-  - Each tab preserves its own project path, live flags, and execution state.
-- **🔍 Smart Omnibar & Live Command Compiler**:
-  - Type extra flags, arguments, or custom prompts directly in the Omnibar (e.g. `--worktree feature-a`, `-p "fix auth bug"`, `/doctor`).
-  - The live command box immediately updates showing the exact compiled shell command:
-    `$ cd "/path/to/project" && claude --dangerously-skip-permissions --worktree feature-a`
-  - Pressing `Enter` runs that exact command in your terminal.
-- **🛡️ Instant Flag Toggle Pills**:
-  - `[✓ --dangerously-skip-permissions]`: Enabled by default to bypass permission confirmation prompts.
-  - `[✓ --continue]`: Resume the latest conversation session.
-  - Autocomplete quick-chips (`+--chrome`, `+--bare`, `+--verbose`, `+/doctor`).
-- **📊 Real Claude Telemetry**: Live extraction of total cost spent (`$0.35`, `$16.80`), active models (`opus-5-5`, `sonnet-5`), and token counts.
-- **📄 In-Tab CLAUDE.md & File Inspector**: Instant access to inspect project memory and browse repository files.
-- **🔊 Tactile Audio FX**: Crisp mechanical click synthesizers powered by the Web Audio API.
+- **🌐 Google Chrome-Style Project Tabs**:
+  - Seamlessly switch between multiple Claude Code repositories (`[ ⚡ my-project ✕ ] [ ⚡ api-server ✕ ] [ + ]`).
+  - Native tab management with shortcuts (`⌘1-9`, `⌘T` for new tab, `⌘W` to close tab).
+  - Open project tabs remain persistent across app restarts.
+- **🔍 Smart Omnibar with Live Command Compilation**:
+  - Type extra flags, custom prompt text, or Claude commands (e.g. `--worktree feat`, `-p "fix auth tests"`, `/doctor`).
+  - Interactive dropdown autocomplete with history recall (Arrow Up/Down).
+  - Real-time compiled command preview:
+    ```bash
+    $ cd "/Users/username/my-project" && claude --dangerously-skip-permissions -p "fix auth tests"
+    ```
+- **🛡️ Prominent Flag Switches**:
+  - `[● --dangerously-skip-permissions]`: One-click toggle so Claude executes without constant permission prompts.
+  - `[● --continue (-c)]`: Quickly resume the most recent conversation.
+  - Quick pills for `--chrome`, `--verbose`, `--bare`, `/doctor`, `/init`, `--worktree`.
+- **💻 Native Multi-Terminal Dispatching**:
+  - Launch directly into **macOS Terminal**, **iTerm2**, **Ghostty**, **Warp**, **Alacritty**, **Kitty**, **Windows Terminal (wt)**, or **VS Code**.
+  - One-click terminal emulator switcher right in the Omnibar and Workspace.
+- **📂 In-App File Explorer & Code Viewer**:
+  - Inspect repository files and read code directly inside the application with line counts and syntax view.
+  - One-click action to copy file contents, reveal in Finder, or edit in VS Code / Cursor.
+- **📜 Session Telemetry & One-Click Resume**:
+  - Discovers past session histories (`.jsonl`) from `~/.claude/projects/` and allows 1-click `--resume <session-id>`.
+  - Shows tokens, model usage (Sonnet 3.7, Opus 3.5), and session costs.
+- **📁 Drag & Drop Folder Detection**:
+  - Drag any folder from Finder directly into the window to register it and open a new tab immediately.
+- **⌨️ Spotlight Command Palette**:
+  - Press `⌘P` or `⌘K` anywhere to quickly fuzzy search repositories and open them (`↵` to view, `⌘↵` to open in new tab).
 
 ---
 
-## 📸 Overview
+## 📸 Workspace Layout
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│  ⚡ Claude Code Launcher                        [🔍 Search projects...] │
-│  8 projects configured                          [Sync Claude] [+ Add]  │
-├────────────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────────────┐  ┌─────────────────────────┐             │
-│  │ 📁 my-tradebot          │  │ 📁 frontend-app         │             │
-│  │ 🌿 main  •  📄 CLAUDE.md│  │ 🌿 dev                  │             │
-│  │                         │  │                         │             │
-│  │ Launch Flags:           │  │ Launch Flags:           │             │
-│  │ [✓] --dangerously-skip  │  │ [✓] --dangerously-skip  │             │
-│  │ [✓] --continue (-c)     │  │ [ ] --continue (-c)     │             │
-│  │                         │  │                         │             │
-│  │ $ claude --dangerously  │  │ $ claude --dangerously  │             │
-│  │                         │  │                         │             │
-│  │ [📂] [💻] [📄] [Launch] │  │ [📂] [💻] [📄] [Launch] │             │
-│  └─────────────────────────┘  └─────────────────────────┘             │
-└────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│  [● ⚡ my-app ✕] [● ⚡ api-gateway ✕] [● ⚡ auth-service ✕]  [+]     [🔊] [⚙] [Sync]│
+├──────────────────────────────────────────────────────────────────────────────────┤
+│ ❯ /Users/alice/my-app  |  claude --dangerously-skip-permissions -p "run tests" ↵ │
+│ [● --dangerously-skip-permissions] [○ --continue] [Terminal ▾]       [▶ RUN]     │
+│ $ cd "/Users/alice/my-app" && claude --dangerously-skip-permissions               │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│ 🌿 main #a1b2c3d  •  $4.20  •  sonnet-3-7  │ [Terminal] [Files] [Sessions] [CLAUDE]│
+│                                                                                  │
+│ ┌──────────────────────────────────────────────────────────────────────────────┐ │
+│ │ ● TERMINAL DISPATCH MONITOR                                TARGET: Terminal  │ │
+│ │                                                                              │ │
+│ │ // Directory ready for dispatch:                                             │ │
+│ │ $ cd "/Users/alice/my-app"                                                   │ │
+│ │                                                                              │ │
+│ │ // Active Claude Code execution command:                                     │ │
+│ │ > claude --dangerously-skip-permissions -p "run tests"                       │ │
+│ └──────────────────────────────────────────────────────────────────────────────┘ │
+│                                                                                  │
+│ [                     ▶ LAUNCH CLAUDE CODE IN TERMINAL (↵)                     ] │
+├──────────────────────────────────────────────────────────────────────────────────┤
+│ ⌘P Quick Find  |  ⌘T New Tab  |  ⌘W Close Tab  |  ⌘1-9 Switch Tab  |  ↵ Run      │
+└──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -73,85 +91,54 @@ Crafted for developers who want a tactile, hardware-inspired station instead of 
 ```bash
 git clone https://github.com/your-username/claude-code-launcher.git
 cd claude-code-launcher
-npm install
-# or with bun:
-bun install
+bun install # or npm install
 ```
 
-### 2. Run in Development Mode
+### 2. Development Mode
 
 ```bash
-npm run dev
-# or:
-bun run dev
+bun run dev # or npm run dev
 ```
 
-### 3. Build & Run Desktop App
+### 3. Production Build & Run
 
 ```bash
-npm run build
-npm start
+bun run build
+bun run start
 ```
 
 ---
 
-## 📦 Packaging Executables
+## 📦 Packaging Standalone Executables
 
-To create a standalone application bundle for distribution:
+To package standalone binaries for desktop distribution:
 
 ### macOS (.app & .dmg):
 ```bash
-npm run dist:mac
+bun run pack       # Builds release/mac-arm64/Claude Code Launcher.app
+bun run dist:mac   # Builds release/Claude Code Launcher.dmg
 ```
 
-### Windows (.exe / installer):
+### Windows (.exe / portable):
 ```bash
-npm run dist:win
+bun run dist:win
 ```
 
 ### Linux (.AppImage / .deb):
 ```bash
-npm run dist:linux
+bun run dist:linux
 ```
 
-The resulting packages will be created in the `release/` directory.
-
 ---
 
-## 🛠️ Tech Stack
+## ⚙️ Configuration & Data Persistence
 
-- **Framework**: [Electron](https://www.electronjs.org/) + [Vite](https://vitejs.dev/)
-- **Frontend**: [React 19](https://react.dev/), [TypeScript](https://www.typescriptlang.org/)
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
-- **Icons**: [Lucide React](https://lucide.dev/)
-- **Packager**: [electron-builder](https://www.electron.build/)
-
----
-
-## ⚙️ Configuration & Storage
-
-Project preferences and flag configurations are saved locally at:
-- macOS / Linux: `~/.claude-launcher/config.json`
-- Windows: `%USERPROFILE%\.claude-launcher\config.json`
-
-This guarantees that your settings, favorite projects, and custom flags persist across application restarts.
-
----
-
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome!
-Feel free to check the [issues page](https://github.com/your-username/claude-code-launcher/issues).
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+User configurations, recent commands, flag preferences, and active tab states are stored locally at:
+- **macOS / Linux**: `~/.claude-launcher/config.json`
+- **Windows**: `%USERPROFILE%\.claude-launcher\config.json`
 
 ---
 
 ## 📄 License
 
-Distributed under the MIT License. See [`LICENSE`](LICENSE) for more information.
-
+Distributed under the **MIT License**. See `LICENSE` for more information.

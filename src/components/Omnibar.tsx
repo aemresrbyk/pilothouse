@@ -10,9 +10,11 @@ import {
   Command,
   History,
   RotateCcw,
-  Tag
+  Tag,
+  ChevronDown,
+  X
 } from 'lucide-react';
-import { ProjectItem, ProjectFlags, ClaudeSession } from '../types';
+import { ProjectItem, ProjectFlags, ClaudeSession, TerminalOption } from '../types';
 import { playClickSound, playToggleSound, playLaunchSound } from '../utils/audio';
 
 interface OmnibarProps {
@@ -24,6 +26,7 @@ interface OmnibarProps {
   onOpenFolder: (path: string) => void;
   onOpenEditor: (path: string, editor?: string) => void;
   defaultTerminal: string;
+  onChangeTerminal?: (terminalId: string) => void;
 }
 
 interface SuggestionItem {
@@ -57,16 +60,35 @@ export const Omnibar: React.FC<OmnibarProps> = ({
   onLaunch,
   onOpenFolder,
   onOpenEditor,
-  defaultTerminal
+  defaultTerminal,
+  onChangeTerminal
 }) => {
   const [copiedCmd, setCopiedCmd] = useState(false);
   const [copiedPath, setCopiedPath] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [isTerminalMenuOpen, setIsTerminalMenuOpen] = useState(false);
+  const [terminals, setTerminals] = useState<TerminalOption[]>([]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const terminalMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    window.electronAPI.getTerminals().then(setTerminals).catch(() => {});
+  }, []);
+
+  // Close terminal menu on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (terminalMenuRef.current && !terminalMenuRef.current.contains(e.target as Node)) {
+        setIsTerminalMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const flags = project.flags || {
     dangerouslySkipPermissions: true,
@@ -204,7 +226,8 @@ export const Omnibar: React.FC<OmnibarProps> = ({
         {/* Working Directory Breadcrumb Badge */}
         <div
           onClick={handleCopyPath}
-          title="Click to copy path"
+          title="Click to copy path, double-click to reveal in Finder"
+          onDoubleClick={() => onOpenFolder(project.path)}
           className="group/p flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#0e111a] border border-[#232a3d] text-[11px] text-zinc-300 hover:text-white hover:border-[#38435f] cursor-pointer transition-colors max-w-xs truncate flex-shrink-0"
         >
           <span className="text-amber-500 font-bold">❯</span>
@@ -233,8 +256,25 @@ export const Omnibar: React.FC<OmnibarProps> = ({
             }}
             onChange={(e) => onCustomInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="w-full bg-[#0c0e16] hover:bg-[#0f121c] focus:bg-[#0c0e16] border border-[#232a3d] focus:border-amber-500/80 text-zinc-100 text-xs pl-8 pr-16 py-1.5 rounded-lg outline-none transition-colors"
+            className="w-full bg-[#0c0e16] hover:bg-[#0f121c] focus:bg-[#0c0e16] border border-[#232a3d] focus:border-amber-500/80 text-zinc-100 text-xs pl-8 pr-20 py-1.5 rounded-lg outline-none transition-colors"
           />
+
+          {/* Quick Clear Input button */}
+          {customInput && (
+            <button
+              type="button"
+              onClick={() => {
+                playClickSound();
+                onCustomInputChange('');
+                inputRef.current?.focus();
+              }}
+              className="absolute right-16 p-1 text-zinc-500 hover:text-zinc-200 transition-colors"
+              title="Clear input"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+
           <span className="absolute right-2.5 text-[10px] text-zinc-500 font-mono pointer-events-none">
             ↵ ENTER
           </span>
@@ -279,6 +319,56 @@ export const Omnibar: React.FC<OmnibarProps> = ({
                     </div>
                     <span className="text-[11px] text-zinc-500 truncate max-w-xs">{item.desc}</span>
                   </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Quick Destination Terminal Selector */}
+        <div className="relative" ref={terminalMenuRef}>
+          <button
+            type="button"
+            onClick={() => {
+              playClickSound();
+              setIsTerminalMenuOpen(!isTerminalMenuOpen);
+            }}
+            title="Switch destination terminal emulator"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#0e111a] hover:bg-[#181d2c] border border-[#232a3d] hover:border-[#35405c] text-zinc-300 hover:text-white text-xs font-mono transition-colors flex-shrink-0"
+          >
+            <Terminal className="w-3.5 h-3.5 text-amber-500" />
+            <span className="font-semibold text-[11px]">{defaultTerminal}</span>
+            <ChevronDown className="w-3 h-3 text-zinc-500" />
+          </button>
+
+          {isTerminalMenuOpen && (
+            <div className="absolute right-0 top-full mt-1.5 w-48 bg-[#0e111a] border border-[#263148] rounded-xl shadow-2xl py-1 z-50 text-xs font-mono animate-fade-in">
+              <div className="px-3 py-1 text-[10px] text-zinc-500 font-bold uppercase tracking-wider border-b border-[#1c2233]">
+                DISPATCH TERMINAL
+              </div>
+              <div className="max-h-48 overflow-y-auto">
+                {terminals.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      playClickSound();
+                      onChangeTerminal?.(t.id);
+                      setIsTerminalMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 flex items-center justify-between transition-colors ${
+                      defaultTerminal === t.id
+                        ? 'bg-[#1b2233] text-amber-300 font-bold'
+                        : 'hover:bg-[#141926] text-zinc-300'
+                    }`}
+                  >
+                    <span className="truncate">{t.name}</span>
+                    {t.installed && (
+                      <span className="text-[9px] text-emerald-400 bg-emerald-500/10 px-1 rounded ml-1">
+                        ✓
+                      </span>
+                    )}
+                  </button>
                 ))}
               </div>
             </div>
@@ -374,6 +464,39 @@ export const Omnibar: React.FC<OmnibarProps> = ({
           >
             --bare
           </button>
+
+          {/* Insert Quick Command Chips */}
+          <span className="text-zinc-700 select-none">|</span>
+          <button
+            type="button"
+            onClick={() => {
+              playClickSound();
+              onCustomInputChange('/doctor');
+            }}
+            className="px-1.5 py-0.5 rounded border border-[#202636] bg-[#0c0e15] hover:border-amber-500/50 text-[10px] text-zinc-400 hover:text-zinc-100 transition-colors"
+          >
+            /doctor
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              playClickSound();
+              onCustomInputChange('/init');
+            }}
+            className="px-1.5 py-0.5 rounded border border-[#202636] bg-[#0c0e15] hover:border-amber-500/50 text-[10px] text-zinc-400 hover:text-zinc-100 transition-colors"
+          >
+            /init
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              playClickSound();
+              onCustomInputChange('--worktree');
+            }}
+            className="px-1.5 py-0.5 rounded border border-[#202636] bg-[#0c0e15] hover:border-amber-500/50 text-[10px] text-zinc-400 hover:text-zinc-100 transition-colors"
+          >
+            --worktree
+          </button>
         </div>
 
         {/* Quick App Launchers (Finder, VS Code) */}
@@ -383,7 +506,7 @@ export const Omnibar: React.FC<OmnibarProps> = ({
               playClickSound();
               onOpenFolder(project.path);
             }}
-            title="Open folder in Finder (⌘O)"
+            title="Open folder in Finder"
             className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#0e111a] hover:bg-[#181d2a] border border-[#202738] hover:border-[#323d57] text-zinc-300 transition-colors"
           >
             <FolderOpen className="w-3 h-3" />
@@ -394,7 +517,7 @@ export const Omnibar: React.FC<OmnibarProps> = ({
               playClickSound();
               onOpenEditor(project.path, 'VSCode');
             }}
-            title="Open in VS Code (⌘E)"
+            title="Open in VS Code"
             className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#0e111a] hover:bg-[#181d2a] border border-[#202738] hover:border-[#323d57] text-zinc-300 transition-colors"
           >
             <Code2 className="w-3 h-3" />

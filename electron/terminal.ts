@@ -1,4 +1,4 @@
-import { exec, spawn } from 'child_process';
+import { exec, execSync, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -73,8 +73,15 @@ export function getAvailableTerminals(): TerminalOption[] {
     terminals.push({
       id: 'Alacritty',
       name: 'Alacritty',
-      installed: fs.existsSync('/Applications/Alacritty.app'),
-      command: 'Alacritty'
+      installed: fs.existsSync('/Applications/Alacritty.app') || isCommandAvailable('alacritty'),
+      command: 'alacritty'
+    });
+
+    terminals.push({
+      id: 'Kitty',
+      name: 'Kitty',
+      installed: fs.existsSync('/Applications/kitty.app') || isCommandAvailable('kitty'),
+      command: 'kitty'
     });
 
     terminals.push({
@@ -136,7 +143,7 @@ export function getAvailableTerminals(): TerminalOption[] {
 function isCommandAvailable(cmd: string): boolean {
   try {
     const whichCmd = process.platform === 'win32' ? `where ${cmd}` : `which ${cmd}`;
-    exec(whichCmd, { stdio: 'ignore' });
+    execSync(whichCmd, { stdio: 'ignore', timeout: 800 });
     return true;
   } catch {
     return false;
@@ -209,6 +216,41 @@ export function launchInTerminal(
       if (terminalId === 'Ghostty') {
         const escaped = fullCommand.replace(/"/g, '\\"');
         exec(`open -a Ghostty --args -e "bash -c \\"${escaped}; exec bash\\""`, (err) => {
+          if (err) {
+            launchTerminalApp(projectPath, fullCommand, resolve);
+          } else {
+            resolve({ success: true });
+          }
+        });
+        return;
+      }
+
+      if (terminalId === 'Warp') {
+        exec(`open -a Warp "${projectPath}"`, (err) => {
+          if (err) {
+            launchTerminalApp(projectPath, fullCommand, resolve);
+          } else {
+            resolve({ success: true });
+          }
+        });
+        return;
+      }
+
+      if (terminalId === 'Alacritty') {
+        const escaped = fullCommand.replace(/"/g, '\\"');
+        exec(`open -a Alacritty --args --working-directory "${projectPath}" -e bash -c "${escaped}; exec bash"`, (err) => {
+          if (err) {
+            launchTerminalApp(projectPath, fullCommand, resolve);
+          } else {
+            resolve({ success: true });
+          }
+        });
+        return;
+      }
+
+      if (terminalId === 'Kitty') {
+        const escaped = fullCommand.replace(/"/g, '\\"');
+        exec(`open -a kitty --args --directory "${projectPath}" bash -c "${escaped}; exec bash"`, (err) => {
           if (err) {
             launchTerminalApp(projectPath, fullCommand, resolve);
           } else {
