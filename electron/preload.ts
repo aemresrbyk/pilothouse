@@ -34,7 +34,33 @@ export const electronAPI = {
   validatePath: (targetPath: string): Promise<{ exists: boolean; isDirectory: boolean }> =>
     ipcRenderer.invoke('system:validate-path', targetPath),
   copyToClipboard: (text: string): Promise<void> =>
-    ipcRenderer.invoke('clipboard:write', text)
+    ipcRenderer.invoke('clipboard:write', text),
+
+  // Embedded Terminal PTY APIs
+  ptyCreate: (opts: { id: string; cwd: string; initialCommand?: string; cols?: number; rows?: number }): Promise<{ success: boolean; pid?: number; error?: string }> =>
+    ipcRenderer.invoke('pty:create', opts),
+  ptyWrite: (id: string, data: string): Promise<void> =>
+    ipcRenderer.invoke('pty:write', { id, data }),
+  ptyResize: (id: string, cols: number, rows: number): Promise<void> =>
+    ipcRenderer.invoke('pty:resize', { id, cols, rows }),
+  ptyKill: (id: string): Promise<void> =>
+    ipcRenderer.invoke('pty:kill', { id }),
+  onPtyData: (id: string, callback: (data: string) => void): (() => void) => {
+    const channel = `pty:data:${id}`;
+    const listener = (_e: any, data: string) => callback(data);
+    ipcRenderer.on(channel, listener);
+    return () => {
+      ipcRenderer.removeListener(channel, listener);
+    };
+  },
+  onPtyExit: (id: string, callback: (info: { exitCode: number; signal?: number }) => void): (() => void) => {
+    const channel = `pty:exit:${id}`;
+    const listener = (_e: any, info: any) => callback(info);
+    ipcRenderer.on(channel, listener);
+    return () => {
+      ipcRenderer.removeListener(channel, listener);
+    };
+  }
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

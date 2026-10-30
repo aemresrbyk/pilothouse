@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Settings, Terminal, Code2, Sliders, Check } from 'lucide-react';
-import { AppSettings, TerminalOption } from '../types';
+import { X, Settings, Terminal, Code2, Sliders, Check, Palette } from 'lucide-react';
+import { AppSettings, TerminalOption, AppTheme } from '../types';
+import { THEMES } from '../theme';
 import { playClickSound } from '../utils/audio';
 
 interface SettingsModalProps {
@@ -65,6 +66,41 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Form Body */}
         <div className="p-5 space-y-4 text-xs">
+          {/* Theme Selection */}
+          <div>
+            <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+              <Palette className="w-3.5 h-3.5 text-amber-500" />
+              <span>APPLICATION THEME</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {(Object.keys(THEMES) as AppTheme[]).map((tId) => {
+                const t = THEMES[tId];
+                const isSelected = (formData.theme || 'claude') === tId;
+                return (
+                  <button
+                    key={tId}
+                    type="button"
+                    onClick={() => {
+                      playClickSound();
+                      setFormData({ ...formData, theme: tId });
+                    }}
+                    className={`p-2 rounded border text-xs transition-all flex items-center justify-between ${
+                      isSelected
+                        ? 'border-amber-500/80 bg-amber-500/15 text-white font-bold'
+                        : 'border-[#1b2233] bg-[#10131c] text-zinc-400 hover:border-[#2b354e]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>{t.icon}</span>
+                      <span>{t.name}</span>
+                    </div>
+                    {isSelected && <span className="text-amber-400 text-[10px]">✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Preferred Terminal */}
           <div>
             <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 mb-2">

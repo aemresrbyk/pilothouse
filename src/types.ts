@@ -50,7 +50,10 @@ export interface ProjectItem {
   commandHistory?: string[];
 }
 
+export type AppTheme = 'claude' | 'dark' | 'cyber' | 'nord' | 'light';
+
 export interface AppSettings {
+  theme?: AppTheme;
   defaultTerminal: string;
   defaultEditor: string;
   defaultFlags: ProjectFlags;

@@ -7,11 +7,12 @@ import {
   RefreshCw,
   Volume2,
   VolumeX,
-  FolderPlus,
-  Check
+  Palette,
+  Search,
+  FolderPlus
 } from 'lucide-react';
-import { ProjectItem, TabSession } from '../types';
-import { ClaudeIcon } from './ClaudeIcon';
+import { ProjectItem, TabSession, AppTheme } from '../types';
+import { THEMES, ThemeConfig } from '../theme';
 import { playClickSound } from '../utils/audio';
 
 interface ChromeTabBarProps {
@@ -23,10 +24,14 @@ interface ChromeTabBarProps {
   onNewTab: (projectId: string) => void;
   onOpenAddModal: () => void;
   onOpenSettings: () => void;
+  onOpenPalette: () => void;
   onSyncClaude: () => void;
   isSyncing: boolean;
   soundEnabled: boolean;
   onToggleSound: () => void;
+  currentTheme: AppTheme;
+  onSelectTheme: (theme: AppTheme) => void;
+  themeConfig: ThemeConfig;
 }
 
 export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
@@ -38,19 +43,29 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
   onNewTab,
   onOpenAddModal,
   onOpenSettings,
+  onOpenPalette,
   onSyncClaude,
   isSyncing,
   soundEnabled,
-  onToggleSound
+  onToggleSound,
+  currentTheme,
+  onSelectTheme,
+  themeConfig
 }) => {
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [isNewTabOpen, setIsNewTabOpen] = useState(false);
+  const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
 
-  // Close dropdown on click outside
+  const newTabRef = useRef<HTMLDivElement>(null);
+  const themeMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close menus on click outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsDropdownOpen(false);
+      if (newTabRef.current && !newTabRef.current.contains(e.target as Node)) {
+        setIsNewTabOpen(false);
+      }
+      if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
+        setIsThemeMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -58,150 +73,275 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
   }, []);
 
   return (
-    <div className="titlebar-drag bg-[#090a0f] border-b border-[#1f2535] pt-1.5 px-2 flex items-center justify-between text-xs select-none">
-      {/* Left: macOS traffic lights offset + Chrome tabs */}
-      <div className="flex items-center gap-1 pl-18 flex-1 min-w-0 titlebar-no-drag">
-        {tabs.map((tab, idx) => {
-          const project = projects.find((p) => p.id === tab.projectId);
-          const isActive = tab.id === activeTabId;
-          const tabName = project?.name || 'Session';
+    <div
+      className="titlebar-drag h-10 px-2 flex items-center justify-between text-xs select-none border-b transition-colors"
+      style={{
+        backgroundColor: themeConfig.bgHeader,
+        borderColor: themeConfig.border
+      }}
+    >
+      {/* Left: Window Traffic Lights Spacer + Tab Reel */}
+      <div className="flex items-center gap-1.5 flex-1 min-w-0 titlebar-no-drag h-full pt-1.5">
+        {/* Dedicated 80px space for macOS window control buttons (never overlaps!) */}
+        <div className="w-20 flex-shrink-0 h-full pointer-events-none" />
 
-          return (
-            <div
-              key={tab.id}
-              onClick={() => {
-                playClickSound();
-                onSelectTab(tab.id);
-              }}
-              title={project?.path}
-              className={`group relative flex items-center gap-2 px-3.5 py-1.5 rounded-t-lg transition-all cursor-pointer max-w-[200px] min-w-[120px] text-xs font-mono border-t border-x ${
-                isActive
-                  ? 'bg-[#141722] border-[#252c3f] text-zinc-100 shadow-sm'
-                  : 'bg-[#090b10] border-transparent text-zinc-500 hover:bg-[#0f121a] hover:text-zinc-300'
-              }`}
-            >
-              {/* Active Tab Accent Top Line */}
-              {isActive && (
-                <div className="absolute top-0 left-2 right-2 h-[2px] bg-amber-500 rounded-full" />
-              )}
+        {/* Tab Items */}
+        <div className="flex items-end gap-1 overflow-x-auto no-scrollbar flex-1 min-w-0 h-full">
+          {tabs.map((tab) => {
+            const project = projects.find((p) => p.id === tab.projectId);
+            const isActive = tab.id === activeTabId;
+            const tabName = project?.name || 'Terminal';
 
-              {/* Status Indicator / Icon */}
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                {tab.isLaunched ? (
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-500/50" />
-                ) : (
-                  <Terminal className={`w-3.5 h-3.5 ${isActive ? 'text-amber-500' : 'text-zinc-600'}`} />
+            return (
+              <div
+                key={tab.id}
+                onClick={() => {
+                  playClickSound();
+                  onSelectTab(tab.id);
+                }}
+                title={project?.path}
+                className="group relative flex items-center gap-2 px-3 py-1.5 rounded-t-lg transition-all cursor-pointer max-w-[200px] min-w-[120px] text-xs font-mono border-t border-x"
+                style={{
+                  backgroundColor: isActive ? themeConfig.bgTabActive : 'transparent',
+                  borderColor: isActive ? themeConfig.border : 'transparent',
+                  color: isActive ? themeConfig.textPrimary : themeConfig.textMuted
+                }}
+              >
+                {/* Active Tab Accent Top Line */}
+                {isActive && (
+                  <div
+                    className="absolute top-0 left-2 right-2 h-[2px] rounded-full"
+                    style={{ backgroundColor: themeConfig.accent }}
+                  />
+                )}
+
+                {/* Status Indicator / Icon */}
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      isActive ? 'opacity-100' : 'opacity-40'
+                    }`}
+                    style={{ backgroundColor: isActive ? themeConfig.accent : themeConfig.textMuted }}
+                  />
+                </div>
+
+                {/* Tab Title */}
+                <span className="truncate flex-1 font-medium text-[11px]">
+                  {tabName}
+                </span>
+
+                {/* Close Tab Button */}
+                {tabs.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      playClickSound();
+                      onCloseTab(tab.id);
+                    }}
+                    title="Close tab (⌘W)"
+                    className="p-0.5 rounded opacity-50 group-hover:opacity-100 hover:bg-black/20 transition-all flex-shrink-0"
+                    style={{ color: themeConfig.textMuted }}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
                 )}
               </div>
+            );
+          })}
 
-              {/* Tab Title */}
-              <span className="truncate flex-1 font-medium text-[11px]">
-                {tabName}
-              </span>
+          {/* New Tab (+) Button */}
+          <div className="relative mb-1" ref={newTabRef}>
+            <button
+              onClick={() => {
+                playClickSound();
+                setIsNewTabOpen(!isNewTabOpen);
+              }}
+              title="Open project in new tab (⌘T)"
+              className="p-1 rounded-md hover:bg-black/20 transition-colors ml-1"
+              style={{ color: themeConfig.textMuted }}
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
 
-              {/* Close Tab Button */}
-              {tabs.length > 1 && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    playClickSound();
-                    onCloseTab(tab.id);
+            {/* New Tab Dropdown Menu */}
+            {isNewTabOpen && (
+              <div
+                className="absolute top-full left-0 mt-1 w-64 rounded-xl shadow-2xl py-1.5 z-50 animate-fade-in font-mono text-xs border"
+                style={{
+                  backgroundColor: themeConfig.bgCard,
+                  borderColor: themeConfig.border
+                }}
+              >
+                <div
+                  className="px-3 py-1 text-[10px] uppercase font-bold tracking-wider border-b"
+                  style={{
+                    color: themeConfig.textMuted,
+                    borderColor: themeConfig.border
                   }}
-                  title="Close tab (⌘W)"
-                  className="p-0.5 rounded hover:bg-[#252b3d] text-zinc-500 hover:text-zinc-200 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0"
                 >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-          );
-        })}
+                  OPEN IN NEW TAB
+                </div>
 
-        {/* New Tab (+) Button with Quick Project Picker */}
-        <div className="relative titlebar-no-drag" ref={dropdownRef}>
-          <button
-            onClick={() => {
-              playClickSound();
-              setIsDropdownOpen(!isDropdownOpen);
-            }}
-            title="Open project in new tab (⌘T)"
-            className="p-1 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-[#161a26] transition-colors ml-1"
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
+                <div className="max-h-56 overflow-y-auto py-1">
+                  {projects.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => {
+                        playClickSound();
+                        onNewTab(p.id);
+                        setIsNewTabOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-1.5 hover:bg-black/20 flex items-center justify-between transition-colors"
+                      style={{ color: themeConfig.textSecondary }}
+                    >
+                      <span className="truncate">{p.name}</span>
+                      {p.gitInfo?.branch && (
+                        <span
+                          className="text-[9px] px-1 rounded ml-1"
+                          style={{
+                            color: themeConfig.textMuted,
+                            backgroundColor: themeConfig.bgHeader
+                          }}
+                        >
+                          {p.gitInfo.branch}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
 
-          {/* New Tab Dropdown Menu */}
-          {isDropdownOpen && (
-            <div className="absolute top-full left-0 mt-1 w-64 bg-[#10131d] border border-[#232b3e] rounded-xl shadow-2xl py-1.5 z-50 animate-fade-in font-mono text-xs">
-              <div className="px-3 py-1 text-[10px] uppercase font-bold text-zinc-500 tracking-wider border-b border-[#1b2233]">
-                OPEN IN NEW TAB
-              </div>
-
-              <div className="max-h-56 overflow-y-auto py-1">
-                {projects.map((p) => (
+                <div
+                  className="pt-1 mt-1 border-t px-2"
+                  style={{ borderColor: themeConfig.border }}
+                >
                   <button
-                    key={p.id}
                     onClick={() => {
                       playClickSound();
-                      onNewTab(p.id);
-                      setIsDropdownOpen(false);
+                      setIsNewTabOpen(false);
+                      onOpenAddModal();
                     }}
-                    className="w-full text-left px-3 py-1.5 hover:bg-[#181d2c] text-zinc-300 hover:text-white flex items-center justify-between transition-colors"
+                    className="w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-1.5 font-bold transition-colors"
+                    style={{ color: themeConfig.accent }}
                   >
-                    <span className="truncate">{p.name}</span>
-                    {p.gitInfo?.branch && (
-                      <span className="text-[9px] text-zinc-500 bg-[#161b27] px-1 rounded ml-1">
-                        {p.gitInfo.branch}
-                      </span>
-                    )}
+                    <FolderPlus className="w-3.5 h-3.5" />
+                    <span>Add Project Folder...</span>
                   </button>
-                ))}
+                </div>
               </div>
-
-              <div className="border-t border-[#1b2233] pt-1 px-1">
-                <button
-                  onClick={() => {
-                    setIsDropdownOpen(false);
-                    onOpenAddModal();
-                  }}
-                  className="w-full text-left px-2 py-1.5 rounded-lg text-amber-400 hover:bg-amber-500/10 flex items-center gap-2 transition-colors font-medium"
-                >
-                  <FolderPlus className="w-3.5 h-3.5" />
-                  <span>Browse Folder on Disk...</span>
-                </button>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Right Controls */}
-      <div className="flex items-center gap-1.5 pb-1 titlebar-no-drag">
-        {/* Sound toggle */}
+      {/* Right: Actions & Theme Picker */}
+      <div className="flex items-center gap-1.5 titlebar-no-drag pl-2 flex-shrink-0">
+        {/* Quick Search */}
         <button
-          onClick={onToggleSound}
-          title={soundEnabled ? 'Click sounds enabled' : 'Click sounds muted'}
-          className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-[#161a26] transition-colors"
+          onClick={() => {
+            playClickSound();
+            onOpenPalette();
+          }}
+          title="Quick Find Project (⌘P)"
+          className="p-1.5 rounded-md hover:bg-black/20 transition-colors"
+          style={{ color: themeConfig.textMuted }}
         >
-          {soundEnabled ? (
-            <Volume2 className="w-3.5 h-3.5 text-amber-500" />
-          ) : (
-            <VolumeX className="w-3.5 h-3.5 text-zinc-600" />
-          )}
+          <Search className="w-3.5 h-3.5" />
         </button>
 
-        {/* Sync ~/.claude.json */}
+        {/* Sync Claude */}
         <button
           onClick={() => {
             playClickSound();
             onSyncClaude();
           }}
+          title="Sync from ~/.claude.json"
           disabled={isSyncing}
-          title="Sync Claude projects"
-          className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-[#161a26] transition-colors disabled:opacity-50"
+          className="p-1.5 rounded-md hover:bg-black/20 transition-colors"
+          style={{ color: themeConfig.textMuted }}
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-400' : ''}`} />
+          <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+        </button>
+
+        {/* Theme Selector Dropdown */}
+        <div className="relative" ref={themeMenuRef}>
+          <button
+            onClick={() => {
+              playClickSound();
+              setIsThemeMenuOpen(!isThemeMenuOpen);
+            }}
+            title="Theme Selection"
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-mono hover:bg-black/20 transition-colors border"
+            style={{
+              color: themeConfig.textPrimary,
+              borderColor: themeConfig.border,
+              backgroundColor: themeConfig.bgTabActive
+            }}
+          >
+            <span>{themeConfig.icon}</span>
+            <span className="hidden sm:inline text-[10px] font-medium">{themeConfig.name}</span>
+          </button>
+
+          {isThemeMenuOpen && (
+            <div
+              className="absolute right-0 top-full mt-1.5 w-48 rounded-xl shadow-2xl py-1.5 z-50 animate-fade-in font-mono text-xs border"
+              style={{
+                backgroundColor: themeConfig.bgCard,
+                borderColor: themeConfig.border
+              }}
+            >
+              <div
+                className="px-3 py-1 text-[10px] uppercase font-bold tracking-wider border-b"
+                style={{
+                  color: themeConfig.textMuted,
+                  borderColor: themeConfig.border
+                }}
+              >
+                SELECT THEME
+              </div>
+              <div className="p-1 space-y-0.5">
+                {(Object.keys(THEMES) as AppTheme[]).map((tId) => {
+                  const t = THEMES[tId];
+                  const isCurrent = tId === currentTheme;
+                  return (
+                    <button
+                      key={tId}
+                      type="button"
+                      onClick={() => {
+                        playClickSound();
+                        onSelectTheme(tId);
+                        setIsThemeMenuOpen(false);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition-colors"
+                      style={{
+                        backgroundColor: isCurrent ? themeConfig.accentBg : 'transparent',
+                        color: isCurrent ? themeConfig.accent : themeConfig.textSecondary
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span>{t.icon}</span>
+                        <span>{t.name}</span>
+                      </div>
+                      {isCurrent && <span className="text-[10px]">✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Sound Toggle */}
+        <button
+          onClick={() => {
+            playClickSound();
+            onToggleSound();
+          }}
+          title={soundEnabled ? 'Disable UI Sounds' : 'Enable UI Sounds'}
+          className="p-1.5 rounded-md hover:bg-black/20 transition-colors"
+          style={{ color: soundEnabled ? themeConfig.accent : themeConfig.textMuted }}
+        >
+          {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
         </button>
 
         {/* Settings */}
@@ -210,8 +350,9 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
             playClickSound();
             onOpenSettings();
           }}
-          title="Preferences"
-          className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-[#161a26] transition-colors"
+          title="System Settings"
+          className="p-1.5 rounded-md hover:bg-black/20 transition-colors"
+          style={{ color: themeConfig.textMuted }}
         >
           <Settings className="w-3.5 h-3.5" />
         </button>
@@ -219,4 +360,3 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
     </div>
   );
 };
-

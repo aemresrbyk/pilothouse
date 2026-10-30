@@ -26,6 +26,13 @@ declare global {
       getSessions: (projectPath: string) => Promise<ClaudeSession[]>;
       validatePath: (targetPath: string) => Promise<{ exists: boolean; isDirectory: boolean }>;
       copyToClipboard: (text: string) => Promise<void>;
+      // Embedded PTY
+      ptyCreate: (opts: { id: string; cwd: string; initialCommand?: string; cols?: number; rows?: number }) => Promise<{ success: boolean; pid?: number; error?: string }>;
+      ptyWrite: (id: string, data: string) => Promise<void>;
+      ptyResize: (id: string, cols: number, rows: number) => Promise<void>;
+      ptyKill: (id: string) => Promise<void>;
+      onPtyData: (id: string, callback: (data: string) => void) => () => void;
+      onPtyExit: (id: string, callback: (info: { exitCode: number; signal?: number }) => void) => () => void;
     };
   }
 }

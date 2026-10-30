@@ -1,16 +1,12 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   FolderPlus,
-  RefreshCw,
   Terminal,
-  Sparkles,
-  Command,
-  UploadCloud,
-  Search
+  UploadCloud
 } from 'lucide-react';
-import { ProjectItem, ProjectFlags, AppSettings, TabSession } from './types';
+import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme } from './types';
+import { THEMES, ThemeConfig } from './theme';
 import { ChromeTabBar } from './components/ChromeTabBar';
-import { Omnibar } from './components/Omnibar';
 import { TabWorkspace } from './components/TabWorkspace';
 import { SettingsModal } from './components/SettingsModal';
 import { AddProjectModal } from './components/AddProjectModal';
@@ -18,17 +14,17 @@ import { CommandPaletteModal } from './components/CommandPaletteModal';
 import {
   isSoundEnabled,
   toggleSound,
-  playClickSound,
-  playLaunchSound,
-  playToggleSound
+  playClickSound
 } from './utils/audio';
 
 export const App: React.FC = () => {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [tabs, setTabs] = useState<TabSession[]>([]);
   const [activeTabId, setActiveTabId] = useState<string>('');
-  
+  const [theme, setTheme] = useState<AppTheme>('claude');
+
   const [settings, setSettings] = useState<AppSettings>({
+    theme: 'claude',
     defaultTerminal: 'Terminal',
     defaultEditor: 'VSCode',
     defaultFlags: {
@@ -53,6 +49,10 @@ export const App: React.FC = () => {
   const [isAddProjectOpen, setIsAddProjectOpen] = useState(false);
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 
+  const themeConfig: ThemeConfig = useMemo(() => {
+    return THEMES[theme] || THEMES.claude;
+  }, [theme]);
+
   const showToast = (message: string, type: 'info' | 'success' | 'error' = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -67,9 +67,12 @@ export const App: React.FC = () => {
       setProjects(projs);
       setSettings(setts);
 
+      if (setts.theme && THEMES[setts.theme]) {
+        setTheme(setts.theme);
+      }
+
       // Restore saved tabs or initialize
       if (setts.savedTabs && setts.savedTabs.length > 0) {
-        // verify that projects in saved tabs still exist
         const validTabs = setts.savedTabs.filter((t) => projs.some((p) => p.id === t.projectId));
         if (validTabs.length > 0) {
           setTabs(validTabs);
@@ -78,14 +81,14 @@ export const App: React.FC = () => {
         }
       }
 
-      // Default: open up to 3 initial tabs
+      // Default: open initial project tabs
       if (projs.length > 0) {
         const initialProjs = projs.slice(0, Math.min(3, projs.length));
         const initialTabs: TabSession[] = initialProjs.map((p) => ({
           id: `tab-${p.id}`,
           projectId: p.id,
           customInput: '',
-          isLaunched: false
+          isLaunched: true
         }));
         setTabs(initialTabs);
         setActiveTabId(initialTabs[0].id);
@@ -106,12 +109,18 @@ export const App: React.FC = () => {
       const timer = setTimeout(() => {
         window.electronAPI.updateSettings({
           savedTabs: tabs,
-          activeTabId
+          activeTabId,
+          theme
         });
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [tabs, activeTabId]);
+  }, [tabs, activeTabId, theme]);
+
+  const handleSelectTheme = (newTheme: AppTheme) => {
+    setTheme(newTheme);
+    window.electronAPI.updateSettings({ theme: newTheme });
+  };
 
   const handleSyncClaude = async () => {
     setIsSyncing(true);
@@ -156,23 +165,11 @@ export const App: React.FC = () => {
       id: `tab-${Date.now()}-${projectId}`,
       projectId,
       customInput: '',
-      isLaunched: false
+      isLaunched: true
     };
 
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newTab.id);
-  };
-
-  const handleCustomInputChange = (newVal: string) => {
-    setTabs((prev) =>
-      prev.map((t) => (t.id === activeTabId ? { ...t, customInput: newVal } : t))
-    );
-  };
-
-  const handleResumeSession = (sessionId: string) => {
-    const token = `--resume ${sessionId}`;
-    handleCustomInputChange(token);
-    showToast(`APPLIED --resume ${sessionId.slice(0, 8)}...`);
   };
 
   const handleUpdateFlags = async (projectId: string, flags: ProjectFlags) => {
@@ -193,31 +190,6 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleLaunch = useCallback(async (projectId: string, fullCommand: string) => {
-    try {
-      const res = await window.electronAPI.launchProject(projectId, fullCommand);
-      if (res.success) {
-        showToast('COMMAND DISPATCHED TO TERMINAL');
-        setTabs((prev) =>
-          prev.map((t) =>
-            t.projectId === projectId
-              ? { ...t, isLaunched: true, lastCommand: fullCommand, launchedAt: Date.now() }
-              : t
-          )
-        );
-        setProjects((prev) =>
-          prev.map((p) =>
-            p.id === projectId ? { ...p, lastLaunched: Date.now() } : p
-          )
-        );
-      } else {
-        showToast(`LAUNCH ERROR: ${res.error}`, 'error');
-      }
-    } catch (err: any) {
-      showToast(`FAILED TO LAUNCH: ${err.message}`, 'error');
-    }
-  }, []);
-
   const handleOpenFolder = async (path: string) => {
     await window.electronAPI.openFolder(path);
   };
@@ -229,6 +201,9 @@ export const App: React.FC = () => {
   const handleSaveSettings = async (newSettings: Partial<AppSettings>) => {
     const updated = await window.electronAPI.updateSettings(newSettings);
     setSettings(updated);
+    if (newSettings.theme) {
+      setTheme(newSettings.theme);
+    }
     showToast('PREFERENCES STORED');
   };
 
@@ -261,39 +236,6 @@ export const App: React.FC = () => {
       }
     }
   };
-
-  // Active tab & project
-  const activeTab = useMemo(() => {
-    return tabs.find((t) => t.id === activeTabId) || (tabs.length > 0 ? tabs[0] : null);
-  }, [tabs, activeTabId]);
-
-  const activeProject = useMemo(() => {
-    if (!activeTab) return null;
-    return projects.find((p) => p.id === activeTab.projectId) || null;
-  }, [activeTab, projects]);
-
-  // Compute full command for active tab
-  const activeFullCommand = useMemo(() => {
-    if (!activeProject) return '';
-    const flags = activeProject.flags || {
-      dangerouslySkipPermissions: true,
-      continueLast: false,
-      chrome: false,
-      verbose: false,
-      bare: false
-    };
-
-    const parts = ['claude'];
-    if (flags.dangerouslySkipPermissions) parts.push('--dangerously-skip-permissions');
-    if (flags.continueLast) parts.push('--continue');
-    if (flags.chrome) parts.push('--chrome');
-    if (flags.verbose) parts.push('--verbose');
-    if (flags.bare) parts.push('--bare');
-    if (activeTab?.customInput && activeTab.customInput.trim()) {
-      parts.push(activeTab.customInput.trim());
-    }
-    return parts.join(' ');
-  }, [activeProject, activeTab?.customInput]);
 
   // Global Keyboard Shortcuts
   useEffect(() => {
@@ -347,9 +289,13 @@ export const App: React.FC = () => {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className="flex flex-col h-screen w-screen bg-[#090b10] text-zinc-100 overflow-hidden font-mono select-none relative"
+      className="flex flex-col h-screen w-screen overflow-hidden font-mono select-none relative"
+      style={{
+        backgroundColor: themeConfig.bgMain,
+        color: themeConfig.textPrimary
+      }}
     >
-      {/* 1. Google Chrome Style Tab Bar */}
+      {/* 1. Google Chrome Style Tab Bar (with dedicated traffic light gap & theme picker) */}
       <ChromeTabBar
         tabs={tabs}
         activeTabId={activeTabId}
@@ -359,130 +305,143 @@ export const App: React.FC = () => {
         onNewTab={handleNewTab}
         onOpenAddModal={() => setIsAddProjectOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenPalette={() => setIsPaletteOpen(true)}
         onSyncClaude={handleSyncClaude}
         isSyncing={isSyncing}
         soundEnabled={soundOn}
         onToggleSound={() => setSoundOn(toggleSound())}
+        currentTheme={theme}
+        onSelectTheme={handleSelectTheme}
+        themeConfig={themeConfig}
       />
 
-      {/* 2. Interactive Omnibar */}
-      {activeProject && activeTab && (
-        <Omnibar
-          project={activeProject}
-          customInput={activeTab.customInput}
-          onCustomInputChange={handleCustomInputChange}
-          onUpdateFlags={handleUpdateFlags}
-          onLaunch={handleLaunch}
-          onOpenFolder={handleOpenFolder}
-          onOpenEditor={handleOpenEditor}
-          defaultTerminal={settings.defaultTerminal}
-          onChangeTerminal={(terminalId) => handleSaveSettings({ defaultTerminal: terminalId })}
-        />
-      )}
+      {/* 2. Embedded Terminal Workspace Area (All tabs preserved in DOM) */}
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        {tabs.length > 0 ? (
+          tabs.map((tab) => {
+            const proj = projects.find((p) => p.id === tab.projectId);
+            if (!proj) return null;
+            const isTabActive = tab.id === activeTabId;
 
-      {/* 3. Tab Workspace Area */}
-      {activeProject && activeTab ? (
-        <TabWorkspace
-          project={activeProject}
-          tabSession={activeTab}
-          fullCommand={activeFullCommand}
-          onLaunch={handleLaunch}
-          onOpenFolder={handleOpenFolder}
-          onOpenEditor={handleOpenEditor}
-          onResumeSession={handleResumeSession}
-          onSetCustomInput={handleCustomInputChange}
-          defaultTerminal={settings.defaultTerminal}
-          onChangeTerminal={(terminalId) => handleSaveSettings({ defaultTerminal: terminalId })}
-        />
-      ) : (
-        <div className="flex-1 flex flex-col items-center justify-center p-8 bg-[#0a0c10] select-none text-center">
-          <Terminal className="w-10 h-10 text-amber-500 mb-3" />
-          <h2 className="text-sm font-bold text-zinc-300">NO TABS OPEN</h2>
-          <p className="text-xs text-zinc-600 mt-1 max-w-xs">
-            Open a project tab using the [+] button or press ⌘T to get started.
-          </p>
-        </div>
-      )}
+            return (
+              <div
+                key={tab.id}
+                className="flex-1 w-full h-full flex flex-col overflow-hidden"
+                style={{ display: isTabActive ? 'flex' : 'none' }}
+              >
+                <TabWorkspace
+                  project={proj}
+                  tabSession={tab}
+                  onUpdateFlags={handleUpdateFlags}
+                  onOpenFolder={handleOpenFolder}
+                  onOpenEditor={handleOpenEditor}
+                  themeConfig={themeConfig}
+                  isActive={isTabActive}
+                />
+              </div>
+            );
+          })
+        ) : (
+          <div
+            className="flex-1 flex flex-col items-center justify-center p-8 select-none text-center"
+            style={{ backgroundColor: themeConfig.bgMain }}
+          >
+            <Terminal className="w-10 h-10 mb-3" style={{ color: themeConfig.accent }} />
+            <h2 className="text-sm font-bold" style={{ color: themeConfig.textPrimary }}>
+              NO PROJECT TERMINAL OPEN
+            </h2>
+            <p className="text-xs mt-1 max-w-xs" style={{ color: themeConfig.textMuted }}>
+              Press ⌘T or click [+] to open a Claude Code terminal session.
+            </p>
+            {projects.length > 0 && (
+              <button
+                onClick={() => handleNewTab(projects[0].id)}
+                className="mt-4 px-4 py-2 rounded-lg text-xs font-bold text-white shadow-md transition-all active:scale-95"
+                style={{ backgroundColor: themeConfig.accent }}
+              >
+                Open {projects[0].name}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
-      {/* 4. Minimalist Status Bar */}
-      <footer className="h-6 bg-[#07080c] border-t border-[#191f2c] px-4 flex items-center justify-between text-[10px] text-zinc-500 font-mono">
+      {/* 3. Minimalist Clean Footer */}
+      <footer
+        className="h-6 px-3 flex items-center justify-between text-[10px] font-mono border-t select-none"
+        style={{
+          backgroundColor: themeConfig.bgHeader,
+          borderColor: themeConfig.border,
+          color: themeConfig.textMuted
+        }}
+      >
         <div className="flex items-center gap-3">
           <span
             onClick={() => setIsPaletteOpen(true)}
-            className="flex items-center gap-1 text-zinc-400 hover:text-white cursor-pointer"
+            className="cursor-pointer hover:opacity-100 transition-opacity"
           >
-            <span className="text-zinc-600">⌘P</span> QUICK FIND
+            <span style={{ color: themeConfig.accent }}>⌘P</span> Find
           </span>
-          <span className="flex items-center gap-1 text-zinc-400">
-            <span className="text-zinc-600">⌘T</span> NEW TAB
-          </span>
-          <span className="flex items-center gap-1 text-zinc-400">
-            <span className="text-zinc-600">⌘W</span> CLOSE TAB
-          </span>
-          <span className="flex items-center gap-1 text-zinc-400">
-            <span className="text-zinc-600">⌘1-9</span> SWITCH TAB
-          </span>
-          <span className="flex items-center gap-1 text-amber-400/90">
-            <span className="text-zinc-600">↵</span> RUN COMMAND
-          </span>
+          <span><span style={{ color: themeConfig.accent }}>⌘T</span> Tab</span>
+          <span><span style={{ color: themeConfig.accent }}>⌘W</span> Close</span>
+          <span><span style={{ color: themeConfig.accent }}>⌘1-9</span> Switch</span>
         </div>
 
         <div className="flex items-center gap-3">
-          <span>{tabs.length} TABS ACTIVE</span>
-          <span className="text-zinc-700">|</span>
-          <span>TERMINAL: {settings.defaultTerminal}</span>
+          <span>{tabs.length} SESSIONS ACTIVE</span>
+          <span>•</span>
+          <span>{themeConfig.name.toUpperCase()}</span>
         </div>
       </footer>
 
       {/* Drag & Drop Overlay */}
       {isDraggingOver && (
-        <div className="absolute inset-0 z-50 bg-[#0c101af5] backdrop-blur-md border-2 border-dashed border-amber-500/80 flex flex-col items-center justify-center animate-fade-in">
-          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 mb-3 animate-bounce">
+        <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md border-2 border-dashed flex flex-col items-center justify-center animate-fade-in" style={{ borderColor: themeConfig.accent }}>
+          <div className="p-4 rounded-2xl mb-3 animate-bounce" style={{ backgroundColor: themeConfig.accentBg, color: themeConfig.accent }}>
             <UploadCloud className="w-10 h-10" />
           </div>
-          <h3 className="text-sm font-bold text-zinc-100 uppercase tracking-wider">
-            DROP FOLDER HERE TO OPEN AS PROJECT
+          <h3 className="text-sm font-bold tracking-wider" style={{ color: themeConfig.textPrimary }}>
+            DROP FOLDER HERE TO OPEN AS PROJECT TERMINAL
           </h3>
-          <p className="text-xs text-zinc-500 mt-1">
-            Will automatically register repository and open in a new tab.
+          <p className="text-xs mt-1" style={{ color: themeConfig.textMuted }}>
+            Will register repository and open in a new tab.
           </p>
         </div>
       )}
 
-      {/* Floating Toast */}
+      {/* Floating Toast Notification */}
       {toast && (
-        <div className="fixed bottom-9 right-6 z-50 animate-bounce-subtle">
+        <div className="fixed bottom-10 right-4 z-50 animate-fade-in font-mono text-xs shadow-2xl">
           <div
-            className={`px-3.5 py-2 rounded border text-xs font-mono font-medium shadow-2xl flex items-center gap-2 ${
-              toast.type === 'error'
-                ? 'bg-red-950/95 text-red-200 border-red-800'
-                : toast.type === 'info'
-                ? 'bg-zinc-900/95 text-zinc-300 border-zinc-700'
-                : 'bg-[#151924]/95 text-amber-300 border-amber-500/40'
-            }`}
+            className="px-3.5 py-2 rounded-lg border flex items-center gap-2 shadow-lg"
+            style={{
+              backgroundColor: themeConfig.bgCard,
+              borderColor: toast.type === 'error' ? '#ef4444' : themeConfig.accent,
+              color: toast.type === 'error' ? '#ef4444' : themeConfig.textPrimary
+            }}
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: toast.type === 'error' ? '#ef4444' : themeConfig.accent }} />
             <span>{toast.message}</span>
           </div>
         </div>
       )}
 
       {/* Modals */}
+      <AddProjectModal
+        isOpen={isAddProjectOpen}
+        onClose={() => setIsAddProjectOpen(false)}
+        onAddProject={handleAddProject}
+      />
+
       <CommandPaletteModal
         isOpen={isPaletteOpen}
         onClose={() => setIsPaletteOpen(false)}
         projects={projects}
-        onSelectProject={(projId, inNewTab) => {
-          if (inNewTab) {
-            handleNewTab(projId);
+        onSelectProject={(pId, inNew) => {
+          if (inNew) {
+            handleNewTab(pId);
           } else {
-            // switch active tab to this project
-            const existing = tabs.find((t) => t.projectId === projId);
-            if (existing) {
-              setActiveTabId(existing.id);
-            } else {
-              handleNewTab(projId);
-            }
+            handleNewTab(pId);
           }
         }}
         onOpenAddModal={() => setIsAddProjectOpen(true)}
@@ -494,13 +453,8 @@ export const App: React.FC = () => {
         settings={settings}
         onSaveSettings={handleSaveSettings}
       />
-
-      <AddProjectModal
-        isOpen={isAddProjectOpen}
-        onClose={() => setIsAddProjectOpen(false)}
-        onAddProject={handleAddProject}
-      />
     </div>
   );
 };
+
 export default App;

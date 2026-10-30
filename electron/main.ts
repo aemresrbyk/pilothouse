@@ -1,7 +1,9 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import { exec } from 'child_process';
+import * as pty from 'node-pty';
 import { StorageManager } from './store';
 import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './terminal';
 import { listProjectFiles, readFileContent, getProjectSessions } from './scanner';
@@ -15,6 +17,7 @@ process.env.VITE_PUBLIC = app.isPackaged
 
 let win: BrowserWindow | null = null;
 let storage: StorageManager;
+const ptySessions = new Map<string, pty.IPty>();
 
 // Vite dev server URL
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
@@ -195,4 +198,117 @@ function registerIpcHandlers() {
   ipcMain.handle('clipboard:write', async (_e, text: string) => {
     clipboard.writeText(text);
   });
+
+  // Embedded Terminal PTY Handlers
+  ipcMain.handle('pty:create', async (event, opts: { id: string; cwd: string; initialCommand?: string; cols?: number; rows?: number }) => {
+    const { id, cwd, initialCommand, cols = 80, rows = 24 } = opts;
+
+    if (ptySessions.has(id)) {
+      try {
+        ptySessions.get(id)?.kill();
+      } catch {}
+      ptySessions.delete(id);
+    }
+
+    try {
+      const isWin = process.platform === 'win32';
+      const shell = isWin
+        ? (process.env.COMSPEC || 'powershell.exe')
+        : (process.env.SHELL || '/bin/zsh');
+
+      const cleanEnv: Record<string, string> = {};
+      for (const [k, v] of Object.entries(process.env)) {
+        if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') {
+          cleanEnv[k] = v;
+        }
+      }
+
+      const home = os.homedir();
+      const envPath = `${home}/.local/bin:/opt/homebrew/bin:/usr/local/bin:${cleanEnv.PATH || ''}`;
+      cleanEnv.PATH = envPath;
+      cleanEnv.TERM = 'xterm-256color';
+      cleanEnv.COLORTERM = 'truecolor';
+
+      const targetCwd = fs.existsSync(cwd) ? cwd : home;
+
+      const ptyProcess = pty.spawn(shell, isWin ? [] : ['-l'], {
+        name: 'xterm-256color',
+        cols: Math.max(10, cols),
+        rows: Math.max(5, rows),
+        cwd: targetCwd,
+        env: cleanEnv
+      });
+
+      ptySessions.set(id, ptyProcess);
+
+      ptyProcess.onData((data: string) => {
+        try {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send(`pty:data:${id}`, data);
+          }
+        } catch {}
+      });
+
+      ptyProcess.onExit(({ exitCode, signal }) => {
+        try {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send(`pty:exit:${id}`, { exitCode, signal });
+          }
+        } catch {}
+        ptySessions.delete(id);
+      });
+
+      if (initialCommand && initialCommand.trim().length > 0) {
+        setTimeout(() => {
+          try {
+            if (ptySessions.has(id)) {
+              ptyProcess.write(`${initialCommand.trim()}\r`);
+            }
+          } catch {}
+        }, 300);
+      }
+
+      return { success: true, pid: ptyProcess.pid };
+    } catch (err: any) {
+      console.error('PTY spawn error:', err);
+      return { success: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('pty:write', async (_e, { id, data }: { id: string; data: string }) => {
+    const ptyProc = ptySessions.get(id);
+    if (ptyProc) {
+      try {
+        ptyProc.write(data);
+      } catch {}
+    }
+  });
+
+  ipcMain.handle('pty:resize', async (_e, { id, cols, rows }: { id: string; cols: number; rows: number }) => {
+    const ptyProc = ptySessions.get(id);
+    if (ptyProc && cols > 0 && rows > 0) {
+      try {
+        ptyProc.resize(cols, rows);
+      } catch {}
+    }
+  });
+
+  ipcMain.handle('pty:kill', async (_e, { id }: { id: string }) => {
+    const ptyProc = ptySessions.get(id);
+    if (ptyProc) {
+      try {
+        ptyProc.kill();
+      } catch {}
+      ptySessions.delete(id);
+    }
+  });
 }
+
+app.on('before-quit', () => {
+  for (const [, proc] of ptySessions.entries()) {
+    try {
+      proc.kill();
+    } catch {}
+  }
+  ptySessions.clear();
+});
