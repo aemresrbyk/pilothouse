@@ -161,3 +161,4 @@ export const CockpitHeader: React.FC<CockpitHeaderProps> = ({
     </header>
   );
 };
+

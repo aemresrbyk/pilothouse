@@ -62,6 +62,15 @@ export interface FileItem {
   extension?: string;
 }
 
+export interface TabSession {
+  id: string;
+  projectId: string;
+  customInput: string;
+  isLaunched: boolean;
+  launchedAt?: number;
+  lastCommand?: string;
+}
+
 export interface LaunchPayload {
   projectId: string;
   command: string;

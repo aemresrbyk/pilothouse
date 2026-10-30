@@ -113,7 +113,7 @@ function registerIpcHandlers() {
     return getAvailableTerminals();
   });
 
-  ipcMain.handle('project:launch', async (_e, projectId: string) => {
+  ipcMain.handle('project:launch', async (_e, projectId: string, customCommand?: string) => {
     const projects = storage.getProjects();
     const project = projects.find(p => p.id === projectId);
     if (!project) {
@@ -121,7 +121,10 @@ function registerIpcHandlers() {
     }
 
     const settings = storage.getSettings();
-    const command = buildClaudeCommand(project.flags, project.customFlags, settings.claudePath || 'claude');
+    const command = (customCommand && customCommand.trim().length > 0)
+      ? customCommand
+      : buildClaudeCommand(project.flags, project.customFlags, settings.claudePath || 'claude');
+
     const terminal = (project.terminalOverride && project.terminalOverride !== 'default')
       ? project.terminalOverride
       : settings.defaultTerminal;

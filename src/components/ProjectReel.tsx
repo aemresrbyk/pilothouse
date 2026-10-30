@@ -153,3 +153,4 @@ export const ProjectReel: React.FC<ProjectReelProps> = ({
     </aside>
   );
 };
+

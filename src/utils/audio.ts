@@ -108,3 +108,4 @@ export function playLaunchSound(): void {
     // Ignore audio errors
   }
 }
+

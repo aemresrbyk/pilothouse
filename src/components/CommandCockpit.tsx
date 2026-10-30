@@ -573,3 +573,4 @@ export const CommandCockpit: React.FC<CommandCockpitProps> = ({
     </div>
   );
 };
+

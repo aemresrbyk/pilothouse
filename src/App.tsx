@@ -4,12 +4,13 @@ import {
   RefreshCw,
   Terminal,
   Sparkles,
-  Command
+  Command,
+  LayoutGrid
 } from 'lucide-react';
-import { ProjectItem, ProjectFlags, AppSettings } from './types';
-import { CockpitHeader } from './components/CockpitHeader';
-import { ProjectReel } from './components/ProjectReel';
-import { CommandCockpit } from './components/CommandCockpit';
+import { ProjectItem, ProjectFlags, AppSettings, TabSession } from './types';
+import { ChromeTabBar } from './components/ChromeTabBar';
+import { Omnibar } from './components/Omnibar';
+import { TabWorkspace } from './components/TabWorkspace';
 import { SettingsModal } from './components/SettingsModal';
 import { AddProjectModal } from './components/AddProjectModal';
 import {
@@ -22,7 +23,9 @@ import {
 
 export const App: React.FC = () => {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [tabs, setTabs] = useState<TabSession[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string>('');
+  
   const [settings, setSettings] = useState<AppSettings>({
     defaultTerminal: 'Terminal',
     defaultEditor: 'VSCode',
@@ -38,7 +41,6 @@ export const App: React.FC = () => {
     soundEnabled: true
   });
 
-  const [searchQuery, setSearchQuery] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   const [toast, setToast] = useState<{ message: string; type?: 'info' | 'success' | 'error' } | null>(null);
@@ -60,8 +62,19 @@ export const App: React.FC = () => {
       ]);
       setProjects(projs);
       setSettings(setts);
-      if (projs.length > 0 && !selectedId) {
-        setSelectedId(projs[0].id);
+
+      // Initialize tabs if empty
+      if (tabs.length === 0 && projs.length > 0) {
+        // Open up to 3 initial tabs (e.g. first project or favorites)
+        const initialProjs = projs.slice(0, Math.min(3, projs.length));
+        const initialTabs: TabSession[] = initialProjs.map((p) => ({
+          id: `tab-${p.id}`,
+          projectId: p.id,
+          customInput: '',
+          isLaunched: false
+        }));
+        setTabs(initialTabs);
+        setActiveTabId(initialTabs[0].id);
       }
     } catch (err) {
       console.error('Error loading data:', err);
@@ -79,7 +92,7 @@ export const App: React.FC = () => {
       const res = await window.electronAPI.syncFromClaude();
       await loadData();
       if (res.addedCount > 0) {
-        showToast(`DISCOVERED & SYNCED ${res.addedCount} CLAUDE REPOSITORIES`);
+        showToast(`DISCOVERED & SYNCED ${res.addedCount} REPOSITORIES`);
       } else {
         showToast('ALL CLAUDE REPOSITORIES ARE UP TO DATE', 'info');
       }
@@ -90,6 +103,46 @@ export const App: React.FC = () => {
     }
   };
 
+  // Tab Operations (Like Google Chrome)
+  const handleSelectTab = (tabId: string) => {
+    setActiveTabId(tabId);
+  };
+
+  const handleCloseTab = (tabId: string) => {
+    setTabs((prev) => {
+      const remaining = prev.filter((t) => t.id !== tabId);
+      if (activeTabId === tabId && remaining.length > 0) {
+        setActiveTabId(remaining[remaining.length - 1].id);
+      }
+      return remaining;
+    });
+  };
+
+  const handleNewTab = (projectId: string) => {
+    // Check if a tab for this project already exists
+    const existing = tabs.find((t) => t.projectId === projectId);
+    if (existing) {
+      setActiveTabId(existing.id);
+      return;
+    }
+
+    const newTab: TabSession = {
+      id: `tab-${Date.now()}-${projectId}`,
+      projectId,
+      customInput: '',
+      isLaunched: false
+    };
+
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newTab.id);
+  };
+
+  const handleCustomInputChange = (newVal: string) => {
+    setTabs((prev) =>
+      prev.map((t) => (t.id === activeTabId ? { ...t, customInput: newVal } : t))
+    );
+  };
+
   const handleUpdateFlags = async (projectId: string, flags: ProjectFlags) => {
     setProjects((prev) =>
       prev.map((p) => (p.id === projectId ? { ...p, flags } : p))
@@ -97,52 +150,31 @@ export const App: React.FC = () => {
     await window.electronAPI.updateProject(projectId, { flags });
   };
 
-  const handleUpdateCustomFlags = async (projectId: string, customFlags: string) => {
-    setProjects((prev) =>
-      prev.map((p) => (p.id === projectId ? { ...p, customFlags } : p))
-    );
-    await window.electronAPI.updateProject(projectId, { customFlags });
-  };
-
-  const handleToggleFavorite = async (projectId: string, isFavorite: boolean) => {
-    setProjects((prev) =>
-      prev.map((p) => (p.id === projectId ? { ...p, isFavorite } : p))
-    );
-    await window.electronAPI.updateProject(projectId, { isFavorite });
-  };
-
   const handleAddProject = async (folderPath: string) => {
     try {
       const newProj = await window.electronAPI.addProject(folderPath);
       await loadData();
-      setSelectedId(newProj.id);
-      showToast(`REGISTERED REPOSITORY: ${newProj.name}`);
+      handleNewTab(newProj.id);
+      showToast(`REGISTERED: ${newProj.name}`);
     } catch (err: any) {
       showToast(`FAILED: ${err.message}`, 'error');
     }
   };
 
-  const handleRemoveProject = async (projectId: string) => {
+  const handleLaunch = useCallback(async (projectId: string, fullCommand: string) => {
     try {
-      await window.electronAPI.removeProject(projectId);
-      setProjects((prev) => {
-        const remaining = prev.filter((p) => p.id !== projectId);
-        if (selectedId === projectId) {
-          setSelectedId(remaining.length > 0 ? remaining[0].id : null);
-        }
-        return remaining;
-      });
-      showToast('REMOVED FROM INDEX', 'info');
-    } catch (err: any) {
-      showToast(`ERROR: ${err.message}`, 'error');
-    }
-  };
-
-  const handleLaunch = useCallback(async (projectId: string) => {
-    try {
-      const res = await window.electronAPI.launchProject(projectId);
+      const res = await window.electronAPI.launchProject(projectId, fullCommand);
       if (res.success) {
-        showToast('TERMINAL SESSION DEPLOYED');
+        showToast('COMMAND DISPATCHED TO TERMINAL');
+        // Mark tab as launched
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.projectId === projectId
+              ? { ...t, isLaunched: true, lastCommand: fullCommand, launchedAt: Date.now() }
+              : t
+          )
+        );
+        // Update project lastLaunched
         setProjects((prev) =>
           prev.map((p) =>
             p.id === projectId ? { ...p, lastLaunched: Date.now() } : p
@@ -170,157 +202,160 @@ export const App: React.FC = () => {
     showToast('PREFERENCES STORED');
   };
 
-  // Filter projects
-  const filteredProjects = useMemo(() => {
-    return projects.filter((p) => {
-      const q = searchQuery.toLowerCase().trim();
-      if (!q) return true;
-      return (
-        p.name.toLowerCase().includes(q) ||
-        p.path.toLowerCase().includes(q) ||
-        (p.gitInfo?.branch && p.gitInfo.branch.toLowerCase().includes(q))
-      );
-    });
-  }, [projects, searchQuery]);
+  // Active tab & project
+  const activeTab = useMemo(() => {
+    return tabs.find((t) => t.id === activeTabId) || (tabs.length > 0 ? tabs[0] : null);
+  }, [tabs, activeTabId]);
 
-  // Selected project object
-  const selectedProject = useMemo(() => {
-    return projects.find((p) => p.id === selectedId) || (filteredProjects.length > 0 ? filteredProjects[0] : null);
-  }, [projects, selectedId, filteredProjects]);
+  const activeProject = useMemo(() => {
+    if (!activeTab) return null;
+    return projects.find((p) => p.id === activeTab.projectId) || null;
+  }, [activeTab, projects]);
 
-  // KEYBOARD NAVIGATION SYSTEM
+  // Compute full command for active tab
+  const activeFullCommand = useMemo(() => {
+    if (!activeProject) return '';
+    const flags = activeProject.flags || {
+      dangerouslySkipPermissions: true,
+      continueLast: false,
+      chrome: false,
+      verbose: false,
+      bare: false
+    };
+
+    const parts = ['claude'];
+    if (flags.dangerouslySkipPermissions) parts.push('--dangerously-skip-permissions');
+    if (flags.continueLast) parts.push('--continue');
+    if (flags.chrome) parts.push('--chrome');
+    if (flags.verbose) parts.push('--verbose');
+    if (flags.bare) parts.push('--bare');
+    if (activeTab?.customInput && activeTab.customInput.trim()) {
+      parts.push(activeTab.customInput.trim());
+    }
+    return parts.join(' ');
+  }, [activeProject, activeTab?.customInput]);
+
+  // Chrome-style Keyboard Shortcuts:
+  // Cmd+T: New tab
+  // Cmd+W: Close tab
+  // Cmd+1..9: Switch tabs
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
-        return; // do not hijack when typing
+      // Cmd/Ctrl + T -> New tab
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        playClickSound();
+        if (projects.length > 0) {
+          // Open next project not yet opened or first project
+          const nextProj = projects.find((p) => !tabs.some((t) => t.projectId === p.id)) || projects[0];
+          handleNewTab(nextProj.id);
+        } else {
+          setIsAddProjectOpen(true);
+        }
       }
 
-      if (e.key === 'ArrowDown' || e.key === 'j') {
-        e.preventDefault();
-        playClickSound();
-        const currIndex = filteredProjects.findIndex((p) => p.id === selectedId);
-        const nextIndex = currIndex < filteredProjects.length - 1 ? currIndex + 1 : 0;
-        if (filteredProjects[nextIndex]) {
-          setSelectedId(filteredProjects[nextIndex].id);
-        }
-      } else if (e.key === 'ArrowUp' || e.key === 'k') {
-        e.preventDefault();
-        playClickSound();
-        const currIndex = filteredProjects.findIndex((p) => p.id === selectedId);
-        const prevIndex = currIndex > 0 ? currIndex - 1 : filteredProjects.length - 1;
-        if (filteredProjects[prevIndex]) {
-          setSelectedId(filteredProjects[prevIndex].id);
-        }
-      } else if (e.key === 'Enter') {
-        if (selectedProject) {
-          e.preventDefault();
-          handleLaunch(selectedProject.id);
-        }
-      } else if (e.key === ' ') {
-        if (selectedProject) {
-          e.preventDefault();
-          const nextVal = !selectedProject.flags.dangerouslySkipPermissions;
-          playToggleSound(nextVal);
-          handleUpdateFlags(selectedProject.id, {
-            ...selectedProject.flags,
-            dangerouslySkipPermissions: nextVal
-          });
-        }
-      } else if (e.key.toLowerCase() === 'c' && !e.metaKey && !e.ctrlKey) {
-        if (selectedProject) {
-          e.preventDefault();
-          const nextVal = !selectedProject.flags.continueLast;
-          playToggleSound(nextVal);
-          handleUpdateFlags(selectedProject.id, {
-            ...selectedProject.flags,
-            continueLast: nextVal
-          });
-        }
-      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'o') {
-        if (selectedProject) {
+      // Cmd/Ctrl + W -> Close active tab
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'w') {
+        if (tabs.length > 1 && activeTabId) {
           e.preventDefault();
           playClickSound();
-          handleOpenFolder(selectedProject.path);
+          handleCloseTab(activeTabId);
         }
-      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e') {
-        if (selectedProject) {
+      }
+
+      // Cmd/Ctrl + 1..9 -> Switch tab
+      if ((e.metaKey || e.ctrlKey) && /^[1-9]$/.test(e.key)) {
+        const idx = parseInt(e.key, 10) - 1;
+        if (tabs[idx]) {
           e.preventDefault();
           playClickSound();
-          handleOpenEditor(selectedProject.path, 'VSCode');
+          setActiveTabId(tabs[idx].id);
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filteredProjects, selectedId, selectedProject, handleLaunch]);
+  }, [tabs, activeTabId, projects]);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#08090d] text-zinc-100 overflow-hidden font-mono select-none">
-      {/* 1. Cockpit Header Bar */}
-      <CockpitHeader
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onAddProject={() => setIsAddProjectOpen(true)}
-        onSyncClaude={handleSyncClaude}
+    <div className="flex flex-col h-screen w-screen bg-[#090b10] text-zinc-100 overflow-hidden font-mono select-none">
+      {/* 1. Google Chrome Style Tab Bar */}
+      <ChromeTabBar
+        tabs={tabs}
+        activeTabId={activeTabId}
+        projects={projects}
+        onSelectTab={handleSelectTab}
+        onCloseTab={handleCloseTab}
+        onNewTab={handleNewTab}
+        onOpenAddModal={() => setIsAddProjectOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onSyncClaude={handleSyncClaude}
         isSyncing={isSyncing}
-        totalProjects={projects.length}
-        filteredCount={filteredProjects.length}
         soundEnabled={soundOn}
         onToggleSound={() => setSoundOn(toggleSound())}
-        defaultTerminal={settings.defaultTerminal}
       />
 
-      {/* 2. Main Studio Split Area */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left: Project Reel Index */}
-        <ProjectReel
-          projects={filteredProjects}
-          selectedId={selectedProject?.id || null}
-          onSelectProject={(p) => setSelectedId(p.id)}
-          onToggleFavorite={handleToggleFavorite}
-        />
-
-        {/* Right: The Hardware Command Cockpit */}
-        <CommandCockpit
-          project={selectedProject}
+      {/* 2. Interactive Omnibar (Under Tab Bar like Chrome URL bar) */}
+      {activeProject && activeTab && (
+        <Omnibar
+          project={activeProject}
+          customInput={activeTab.customInput}
+          onCustomInputChange={handleCustomInputChange}
           onUpdateFlags={handleUpdateFlags}
-          onUpdateCustomFlags={handleUpdateCustomFlags}
           onLaunch={handleLaunch}
           onOpenFolder={handleOpenFolder}
           onOpenEditor={handleOpenEditor}
-          onRemove={handleRemoveProject}
           defaultTerminal={settings.defaultTerminal}
         />
-      </div>
+      )}
 
-      {/* 3. Bottom Industrial Statusline */}
-      <footer className="h-6 bg-[#06070a] border-t border-[#161a25] px-4 flex items-center justify-between text-[10px] text-zinc-500 font-mono">
+      {/* 3. Tab Workspace Area */}
+      {activeProject && activeTab ? (
+        <TabWorkspace
+          project={activeProject}
+          tabSession={activeTab}
+          fullCommand={activeFullCommand}
+          onLaunch={handleLaunch}
+          onOpenFolder={handleOpenFolder}
+          onOpenEditor={handleOpenEditor}
+          defaultTerminal={settings.defaultTerminal}
+        />
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center p-8 bg-[#0a0c10] select-none text-center">
+          <Terminal className="w-10 h-10 text-amber-500 mb-3" />
+          <h2 className="text-sm font-bold text-zinc-300">NO TABS OPEN</h2>
+          <p className="text-xs text-zinc-600 mt-1 max-w-xs">
+            Open a project tab using the [+] button or press ⌘T to get started.
+          </p>
+        </div>
+      )}
+
+      {/* 4. Minimalist Status Bar */}
+      <footer className="h-6 bg-[#07080c] border-t border-[#191f2c] px-4 flex items-center justify-between text-[10px] text-zinc-500 font-mono">
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1 text-zinc-400">
-            <span className="text-zinc-600">[↑↓]</span> NAVIGATE
-          </span>
-          <span className="flex items-center gap-1 text-amber-500/90">
-            <span className="text-zinc-600">[SPACE]</span> TOGGLE SKIP PERM
-          </span>
-          <span className="flex items-center gap-1 text-emerald-400/90">
-            <span className="text-zinc-600">[C]</span> CONTINUE
+            <span className="text-zinc-600">⌘T</span> NEW TAB
           </span>
           <span className="flex items-center gap-1 text-zinc-400">
-            <span className="text-zinc-600">[↵]</span> LAUNCH
+            <span className="text-zinc-600">⌘W</span> CLOSE TAB
+          </span>
+          <span className="flex items-center gap-1 text-zinc-400">
+            <span className="text-zinc-600">⌘1-9</span> SWITCH TAB
+          </span>
+          <span className="flex items-center gap-1 text-amber-400/90">
+            <span className="text-zinc-600">↵</span> RUN COMMAND
           </span>
         </div>
 
         <div className="flex items-center gap-3">
-          <span>TARGET: {settings.defaultTerminal}</span>
+          <span>{tabs.length} TABS ACTIVE</span>
           <span className="text-zinc-700">|</span>
-          <span>AUDIO FX: {soundOn ? 'ON' : 'MUTED'}</span>
+          <span>TERMINAL: {settings.defaultTerminal}</span>
         </div>
       </footer>
 
-      {/* Floating Tactical Toast */}
+      {/* Floating Toast */}
       {toast && (
         <div className="fixed bottom-9 right-6 z-50 animate-bounce-subtle">
           <div

@@ -19,8 +19,8 @@ export const electronAPI = {
     ipcRenderer.invoke('settings:update', settings),
   getTerminals: (): Promise<TerminalOption[]> =>
     ipcRenderer.invoke('system:get-terminals'),
-  launchProject: (projectId: string): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('project:launch', projectId),
+  launchProject: (projectId: string, customCommand?: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('project:launch', projectId, customCommand),
   openFolder: (dirPath: string): Promise<void> =>
     ipcRenderer.invoke('project:open-folder', dirPath),
   openInEditor: (dirPath: string, editor?: string): Promise<boolean> =>
