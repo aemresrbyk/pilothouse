@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, FolderPlus, FolderSearch, Plus } from 'lucide-react';
+import { playClickSound } from '../utils/audio';
 
 interface AddProjectModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
   if (!isOpen) return null;
 
   const handlePickFolder = async () => {
+    playClickSound();
     setIsPicking(true);
     try {
       const picked = await window.electronAPI.pickDirectory();
@@ -33,6 +35,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (manualPath.trim()) {
+      playClickSound();
       onAddProject(manualPath.trim());
       setManualPath('');
       onClose();
@@ -40,24 +43,22 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="bg-[#12151d] border border-[#2b3348] rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm select-none font-mono">
+      <div className="bg-[#0c0e14] border border-[#21283a] rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#212738] bg-[#161a24]">
-          <div className="flex items-center gap-2.5">
-            <div className="p-1.5 bg-[#cc6b49]/15 text-[#f29472] rounded-lg">
-              <FolderPlus className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-zinc-100">Add Project</h3>
-              <p className="text-[11px] text-zinc-400">
-                Register a new project for Claude Code
-              </p>
-            </div>
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1b2131] bg-[#10131d]">
+          <div className="flex items-center gap-2">
+            <FolderPlus className="w-4 h-4 text-amber-500" />
+            <h3 className="text-xs font-bold text-zinc-100 uppercase tracking-wider">
+              // REGISTER REPOSITORY
+            </h3>
           </div>
           <button
-            onClick={onClose}
-            className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-[#232938] rounded-lg transition-colors"
+            onClick={() => {
+              playClickSound();
+              onClose();
+            }}
+            className="p-1 text-zinc-500 hover:text-zinc-200 hover:bg-[#1a2030] rounded transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -65,53 +66,50 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
 
         {/* Content */}
         <div className="p-5 space-y-4">
-          {/* Quick Browse button */}
-          <div>
-            <button
-              onClick={handlePickFolder}
-              disabled={isPicking}
-              className="w-full flex items-center justify-center gap-2 bg-[#1a1f2c] hover:bg-[#242b3d] border border-[#2e374f] hover:border-[#cc6b49] py-3 px-4 rounded-xl text-zinc-200 text-xs font-medium transition-all group shadow-sm"
-            >
-              <FolderSearch className="w-4 h-4 text-[#cc6b49] group-hover:scale-110 transition-transform" />
-              <span>Browse Folder on Computer...</span>
-            </button>
-          </div>
+          <button
+            onClick={handlePickFolder}
+            disabled={isPicking}
+            className="w-full flex items-center justify-center gap-2 bg-[#121620] hover:bg-[#191f2d] border border-[#212a3d] hover:border-amber-500/60 py-3 px-4 rounded-lg text-zinc-200 text-xs font-bold transition-all group shadow-sm active:scale-95"
+          >
+            <FolderSearch className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" />
+            <span>BROWSE FOLDER ON SYSTEM...</span>
+          </button>
 
           <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-[#232938]"></div>
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">
-              Or enter path
+            <div className="flex-1 h-px bg-[#181f2d]"></div>
+            <span className="text-[10px] text-zinc-600 uppercase tracking-widest font-semibold">
+              OR DIRECT PATH
             </span>
-            <div className="flex-1 h-px bg-[#232938]"></div>
+            <div className="flex-1 h-px bg-[#181f2d]"></div>
           </div>
 
-          {/* Manual input */}
           <form onSubmit={handleManualSubmit} className="space-y-3">
-            <div>
-              <input
-                type="text"
-                placeholder="/Users/username/Desktop/my-project"
-                value={manualPath}
-                onChange={(e) => setManualPath(e.target.value)}
-                className="w-full bg-[#151924] border border-[#262c3e] focus:border-[#cc6b49] text-xs font-mono text-zinc-200 placeholder-zinc-600 rounded-lg px-3 py-2 outline-none"
-              />
-            </div>
+            <input
+              type="text"
+              placeholder="/Users/username/Desktop/my-project"
+              value={manualPath}
+              onChange={(e) => setManualPath(e.target.value)}
+              className="w-full bg-[#10131c] border border-[#1b2233] focus:border-amber-500 text-xs text-zinc-200 placeholder-zinc-700 rounded px-3 py-2 outline-none font-mono"
+            />
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-1">
               <button
                 type="button"
-                onClick={onClose}
-                className="text-xs text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded-lg hover:bg-[#202534] transition-colors"
+                onClick={() => {
+                  playClickSound();
+                  onClose();
+                }}
+                className="text-xs text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded hover:bg-[#1a2030] transition-colors"
               >
-                Cancel
+                CANCEL
               </button>
               <button
                 type="submit"
                 disabled={!manualPath.trim()}
-                className="flex items-center gap-1.5 bg-gradient-to-r from-[#cc6b49] to-[#d97706] disabled:opacity-40 text-white text-xs font-medium px-4 py-1.5 rounded-lg shadow-sm transition-all"
+                className="flex items-center gap-1.5 bg-gradient-to-r from-[#cc6b49] to-[#d97706] disabled:opacity-40 text-white text-xs font-bold px-4 py-1.5 rounded shadow transition-all active:scale-95"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Add</span>
+                <span>REGISTER</span>
               </button>
             </div>
           </form>

@@ -12,6 +12,15 @@ export interface GitInfo {
   hasUncommitted?: boolean;
 }
 
+export interface ClaudeMetrics {
+  lastCost?: number;
+  models?: string[];
+  inputTokens?: number;
+  outputTokens?: number;
+  lastDurationMs?: number;
+  lastSessionId?: string;
+}
+
 export interface ProjectItem {
   id: string;
   name: string;
@@ -26,6 +35,7 @@ export interface ProjectItem {
   hasPackageJson: boolean;
   tags?: string[];
   terminalOverride?: string;
+  metrics?: ClaudeMetrics;
 }
 
 export interface AppSettings {
@@ -34,6 +44,7 @@ export interface AppSettings {
   defaultFlags: ProjectFlags;
   claudePath: string;
   autoDetectOnStartup: boolean;
+  soundEnabled?: boolean;
 }
 
 export interface TerminalOption {
@@ -56,3 +67,4 @@ export interface LaunchPayload {
   command: string;
   terminal: string;
 }
+

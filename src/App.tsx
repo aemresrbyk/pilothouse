@@ -1,26 +1,28 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   FolderPlus,
   RefreshCw,
-  FolderOpen,
-  Star,
-  FileText,
   Terminal,
   Sparkles,
-  Layers,
-  Info
+  Command
 } from 'lucide-react';
 import { ProjectItem, ProjectFlags, AppSettings } from './types';
-import { Header } from './components/Header';
-import { ProjectCard } from './components/ProjectCard';
-import { ProjectRow } from './components/ProjectRow';
-import { FileViewerModal } from './components/FileViewerModal';
-import { ClaudeMdModal } from './components/ClaudeMdModal';
+import { CockpitHeader } from './components/CockpitHeader';
+import { ProjectReel } from './components/ProjectReel';
+import { CommandCockpit } from './components/CommandCockpit';
 import { SettingsModal } from './components/SettingsModal';
 import { AddProjectModal } from './components/AddProjectModal';
+import {
+  isSoundEnabled,
+  toggleSound,
+  playClickSound,
+  playLaunchSound,
+  playToggleSound
+} from './utils/audio';
 
 export const App: React.FC = () => {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings>({
     defaultTerminal: 'Terminal',
     defaultEditor: 'VSCode',
@@ -32,18 +34,16 @@ export const App: React.FC = () => {
       bare: false
     },
     claudePath: 'claude',
-    autoDetectOnStartup: true
+    autoDetectOnStartup: true,
+    soundEnabled: true
   });
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<'all' | 'favorites' | 'claude-md'>('all');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isSyncing, setIsSyncing] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
   const [toast, setToast] = useState<{ message: string; type?: 'info' | 'success' | 'error' } | null>(null);
 
-  // Modals state
-  const [activeFileModalProject, setActiveFileModalProject] = useState<ProjectItem | null>(null);
-  const [activeClaudeMdProject, setActiveClaudeMdProject] = useState<ProjectItem | null>(null);
+  // Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAddProjectOpen, setIsAddProjectOpen] = useState(false);
 
@@ -51,11 +51,6 @@ export const App: React.FC = () => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
-
-  // Load projects & settings on mount
-  useEffect(() => {
-    loadData();
-  }, []);
 
   const loadData = async () => {
     try {
@@ -65,10 +60,18 @@ export const App: React.FC = () => {
       ]);
       setProjects(projs);
       setSettings(setts);
+      if (projs.length > 0 && !selectedId) {
+        setSelectedId(projs[0].id);
+      }
     } catch (err) {
       console.error('Error loading data:', err);
     }
   };
+
+  useEffect(() => {
+    loadData();
+    setSoundOn(isSoundEnabled());
+  }, []);
 
   const handleSyncClaude = async () => {
     setIsSyncing(true);
@@ -76,12 +79,12 @@ export const App: React.FC = () => {
       const res = await window.electronAPI.syncFromClaude();
       await loadData();
       if (res.addedCount > 0) {
-        showToast(`Discovered & imported ${res.addedCount} projects from Claude!`);
+        showToast(`DISCOVERED & SYNCED ${res.addedCount} CLAUDE REPOSITORIES`);
       } else {
-        showToast('All Claude projects are already up to date', 'info');
+        showToast('ALL CLAUDE REPOSITORIES ARE UP TO DATE', 'info');
       }
     } catch (err: any) {
-      showToast(`Sync failed: ${err.message}`, 'error');
+      showToast(`SYNC FAILED: ${err.message}`, 'error');
     } finally {
       setIsSyncing(false);
     }
@@ -112,224 +115,221 @@ export const App: React.FC = () => {
     try {
       const newProj = await window.electronAPI.addProject(folderPath);
       await loadData();
-      showToast(`Added project: ${newProj.name}`);
+      setSelectedId(newProj.id);
+      showToast(`REGISTERED REPOSITORY: ${newProj.name}`);
     } catch (err: any) {
-      showToast(`Failed to add project: ${err.message}`, 'error');
+      showToast(`FAILED: ${err.message}`, 'error');
     }
   };
 
   const handleRemoveProject = async (projectId: string) => {
     try {
       await window.electronAPI.removeProject(projectId);
-      setProjects((prev) => prev.filter((p) => p.id !== projectId));
-      showToast('Project removed from list', 'info');
+      setProjects((prev) => {
+        const remaining = prev.filter((p) => p.id !== projectId);
+        if (selectedId === projectId) {
+          setSelectedId(remaining.length > 0 ? remaining[0].id : null);
+        }
+        return remaining;
+      });
+      showToast('REMOVED FROM INDEX', 'info');
     } catch (err: any) {
-      showToast(`Failed to remove: ${err.message}`, 'error');
+      showToast(`ERROR: ${err.message}`, 'error');
     }
   };
 
-  const handleLaunch = async (projectId: string) => {
+  const handleLaunch = useCallback(async (projectId: string) => {
     try {
       const res = await window.electronAPI.launchProject(projectId);
       if (res.success) {
-        showToast('Terminal launched with Claude Code!');
-        // Update local lastLaunched
+        showToast('TERMINAL SESSION DEPLOYED');
         setProjects((prev) =>
           prev.map((p) =>
             p.id === projectId ? { ...p, lastLaunched: Date.now() } : p
           )
         );
       } else {
-        showToast(`Launch error: ${res.error}`, 'error');
+        showToast(`LAUNCH ERROR: ${res.error}`, 'error');
       }
     } catch (err: any) {
-      showToast(`Failed to launch: ${err.message}`, 'error');
+      showToast(`FAILED TO LAUNCH: ${err.message}`, 'error');
     }
-  };
+  }, []);
 
   const handleOpenFolder = async (path: string) => {
     await window.electronAPI.openFolder(path);
   };
 
-  const handleOpenEditor = async (path: string) => {
-    await window.electronAPI.openInEditor(path, settings.defaultEditor);
+  const handleOpenEditor = async (path: string, editor?: string) => {
+    await window.electronAPI.openInEditor(path, editor || settings.defaultEditor);
   };
 
   const handleSaveSettings = async (newSettings: Partial<AppSettings>) => {
     const updated = await window.electronAPI.updateSettings(newSettings);
     setSettings(updated);
-    showToast('Preferences updated!');
+    showToast('PREFERENCES STORED');
   };
 
   // Filter projects
   const filteredProjects = useMemo(() => {
     return projects.filter((p) => {
-      // Search
-      const matchesSearch =
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.path.toLowerCase().includes(searchQuery.toLowerCase());
-
-      if (!matchesSearch) return false;
-
-      // Filter tabs
-      if (activeFilter === 'favorites') return p.isFavorite;
-      if (activeFilter === 'claude-md') return p.hasClaudeMd;
-      return true;
+      const q = searchQuery.toLowerCase().trim();
+      if (!q) return true;
+      return (
+        p.name.toLowerCase().includes(q) ||
+        p.path.toLowerCase().includes(q) ||
+        (p.gitInfo?.branch && p.gitInfo.branch.toLowerCase().includes(q))
+      );
     });
-  }, [projects, searchQuery, activeFilter]);
+  }, [projects, searchQuery]);
 
-  // Project count metrics
-  const favCount = useMemo(() => projects.filter((p) => p.isFavorite).length, [projects]);
-  const mdCount = useMemo(() => projects.filter((p) => p.hasClaudeMd).length, [projects]);
+  // Selected project object
+  const selectedProject = useMemo(() => {
+    return projects.find((p) => p.id === selectedId) || (filteredProjects.length > 0 ? filteredProjects[0] : null);
+  }, [projects, selectedId, filteredProjects]);
+
+  // KEYBOARD NAVIGATION SYSTEM
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return; // do not hijack when typing
+      }
+
+      if (e.key === 'ArrowDown' || e.key === 'j') {
+        e.preventDefault();
+        playClickSound();
+        const currIndex = filteredProjects.findIndex((p) => p.id === selectedId);
+        const nextIndex = currIndex < filteredProjects.length - 1 ? currIndex + 1 : 0;
+        if (filteredProjects[nextIndex]) {
+          setSelectedId(filteredProjects[nextIndex].id);
+        }
+      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+        e.preventDefault();
+        playClickSound();
+        const currIndex = filteredProjects.findIndex((p) => p.id === selectedId);
+        const prevIndex = currIndex > 0 ? currIndex - 1 : filteredProjects.length - 1;
+        if (filteredProjects[prevIndex]) {
+          setSelectedId(filteredProjects[prevIndex].id);
+        }
+      } else if (e.key === 'Enter') {
+        if (selectedProject) {
+          e.preventDefault();
+          handleLaunch(selectedProject.id);
+        }
+      } else if (e.key === ' ') {
+        if (selectedProject) {
+          e.preventDefault();
+          const nextVal = !selectedProject.flags.dangerouslySkipPermissions;
+          playToggleSound(nextVal);
+          handleUpdateFlags(selectedProject.id, {
+            ...selectedProject.flags,
+            dangerouslySkipPermissions: nextVal
+          });
+        }
+      } else if (e.key.toLowerCase() === 'c' && !e.metaKey && !e.ctrlKey) {
+        if (selectedProject) {
+          e.preventDefault();
+          const nextVal = !selectedProject.flags.continueLast;
+          playToggleSound(nextVal);
+          handleUpdateFlags(selectedProject.id, {
+            ...selectedProject.flags,
+            continueLast: nextVal
+          });
+        }
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'o') {
+        if (selectedProject) {
+          e.preventDefault();
+          playClickSound();
+          handleOpenFolder(selectedProject.path);
+        }
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'e') {
+        if (selectedProject) {
+          e.preventDefault();
+          playClickSound();
+          handleOpenEditor(selectedProject.path, 'VSCode');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [filteredProjects, selectedId, selectedProject, handleLaunch]);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#0c0d12] text-zinc-100 overflow-hidden font-sans">
-      {/* Top Navigation Header */}
-      <Header
+    <div className="flex flex-col h-screen w-screen bg-[#08090d] text-zinc-100 overflow-hidden font-mono select-none">
+      {/* 1. Cockpit Header Bar */}
+      <CockpitHeader
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
         onAddProject={() => setIsAddProjectOpen(true)}
         onSyncClaude={handleSyncClaude}
         onOpenSettings={() => setIsSettingsOpen(true)}
         isSyncing={isSyncing}
         totalProjects={projects.length}
         filteredCount={filteredProjects.length}
+        soundEnabled={soundOn}
+        onToggleSound={() => setSoundOn(toggleSound())}
+        defaultTerminal={settings.defaultTerminal}
       />
 
-      {/* Filter / Subheader Bar */}
-      <div className="px-6 py-2.5 bg-[#0e1017] border-b border-[#1f2434] flex items-center justify-between text-xs">
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => setActiveFilter('all')}
-            className={`px-3 py-1 rounded-md transition-colors ${
-              activeFilter === 'all'
-                ? 'bg-[#202636] text-zinc-100 font-medium border border-[#30394f]'
-                : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            All Projects ({projects.length})
-          </button>
-          <button
-            onClick={() => setActiveFilter('favorites')}
-            className={`px-3 py-1 rounded-md transition-colors flex items-center gap-1.5 ${
-              activeFilter === 'favorites'
-                ? 'bg-[#202636] text-amber-400 font-medium border border-[#30394f]'
-                : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <Star className="w-3 h-3" />
-            <span>Favorites ({favCount})</span>
-          </button>
-          <button
-            onClick={() => setActiveFilter('claude-md')}
-            className={`px-3 py-1 rounded-md transition-colors flex items-center gap-1.5 ${
-              activeFilter === 'claude-md'
-                ? 'bg-[#202636] text-[#f29472] font-medium border border-[#30394f]'
-                : 'text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <FileText className="w-3 h-3" />
-            <span>Has CLAUDE.md ({mdCount})</span>
-          </button>
-        </div>
+      {/* 2. Main Studio Split Area */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left: Project Reel Index */}
+        <ProjectReel
+          projects={filteredProjects}
+          selectedId={selectedProject?.id || null}
+          onSelectProject={(p) => setSelectedId(p.id)}
+          onToggleFavorite={handleToggleFavorite}
+        />
 
-        {/* Quick hint / default terminal badge */}
-        <div className="flex items-center gap-2 text-[11px] text-zinc-400">
-          <span className="flex items-center gap-1">
-            <Terminal className="w-3 h-3 text-amber-500" />
-            <span>Terminal: {settings.defaultTerminal}</span>
-          </span>
-          <span className="text-zinc-600">•</span>
-          <span>Click project launch to start Claude Code</span>
-        </div>
+        {/* Right: The Hardware Command Cockpit */}
+        <CommandCockpit
+          project={selectedProject}
+          onUpdateFlags={handleUpdateFlags}
+          onUpdateCustomFlags={handleUpdateCustomFlags}
+          onLaunch={handleLaunch}
+          onOpenFolder={handleOpenFolder}
+          onOpenEditor={handleOpenEditor}
+          onRemove={handleRemoveProject}
+          defaultTerminal={settings.defaultTerminal}
+        />
       </div>
 
-      {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto px-6 py-5">
-        {filteredProjects.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center max-w-sm mx-auto p-6">
-            <div className="w-12 h-12 rounded-2xl bg-[#1c2130] border border-[#2b334a] flex items-center justify-center text-[#cc6b49] mb-4">
-              <Layers className="w-6 h-6" />
-            </div>
-            <h3 className="text-sm font-semibold text-zinc-200 mb-1">
-              {projects.length === 0 ? 'No projects yet' : 'No matching projects'}
-            </h3>
-            <p className="text-xs text-zinc-500 mb-5 leading-relaxed">
-              {projects.length === 0
-                ? 'Sync your existing Claude Code projects automatically or browse a project folder to get started.'
-                : 'No projects match your current search query or active filter.'}
-            </p>
-            {projects.length === 0 && (
-              <div className="flex items-center gap-2.5">
-                <button
-                  onClick={handleSyncClaude}
-                  disabled={isSyncing}
-                  className="flex items-center gap-1.5 bg-[#1f2536] hover:bg-[#283046] border border-[#313c54] text-zinc-200 text-xs px-3 py-2 rounded-lg transition-colors font-medium"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isSyncing ? 'animate-spin' : ''}`} />
-                  <span>Scan ~/.claude.json</span>
-                </button>
-                <button
-                  onClick={() => setIsAddProjectOpen(true)}
-                  className="flex items-center gap-1.5 bg-gradient-to-r from-[#cc6b49] to-[#d97706] text-white text-xs px-3.5 py-2 rounded-lg font-medium shadow-md transition-all"
-                >
-                  <FolderPlus className="w-4 h-4" />
-                  <span>Add Folder</span>
-                </button>
-              </div>
-            )}
-          </div>
-        ) : viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-10">
-            {filteredProjects.map((project) => (
-              <ProjectCard
-                key={project.id}
-                project={project}
-                onUpdateFlags={handleUpdateFlags}
-                onUpdateCustomFlags={handleUpdateCustomFlags}
-                onToggleFavorite={handleToggleFavorite}
-                onLaunch={handleLaunch}
-                onOpenFolder={handleOpenFolder}
-                onOpenEditor={handleOpenEditor}
-                onViewFiles={(p) => setActiveFileModalProject(p)}
-                onViewClaudeMd={(p) => setActiveClaudeMdProject(p)}
-                onRemove={handleRemoveProject}
-                defaultTerminal={settings.defaultTerminal}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-2 pb-10">
-            {filteredProjects.map((project) => (
-              <ProjectRow
-                key={project.id}
-                project={project}
-                onUpdateFlags={handleUpdateFlags}
-                onToggleFavorite={handleToggleFavorite}
-                onLaunch={handleLaunch}
-                onOpenFolder={handleOpenFolder}
-                onOpenEditor={handleOpenEditor}
-                onViewFiles={(p) => setActiveFileModalProject(p)}
-                onViewClaudeMd={(p) => setActiveClaudeMdProject(p)}
-                onRemove={handleRemoveProject}
-              />
-            ))}
-          </div>
-        )}
-      </main>
+      {/* 3. Bottom Industrial Statusline */}
+      <footer className="h-6 bg-[#06070a] border-t border-[#161a25] px-4 flex items-center justify-between text-[10px] text-zinc-500 font-mono">
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1 text-zinc-400">
+            <span className="text-zinc-600">[↑↓]</span> NAVIGATE
+          </span>
+          <span className="flex items-center gap-1 text-amber-500/90">
+            <span className="text-zinc-600">[SPACE]</span> TOGGLE SKIP PERM
+          </span>
+          <span className="flex items-center gap-1 text-emerald-400/90">
+            <span className="text-zinc-600">[C]</span> CONTINUE
+          </span>
+          <span className="flex items-center gap-1 text-zinc-400">
+            <span className="text-zinc-600">[↵]</span> LAUNCH
+          </span>
+        </div>
 
-      {/* Floating Toast Notification */}
+        <div className="flex items-center gap-3">
+          <span>TARGET: {settings.defaultTerminal}</span>
+          <span className="text-zinc-700">|</span>
+          <span>AUDIO FX: {soundOn ? 'ON' : 'MUTED'}</span>
+        </div>
+      </footer>
+
+      {/* Floating Tactical Toast */}
       {toast && (
-        <div className="fixed bottom-5 right-6 z-50 animate-bounce-subtle">
+        <div className="fixed bottom-9 right-6 z-50 animate-bounce-subtle">
           <div
-            className={`px-4 py-2.5 rounded-xl shadow-xl text-xs font-medium border flex items-center gap-2 ${
+            className={`px-3.5 py-2 rounded border text-xs font-mono font-medium shadow-2xl flex items-center gap-2 ${
               toast.type === 'error'
-                ? 'bg-red-950/90 text-red-200 border-red-800 backdrop-blur-md'
+                ? 'bg-red-950/95 text-red-200 border-red-800'
                 : toast.type === 'info'
-                ? 'bg-zinc-900/90 text-zinc-200 border-zinc-700 backdrop-blur-md'
-                : 'bg-[#181d29]/95 text-zinc-100 border-[#38435d] backdrop-blur-md shadow-black/50'
+                ? 'bg-zinc-900/95 text-zinc-300 border-zinc-700'
+                : 'bg-[#151924]/95 text-amber-300 border-amber-500/40'
             }`}
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
@@ -339,19 +339,6 @@ export const App: React.FC = () => {
       )}
 
       {/* Modals */}
-      <FileViewerModal
-        project={activeFileModalProject}
-        onClose={() => setActiveFileModalProject(null)}
-        onOpenFolder={handleOpenFolder}
-        onOpenEditor={handleOpenEditor}
-      />
-
-      <ClaudeMdModal
-        project={activeClaudeMdProject}
-        onClose={() => setActiveClaudeMdProject(null)}
-        onOpenEditor={handleOpenEditor}
-      />
-
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}

@@ -49,7 +49,7 @@ export class StorageManager {
     if (!fs.existsSync(DATA_FILE)) {
       // First run: auto-detect projects from ~/.claude.json
       const detected = scanClaudeProjects();
-      const initialProjects = detected.map(d => buildProjectItem(d.path, undefined, d.lastStartTime));
+      const initialProjects = detected.map(d => buildProjectItem(d.path, undefined, d.lastStartTime, d.metrics));
 
       const initialData: StoredData = {
         projects: initialProjects,
@@ -155,7 +155,7 @@ export class StorageManager {
       if (!exists && fs.existsSync(d.path)) {
         const item = buildProjectItem(d.path, {
           flags: this.data.settings.defaultFlags
-        }, d.lastStartTime);
+        }, d.lastStartTime, d.metrics);
         this.data.projects.push(item);
         addedCount++;
       }
@@ -168,3 +168,4 @@ export class StorageManager {
     return { addedCount, totalCount: this.data.projects.length };
   }
 }
+

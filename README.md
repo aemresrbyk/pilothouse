@@ -152,3 +152,4 @@ Feel free to check the [issues page](https://github.com/your-username/claude-cod
 ## 📄 License
 
 Distributed under the MIT License. See [`LICENSE`](LICENSE) for more information.
+

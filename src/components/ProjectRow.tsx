@@ -222,3 +222,4 @@ export const ProjectRow: React.FC<ProjectRowProps> = ({
     </div>
   );
 };
+

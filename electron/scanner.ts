@@ -2,13 +2,38 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { execSync } from 'child_process';
-import { ProjectItem, FileItem, GitInfo } from '../src/types';
+import { ProjectItem, FileItem, GitInfo, ClaudeMetrics } from '../src/types';
 
 export function getClaudeJsonPath(): string {
   return path.join(os.homedir(), '.claude.json');
 }
 
-export function scanClaudeProjects(): Array<{ path: string; lastStartTime?: number }> {
+export function getProjectClaudeMetrics(projectPath: string): ClaudeMetrics | undefined {
+  const claudeJsonPath = getClaudeJsonPath();
+  if (!fs.existsSync(claudeJsonPath)) return undefined;
+
+  try {
+    const raw = fs.readFileSync(claudeJsonPath, 'utf-8');
+    const data = JSON.parse(raw);
+    const meta = (data.projects || {})[projectPath];
+    if (!meta) return undefined;
+
+    const models = meta.lastModelUsage ? Object.keys(meta.lastModelUsage) : undefined;
+
+    return {
+      lastCost: typeof meta.lastCost === 'number' ? Number(meta.lastCost.toFixed(4)) : undefined,
+      models,
+      inputTokens: meta.lastTotalInputTokens,
+      outputTokens: meta.lastTotalOutputTokens,
+      lastDurationMs: meta.lastDuration,
+      lastSessionId: meta.lastSessionId
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export function scanClaudeProjects(): Array<{ path: string; lastStartTime?: number; metrics?: ClaudeMetrics }> {
   const claudeJsonPath = getClaudeJsonPath();
   if (!fs.existsSync(claudeJsonPath)) {
     return [];
@@ -19,7 +44,7 @@ export function scanClaudeProjects(): Array<{ path: string; lastStartTime?: numb
     const data = JSON.parse(raw);
     const projectsObj = data.projects || {};
     
-    const results: Array<{ path: string; lastStartTime?: number }> = [];
+    const results: Array<{ path: string; lastStartTime?: number; metrics?: ClaudeMetrics }> = [];
 
     for (const [projPath, meta] of Object.entries(projectsObj)) {
       if (typeof projPath === 'string' && fs.existsSync(projPath)) {
@@ -28,10 +53,21 @@ export function scanClaudeProjects(): Array<{ path: string; lastStartTime?: numb
           continue;
         }
 
-        const metadata = meta as { lastStartTime?: number };
+        const metadata = meta as any;
+        const models = metadata?.lastModelUsage ? Object.keys(metadata.lastModelUsage) : undefined;
+        const metrics: ClaudeMetrics = {
+          lastCost: typeof metadata?.lastCost === 'number' ? Number(metadata.lastCost.toFixed(4)) : undefined,
+          models,
+          inputTokens: metadata?.lastTotalInputTokens,
+          outputTokens: metadata?.lastTotalOutputTokens,
+          lastDurationMs: metadata?.lastDuration,
+          lastSessionId: metadata?.lastSessionId
+        };
+
         results.push({
           path: projPath,
-          lastStartTime: metadata?.lastStartTime
+          lastStartTime: metadata?.lastStartTime,
+          metrics
         });
       }
     }
@@ -79,12 +115,14 @@ export function getGitInfo(projectPath: string): GitInfo {
 export function buildProjectItem(
   projectPath: string,
   existing?: Partial<ProjectItem>,
-  lastStartTime?: number
+  lastStartTime?: number,
+  metrics?: ClaudeMetrics
 ): ProjectItem {
   const folderName = path.basename(projectPath) || projectPath;
   const hasClaudeMd = fs.existsSync(path.join(projectPath, 'CLAUDE.md')) || fs.existsSync(path.join(projectPath, 'claude.md'));
   const hasPackageJson = fs.existsSync(path.join(projectPath, 'package.json'));
   const gitInfo = getGitInfo(projectPath);
+  const resolvedMetrics = metrics || existing?.metrics || getProjectClaudeMetrics(projectPath);
 
   return {
     id: existing?.id || Buffer.from(projectPath).toString('base64url'),
@@ -105,7 +143,8 @@ export function buildProjectItem(
     terminalOverride: existing?.terminalOverride || 'default',
     gitInfo,
     hasClaudeMd,
-    hasPackageJson
+    hasPackageJson,
+    metrics: resolvedMetrics
   };
 }
 
