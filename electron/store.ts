@@ -136,6 +136,15 @@ export class StorageManager {
     return this.data.projects[idx];
   }
 
+  public addProjectHistory(projectId: string, command: string): void {
+    const p = this.data.projects.find((x) => x.id === projectId);
+    if (p) {
+      p.commandHistory = p.commandHistory || [];
+      p.commandHistory = [command, ...p.commandHistory.filter((c) => c !== command)].slice(0, 20);
+      this.save();
+    }
+  }
+
   public removeProject(id: string): boolean {
     const prevLen = this.data.projects.length;
     this.data.projects = this.data.projects.filter(p => p.id !== id);

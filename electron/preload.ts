@@ -29,6 +29,10 @@ export const electronAPI = {
     ipcRenderer.invoke('project:list-files', dirPath),
   readFile: (filePath: string): Promise<{ content: string; truncated: boolean }> =>
     ipcRenderer.invoke('project:read-file', filePath),
+  getSessions: (projectPath: string): Promise<ClaudeSession[]> =>
+    ipcRenderer.invoke('project:get-sessions', projectPath),
+  validatePath: (targetPath: string): Promise<{ exists: boolean; isDirectory: boolean }> =>
+    ipcRenderer.invoke('system:validate-path', targetPath),
   copyToClipboard: (text: string): Promise<void> =>
     ipcRenderer.invoke('clipboard:write', text)
 };

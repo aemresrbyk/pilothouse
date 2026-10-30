@@ -2,21 +2,71 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { execSync } from 'child_process';
-import { ProjectItem, FileItem, GitInfo, ClaudeMetrics } from '../src/types';
+import { ProjectItem, FileItem, GitInfo, ClaudeMetrics, ClaudeSession } from '../src/types';
 
 export function getClaudeJsonPath(): string {
   return path.join(os.homedir(), '.claude.json');
 }
 
+export function getProjectSessions(projectPath: string): ClaudeSession[] {
+  try {
+    const homedir = os.homedir();
+    const encodedDirName = projectPath.replace(/[/.]/g, '-');
+    const projectSessionsDir = path.join(homedir, '.claude', 'projects', encodedDirName);
+
+    if (!fs.existsSync(projectSessionsDir)) {
+      return [];
+    }
+
+    const files = fs.readdirSync(projectSessionsDir);
+    const sessions: ClaudeSession[] = [];
+
+    for (const f of files) {
+      if (f.endsWith('.jsonl')) {
+        const sessionId = f.replace('.jsonl', '');
+        const fullPath = path.join(projectSessionsDir, f);
+        try {
+          const stat = fs.statSync(fullPath);
+          const sizeKb = Math.round(stat.size / 1024);
+          const formattedSize = sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${sizeKb} KB`;
+          const d = new Date(stat.mtimeMs);
+          const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+          sessions.push({
+            id: sessionId,
+            modifiedAt: stat.mtimeMs,
+            sizeBytes: stat.size,
+            formattedSize,
+            dateStr
+          });
+        } catch {
+          // ignore stat errors
+        }
+      }
+    }
+
+    return sessions.sort((a, b) => b.modifiedAt - a.modifiedAt);
+  } catch (err) {
+    console.error('Failed to get project sessions:', err);
+    return [];
+  }
+}
+
 export function getProjectClaudeMetrics(projectPath: string): ClaudeMetrics | undefined {
   const claudeJsonPath = getClaudeJsonPath();
-  if (!fs.existsSync(claudeJsonPath)) return undefined;
+  const sessions = getProjectSessions(projectPath);
+
+  if (!fs.existsSync(claudeJsonPath)) {
+    return sessions.length > 0 ? { sessions } : undefined;
+  }
 
   try {
     const raw = fs.readFileSync(claudeJsonPath, 'utf-8');
     const data = JSON.parse(raw);
     const meta = (data.projects || {})[projectPath];
-    if (!meta) return undefined;
+    if (!meta) {
+      return sessions.length > 0 ? { sessions } : undefined;
+    }
 
     const models = meta.lastModelUsage ? Object.keys(meta.lastModelUsage) : undefined;
 
@@ -26,10 +76,11 @@ export function getProjectClaudeMetrics(projectPath: string): ClaudeMetrics | un
       inputTokens: meta.lastTotalInputTokens,
       outputTokens: meta.lastTotalOutputTokens,
       lastDurationMs: meta.lastDuration,
-      lastSessionId: meta.lastSessionId
+      lastSessionId: meta.lastSessionId,
+      sessions
     };
   } catch {
-    return undefined;
+    return sessions.length > 0 ? { sessions } : undefined;
   }
 }
 
@@ -88,25 +139,57 @@ export function getGitInfo(projectPath: string): GitInfo {
   }
 
   try {
+    let branch = 'main';
     // Try fast file read of .git/HEAD
     const headPath = path.join(gitDir, 'HEAD');
     if (fs.existsSync(headPath)) {
       const headContent = fs.readFileSync(headPath, 'utf-8').trim();
       if (headContent.startsWith('ref: refs/heads/')) {
-        const branch = headContent.replace('ref: refs/heads/', '').trim();
-        return { isGit: true, branch };
+        branch = headContent.replace('ref: refs/heads/', '').trim();
       }
+    } else {
+      branch = execSync('git rev-parse --abbrev-ref HEAD', {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 800,
+        stdio: ['ignore', 'pipe', 'ignore']
+      }).trim();
     }
 
-    // Fallback to git CLI if git is installed
-    const branch = execSync('git rev-parse --abbrev-ref HEAD', {
-      cwd: projectPath,
-      encoding: 'utf-8',
-      timeout: 1000,
-      stdio: ['ignore', 'pipe', 'ignore']
-    }).trim();
+    let uncommittedCount = 0;
+    try {
+      const statusOut = execSync('git status --porcelain', {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 800,
+        stdio: ['ignore', 'pipe', 'ignore']
+      }).trim();
+      if (statusOut) {
+        uncommittedCount = statusOut.split('\n').filter(Boolean).length;
+      }
+    } catch {
+      // ignore
+    }
 
-    return { isGit: true, branch };
+    let commitHash: string | undefined = undefined;
+    try {
+      commitHash = execSync('git rev-parse --short HEAD', {
+        cwd: projectPath,
+        encoding: 'utf-8',
+        timeout: 800,
+        stdio: ['ignore', 'pipe', 'ignore']
+      }).trim();
+    } catch {
+      // ignore
+    }
+
+    return {
+      isGit: true,
+      branch,
+      hasUncommitted: uncommittedCount > 0,
+      uncommittedCount,
+      commitHash
+    };
   } catch {
     return { isGit: true, branch: 'git' };
   }

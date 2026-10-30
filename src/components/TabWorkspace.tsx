@@ -12,9 +12,11 @@ import {
   Check,
   Sparkles,
   DollarSign,
-  Cpu
+  Cpu,
+  History,
+  RotateCcw
 } from 'lucide-react';
-import { ProjectItem, TabSession, FileItem } from '../types';
+import { ProjectItem, TabSession, FileItem, ClaudeSession } from '../types';
 import { playClickSound, playLaunchSound } from '../utils/audio';
 
 interface TabWorkspaceProps {
@@ -24,6 +26,7 @@ interface TabWorkspaceProps {
   onLaunch: (projectId: string, fullCommand: string) => void;
   onOpenFolder: (path: string) => void;
   onOpenEditor: (path: string, editor?: string) => void;
+  onResumeSession?: (sessionId: string) => void;
   defaultTerminal: string;
 }
 
@@ -34,16 +37,19 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   onLaunch,
   onOpenFolder,
   onOpenEditor,
+  onResumeSession,
   defaultTerminal
 }) => {
-  const [activePane, setActivePane] = useState<'console' | 'claude-md' | 'files'>('console');
+  const [activePane, setActivePane] = useState<'console' | 'claude-md' | 'files' | 'sessions'>('console');
   const [claudeMdContent, setClaudeMdContent] = useState<string>('');
   const [isLoadingMd, setIsLoadingMd] = useState(false);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+  const [sessions, setSessions] = useState<ClaudeSession[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [copiedMd, setCopiedMd] = useState(false);
 
-  // Load CLAUDE.md and Files
+  // Load CLAUDE.md, Files, and Past Sessions
   useEffect(() => {
     if (project.hasClaudeMd) {
       setIsLoadingMd(true);
@@ -60,6 +66,12 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
       .then(setFiles)
       .catch(() => setFiles([]))
       .finally(() => setIsLoadingFiles(false));
+
+    setIsLoadingSessions(true);
+    window.electronAPI.getSessions(project.path)
+      .then(setSessions)
+      .catch(() => setSessions([]))
+      .finally(() => setIsLoadingSessions(false));
   }, [project.id]);
 
   const copyClaudeMd = () => {
@@ -83,10 +95,21 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
         {/* Left: Project Stats Pill */}
         <div className="flex items-center gap-2">
           {project.gitInfo?.isGit && (
-            <span className="flex items-center gap-1 text-[11px] text-sky-400 bg-sky-950/30 border border-sky-800/40 px-2 py-0.5 rounded">
+            <div className="flex items-center gap-1.5 text-[11px] text-sky-400 bg-sky-950/30 border border-sky-800/40 px-2 py-0.5 rounded">
               <GitBranch className="w-3 h-3" />
               <span>{project.gitInfo.branch || 'git'}</span>
-            </span>
+              {project.gitInfo.commitHash && (
+                <span className="text-zinc-500 font-mono text-[10px]">
+                  #{project.gitInfo.commitHash}
+                </span>
+              )}
+              {project.gitInfo.hasUncommitted && (
+                <span
+                  title={`${project.gitInfo.uncommittedCount || 1} modified files`}
+                  className="w-1.5 h-1.5 rounded-full bg-amber-400 ml-0.5"
+                />
+              )}
+            </div>
           )}
 
           {project.metrics?.lastCost !== undefined && (
@@ -108,7 +131,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
           )}
         </div>
 
-        {/* Right: View Pane Tabs (Terminal Station / CLAUDE.md / Files) */}
+        {/* Right: View Pane Tabs */}
         <div className="flex items-center gap-1 bg-[#141724] border border-[#23293a] rounded-lg p-0.5 text-[11px]">
           <button
             onClick={() => {
@@ -123,6 +146,21 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
           >
             <Terminal className="w-3 h-3 text-amber-500" />
             <span>Terminal</span>
+          </button>
+
+          <button
+            onClick={() => {
+              playClickSound();
+              setActivePane('sessions');
+            }}
+            className={`px-2.5 py-1 rounded transition-colors flex items-center gap-1.5 ${
+              activePane === 'sessions'
+                ? 'bg-[#232b3f] text-purple-300 font-bold shadow-sm'
+                : 'text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            <History className="w-3 h-3 text-purple-400" />
+            <span>Sessions ({sessions.length})</span>
           </button>
 
           <button
@@ -218,6 +256,63 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
                 ↵ RETURN
               </span>
             </button>
+          </div>
+        )}
+
+        {/* Sessions Pane: One-Click Resume past sessions */}
+        {activePane === 'sessions' && (
+          <div className="flex-1 flex flex-col max-w-4xl w-full mx-auto bg-[#07090e] border border-[#1b2131] rounded-xl overflow-hidden shadow-xl">
+            <div className="px-4 py-2.5 border-b border-[#161b29] bg-[#0d1017] flex items-center justify-between text-xs">
+              <span className="text-purple-400 font-bold flex items-center gap-1.5">
+                <History className="w-4 h-4" />
+                <span>Claude Code Session History ({sessions.length})</span>
+              </span>
+              <span className="text-[11px] text-zinc-500">
+                Stored in ~/.claude/projects
+              </span>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4 text-xs">
+              {isLoadingSessions ? (
+                <div className="text-zinc-600 text-center py-10">Scanning sessions...</div>
+              ) : sessions.length === 0 ? (
+                <div className="text-zinc-600 text-center py-10">No previous sessions found for this project.</div>
+              ) : (
+                <div className="space-y-2">
+                  {sessions.map((s) => (
+                    <div
+                      key={s.id}
+                      className="p-3 rounded-lg bg-[#0e111a] border border-[#1a2130] flex items-center justify-between transition-colors hover:border-[#2f3952]"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-zinc-100">{s.id.slice(0, 8)}...{s.id.slice(-6)}</span>
+                          <span className="text-[10px] text-zinc-500 bg-[#161b27] px-1.5 py-0.5 rounded">
+                            {s.formattedSize}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-zinc-500 mt-1">
+                          Last active: {s.dateStr}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => {
+                          playClickSound();
+                          if (onResumeSession) {
+                            onResumeSession(s.id);
+                          }
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#182030] hover:bg-[#222e47] border border-[#263554] text-purple-300 font-bold text-xs transition-colors"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 text-purple-400" />
+                        <span>RESUME</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

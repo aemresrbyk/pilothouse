@@ -10,6 +10,16 @@ export interface GitInfo {
   isGit: boolean;
   branch?: string;
   hasUncommitted?: boolean;
+  uncommittedCount?: number;
+  commitHash?: string;
+}
+
+export interface ClaudeSession {
+  id: string;
+  modifiedAt: number;
+  sizeBytes: number;
+  formattedSize: string;
+  dateStr: string;
 }
 
 export interface ClaudeMetrics {
@@ -19,6 +29,7 @@ export interface ClaudeMetrics {
   outputTokens?: number;
   lastDurationMs?: number;
   lastSessionId?: string;
+  sessions?: ClaudeSession[];
 }
 
 export interface ProjectItem {
@@ -36,6 +47,7 @@ export interface ProjectItem {
   tags?: string[];
   terminalOverride?: string;
   metrics?: ClaudeMetrics;
+  commandHistory?: string[];
 }
 
 export interface AppSettings {
@@ -45,6 +57,8 @@ export interface AppSettings {
   claudePath: string;
   autoDetectOnStartup: boolean;
   soundEnabled?: boolean;
+  savedTabs?: TabSession[];
+  activeTabId?: string;
 }
 
 export interface TerminalOption {
@@ -69,6 +83,7 @@ export interface TabSession {
   isLaunched: boolean;
   launchedAt?: number;
   lastCommand?: string;
+  commandHistory?: string[];
 }
 
 export interface LaunchPayload {

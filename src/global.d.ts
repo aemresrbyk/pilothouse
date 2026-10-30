@@ -1,4 +1,4 @@
-import { ProjectItem, AppSettings, TerminalOption, FileItem } from './types';
+import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession } from './types';
 
 declare module '*.css';
 declare module '*.svg' {
@@ -23,6 +23,8 @@ declare global {
       openInEditor: (dirPath: string, editor?: string) => Promise<boolean>;
       listFiles: (dirPath: string) => Promise<FileItem[]>;
       readFile: (filePath: string) => Promise<{ content: string; truncated: boolean }>;
+      getSessions: (projectPath: string) => Promise<ClaudeSession[]>;
+      validatePath: (targetPath: string) => Promise<{ exists: boolean; isDirectory: boolean }>;
       copyToClipboard: (text: string) => Promise<void>;
     };
   }

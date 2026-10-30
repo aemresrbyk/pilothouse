@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   FolderPlus,
   RefreshCw,
   Terminal,
   Sparkles,
   Command,
-  LayoutGrid
+  UploadCloud,
+  Search
 } from 'lucide-react';
 import { ProjectItem, ProjectFlags, AppSettings, TabSession } from './types';
 import { ChromeTabBar } from './components/ChromeTabBar';
@@ -13,6 +14,7 @@ import { Omnibar } from './components/Omnibar';
 import { TabWorkspace } from './components/TabWorkspace';
 import { SettingsModal } from './components/SettingsModal';
 import { AddProjectModal } from './components/AddProjectModal';
+import { CommandPaletteModal } from './components/CommandPaletteModal';
 import {
   isSoundEnabled,
   toggleSound,
@@ -44,10 +46,12 @@ export const App: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   const [toast, setToast] = useState<{ message: string; type?: 'info' | 'success' | 'error' } | null>(null);
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   // Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAddProjectOpen, setIsAddProjectOpen] = useState(false);
+  const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 
   const showToast = (message: string, type: 'info' | 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -63,9 +67,19 @@ export const App: React.FC = () => {
       setProjects(projs);
       setSettings(setts);
 
-      // Initialize tabs if empty
-      if (tabs.length === 0 && projs.length > 0) {
-        // Open up to 3 initial tabs (e.g. first project or favorites)
+      // Restore saved tabs or initialize
+      if (setts.savedTabs && setts.savedTabs.length > 0) {
+        // verify that projects in saved tabs still exist
+        const validTabs = setts.savedTabs.filter((t) => projs.some((p) => p.id === t.projectId));
+        if (validTabs.length > 0) {
+          setTabs(validTabs);
+          setActiveTabId(setts.activeTabId && validTabs.some((t) => t.id === setts.activeTabId) ? setts.activeTabId : validTabs[0].id);
+          return;
+        }
+      }
+
+      // Default: open up to 3 initial tabs
+      if (projs.length > 0) {
         const initialProjs = projs.slice(0, Math.min(3, projs.length));
         const initialTabs: TabSession[] = initialProjs.map((p) => ({
           id: `tab-${p.id}`,
@@ -86,6 +100,19 @@ export const App: React.FC = () => {
     setSoundOn(isSoundEnabled());
   }, []);
 
+  // Save tabs state on changes (debounced)
+  useEffect(() => {
+    if (tabs.length > 0 && activeTabId) {
+      const timer = setTimeout(() => {
+        window.electronAPI.updateSettings({
+          savedTabs: tabs,
+          activeTabId
+        });
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [tabs, activeTabId]);
+
   const handleSyncClaude = async () => {
     setIsSyncing(true);
     try {
@@ -103,7 +130,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Tab Operations (Like Google Chrome)
+  // Tab Operations
   const handleSelectTab = (tabId: string) => {
     setActiveTabId(tabId);
   };
@@ -119,7 +146,6 @@ export const App: React.FC = () => {
   };
 
   const handleNewTab = (projectId: string) => {
-    // Check if a tab for this project already exists
     const existing = tabs.find((t) => t.projectId === projectId);
     if (existing) {
       setActiveTabId(existing.id);
@@ -141,6 +167,12 @@ export const App: React.FC = () => {
     setTabs((prev) =>
       prev.map((t) => (t.id === activeTabId ? { ...t, customInput: newVal } : t))
     );
+  };
+
+  const handleResumeSession = (sessionId: string) => {
+    const token = `--resume ${sessionId}`;
+    handleCustomInputChange(token);
+    showToast(`APPLIED --resume ${sessionId.slice(0, 8)}...`);
   };
 
   const handleUpdateFlags = async (projectId: string, flags: ProjectFlags) => {
@@ -166,7 +198,6 @@ export const App: React.FC = () => {
       const res = await window.electronAPI.launchProject(projectId, fullCommand);
       if (res.success) {
         showToast('COMMAND DISPATCHED TO TERMINAL');
-        // Mark tab as launched
         setTabs((prev) =>
           prev.map((t) =>
             t.projectId === projectId
@@ -174,7 +205,6 @@ export const App: React.FC = () => {
               : t
           )
         );
-        // Update project lastLaunched
         setProjects((prev) =>
           prev.map((p) =>
             p.id === projectId ? { ...p, lastLaunched: Date.now() } : p
@@ -200,6 +230,36 @@ export const App: React.FC = () => {
     const updated = await window.electronAPI.updateSettings(newSettings);
     setSettings(updated);
     showToast('PREFERENCES STORED');
+  };
+
+  // Drag and Drop folder handling
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingOver(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      const targetPath = (file as any).path;
+      if (targetPath) {
+        const check = await window.electronAPI.validatePath(targetPath);
+        if (check.exists && check.isDirectory) {
+          playClickSound();
+          handleAddProject(targetPath);
+        } else {
+          showToast('Dropped item is not a directory', 'error');
+        }
+      }
+    }
   };
 
   // Active tab & project
@@ -235,18 +295,22 @@ export const App: React.FC = () => {
     return parts.join(' ');
   }, [activeProject, activeTab?.customInput]);
 
-  // Chrome-style Keyboard Shortcuts:
-  // Cmd+T: New tab
-  // Cmd+W: Close tab
-  // Cmd+1..9: Switch tabs
+  // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd/Ctrl + P or Cmd/Ctrl + K -> Command Palette
+      if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'p' || e.key.toLowerCase() === 'k')) {
+        e.preventDefault();
+        playClickSound();
+        setIsPaletteOpen(true);
+        return;
+      }
+
       // Cmd/Ctrl + T -> New tab
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 't') {
         e.preventDefault();
         playClickSound();
         if (projects.length > 0) {
-          // Open next project not yet opened or first project
           const nextProj = projects.find((p) => !tabs.some((t) => t.projectId === p.id)) || projects[0];
           handleNewTab(nextProj.id);
         } else {
@@ -279,7 +343,12 @@ export const App: React.FC = () => {
   }, [tabs, activeTabId, projects]);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-[#090b10] text-zinc-100 overflow-hidden font-mono select-none">
+    <div
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className="flex flex-col h-screen w-screen bg-[#090b10] text-zinc-100 overflow-hidden font-mono select-none relative"
+    >
       {/* 1. Google Chrome Style Tab Bar */}
       <ChromeTabBar
         tabs={tabs}
@@ -296,7 +365,7 @@ export const App: React.FC = () => {
         onToggleSound={() => setSoundOn(toggleSound())}
       />
 
-      {/* 2. Interactive Omnibar (Under Tab Bar like Chrome URL bar) */}
+      {/* 2. Interactive Omnibar */}
       {activeProject && activeTab && (
         <Omnibar
           project={activeProject}
@@ -319,6 +388,7 @@ export const App: React.FC = () => {
           onLaunch={handleLaunch}
           onOpenFolder={handleOpenFolder}
           onOpenEditor={handleOpenEditor}
+          onResumeSession={handleResumeSession}
           defaultTerminal={settings.defaultTerminal}
         />
       ) : (
@@ -334,6 +404,12 @@ export const App: React.FC = () => {
       {/* 4. Minimalist Status Bar */}
       <footer className="h-6 bg-[#07080c] border-t border-[#191f2c] px-4 flex items-center justify-between text-[10px] text-zinc-500 font-mono">
         <div className="flex items-center gap-3">
+          <span
+            onClick={() => setIsPaletteOpen(true)}
+            className="flex items-center gap-1 text-zinc-400 hover:text-white cursor-pointer"
+          >
+            <span className="text-zinc-600">⌘P</span> QUICK FIND
+          </span>
           <span className="flex items-center gap-1 text-zinc-400">
             <span className="text-zinc-600">⌘T</span> NEW TAB
           </span>
@@ -355,6 +431,21 @@ export const App: React.FC = () => {
         </div>
       </footer>
 
+      {/* Drag & Drop Overlay */}
+      {isDraggingOver && (
+        <div className="absolute inset-0 z-50 bg-[#0c101af5] backdrop-blur-md border-2 border-dashed border-amber-500/80 flex flex-col items-center justify-center animate-fade-in">
+          <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 mb-3 animate-bounce">
+            <UploadCloud className="w-10 h-10" />
+          </div>
+          <h3 className="text-sm font-bold text-zinc-100 uppercase tracking-wider">
+            DROP FOLDER HERE TO OPEN AS PROJECT
+          </h3>
+          <p className="text-xs text-zinc-500 mt-1">
+            Will automatically register repository and open in a new tab.
+          </p>
+        </div>
+      )}
+
       {/* Floating Toast */}
       {toast && (
         <div className="fixed bottom-9 right-6 z-50 animate-bounce-subtle">
@@ -374,6 +465,26 @@ export const App: React.FC = () => {
       )}
 
       {/* Modals */}
+      <CommandPaletteModal
+        isOpen={isPaletteOpen}
+        onClose={() => setIsPaletteOpen(false)}
+        projects={projects}
+        onSelectProject={(projId, inNewTab) => {
+          if (inNewTab) {
+            handleNewTab(projId);
+          } else {
+            // switch active tab to this project
+            const existing = tabs.find((t) => t.projectId === projId);
+            if (existing) {
+              setActiveTabId(existing.id);
+            } else {
+              handleNewTab(projId);
+            }
+          }
+        }}
+        onOpenAddModal={() => setIsAddProjectOpen(true)}
+      />
+
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}

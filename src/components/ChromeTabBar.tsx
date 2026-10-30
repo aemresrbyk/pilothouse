@@ -219,3 +219,4 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
     </div>
   );
 };
+

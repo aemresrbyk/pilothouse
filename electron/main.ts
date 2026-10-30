@@ -4,8 +4,8 @@ import fs from 'fs';
 import { exec } from 'child_process';
 import { StorageManager } from './store';
 import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './terminal';
-import { listProjectFiles, readFileContent } from './scanner';
-import { ProjectItem, AppSettings } from '../src/types';
+import { listProjectFiles, readFileContent, getProjectSessions } from './scanner';
+import { ProjectItem, AppSettings, ClaudeSession } from '../src/types';
 
 // The built directory structure
 process.env.DIST = path.join(__dirname, '../dist');
@@ -28,6 +28,7 @@ function createWindow() {
     minWidth: 850,
     minHeight: 580,
     backgroundColor: '#0c0d12',
+    icon: path.join(__dirname, '../public/icon.png'),
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 16 },
     webPreferences: {
@@ -129,8 +130,9 @@ function registerIpcHandlers() {
       ? project.terminalOverride
       : settings.defaultTerminal;
 
-    // Update last launched
+    // Update last launched and history
     storage.updateProject(projectId, { lastLaunched: Date.now() });
+    storage.addProjectHistory(projectId, command);
 
     return launchInTerminal(project.path, command, terminal);
   });
@@ -172,6 +174,22 @@ function registerIpcHandlers() {
 
   ipcMain.handle('project:read-file', async (_e, filePath: string) => {
     return readFileContent(filePath);
+  });
+
+  ipcMain.handle('project:get-sessions', async (_e, projectPath: string) => {
+    return getProjectSessions(projectPath);
+  });
+
+  ipcMain.handle('system:validate-path', async (_e, targetPath: string) => {
+    try {
+      if (fs.existsSync(targetPath)) {
+        const stat = fs.statSync(targetPath);
+        return { exists: true, isDirectory: stat.isDirectory() };
+      }
+      return { exists: false, isDirectory: false };
+    } catch {
+      return { exists: false, isDirectory: false };
+    }
   });
 
   ipcMain.handle('clipboard:write', async (_e, text: string) => {
