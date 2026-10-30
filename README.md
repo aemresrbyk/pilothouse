@@ -1,10 +1,10 @@
-# ⚡ Claude Code Launcher
+# ⚡ Claude Deck // Terminal Cockpit
 
 <div align="center">
 
-**A sleek, open-source desktop launcher and project manager for the Claude Code CLI.**
+**A bespoke, open-source terminal cockpit and command deck for Claude Code.**
 
-Organize your Claude Code repositories, configure flags like `--dangerously-skip-permissions`, inspect files & `CLAUDE.md`, and launch interactive terminal sessions with a single click.
+Crafted for developers who want a tactile, hardware-inspired station instead of generic dashboards. Organize your Claude Code repositories, toggle execution flags with tactile switches, inspect live telemetry from `~/.claude.json`, and deploy terminal sessions with a single keypress.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-amber.svg)](https://opensource.org/licenses/MIT)
 [![Electron](https://img.shields.io/badge/Electron-45.x-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
@@ -16,22 +16,22 @@ Organize your Claude Code repositories, configure flags like `--dangerously-skip
 
 ---
 
-## ✨ Features
+## 🕹️ Why Claude Deck?
 
-- ⚡ **One-Click Terminal Launch**: Click a project to immediately open your terminal navigated to the directory and executing `claude` with your desired flags.
-- 🛡️ **Interactive Command Flags**:
-  - `[✓] --dangerously-skip-permissions` (Bypass repetitive permission prompts)
-  - `[ ] --continue` (`-c` resume the latest conversation in that directory)
-  - `[ ] --chrome` (Enable Claude in Chrome browser integration)
-  - `[ ] --verbose` (Enable detailed debug logs)
-  - Custom flags & prompt arguments (e.g. `--worktree feature-x` or custom prompt)
-- 🔍 **Auto-Discovery of Existing Projects**: Automatically scans `~/.claude.json` to discover all projects you have ever used with Claude Code.
-- 📄 **Instant `CLAUDE.md` Viewer**: View and edit project guidelines, rules, and memory files with one click.
-- 📂 **Built-in File Browser**: Inspect project directory tree, file sizes, and preview code and configs directly inside the app.
-- 🌿 **Git Integration**: Live detection of git repositories and current branch names.
-- 💻 **IDE & Finder Shortcuts**: Quick buttons to open the repository in **VS Code**, **Cursor**, or **Finder / File Explorer**.
-- 🖥️ **Multiple Terminal Support**: Compatible with macOS **Terminal.app**, **iTerm2**, **Ghostty**, **Warp**, **Alacritty**, and Windows Terminal / Linux terminals.
-- 🎨 **Minimal & Modern UI**: Sleek dark interface inspired by Anthropic aesthetic and Linear simplicity.
+Generic AI dashboards all look the same: cookie-cutter gray cards and standard checkboxes. 
+
+**Claude Deck** is designed with an industrial, tactile developer aesthetic:
+- **🎛️ Physical Hardware-Style Switch Matrix**: Rocker toggles with LED status lights (Armed Amber, Emerald, Cyan) for `--dangerously-skip-permissions`, `--continue`, and custom arguments.
+- **🔊 Tactile Audio Synthesizer**: Subtle mechanical click sounds synthesized directly via the Web Audio API on toggle and launch.
+- **📊 Real Claude Telemetry**: Pulls live data straight from `~/.claude.json` to show actual token usage, last model used (`opus-5-5`, `sonnet-5`), and dollar cost spent per project.
+- **⌨️ 100% Keyboard-Driven Studio Layout**: 
+  - `[↑ / ↓]` or `[J / K]` to navigate repositories
+  - `[SPACE]` to toggle `--dangerously-skip-permissions`
+  - `[C]` to toggle `--continue`
+  - `[↵ ENTER]` to deploy the terminal session
+  - `[⌘O]` to open Finder, `[⌘E]` for VS Code
+- **🖥️ Live CRT Command Monitor**: Reactive monospace display showing the exact bash/zsh command that will run in your terminal.
+- **📄 Embedded CLAUDE.md & File Inspector**: Instant peek into project memory, guidelines, and repository files without leaving the deck.
 
 ---
 
