@@ -289,7 +289,7 @@ export const App: React.FC = () => {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className="flex flex-col h-screen w-screen overflow-hidden font-mono select-none relative"
+      className="flex flex-col h-screen w-screen overflow-hidden font-mono relative"
       style={{
         backgroundColor: themeConfig.bgMain,
         color: themeConfig.textPrimary

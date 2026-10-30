@@ -231,10 +231,13 @@ function registerIpcHandlers() {
 
       const targetCwd = fs.existsSync(cwd) ? cwd : home;
 
+      const safeCols = Math.max(80, Number(cols) || 80);
+      const safeRows = Math.max(24, Number(rows) || 24);
+
       const ptyProcess = pty.spawn(shell, isWin ? [] : ['-l'], {
         name: 'xterm-256color',
-        cols: Math.max(10, cols),
-        rows: Math.max(5, rows),
+        cols: safeCols,
+        rows: safeRows,
         cwd: targetCwd,
         env: cleanEnv
       });
@@ -265,7 +268,7 @@ function registerIpcHandlers() {
               ptyProcess.write(`${initialCommand.trim()}\r`);
             }
           } catch {}
-        }, 300);
+        }, 650);
       }
 
       return { success: true, pid: ptyProcess.pid };
@@ -275,23 +278,27 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.handle('pty:write', async (_e, { id, data }: { id: string; data: string }) => {
+  const handlePtyWrite = (_e: any, { id, data }: { id: string; data: string }) => {
     const ptyProc = ptySessions.get(id);
     if (ptyProc) {
       try {
         ptyProc.write(data);
       } catch {}
     }
-  });
+  };
+  ipcMain.on('pty:write', handlePtyWrite);
+  ipcMain.handle('pty:write', handlePtyWrite);
 
-  ipcMain.handle('pty:resize', async (_e, { id, cols, rows }: { id: string; cols: number; rows: number }) => {
+  const handlePtyResize = (_e: any, { id, cols, rows }: { id: string; cols: number; rows: number }) => {
     const ptyProc = ptySessions.get(id);
-    if (ptyProc && cols > 0 && rows > 0) {
+    if (ptyProc && cols >= 40 && rows >= 8) {
       try {
         ptyProc.resize(cols, rows);
       } catch {}
     }
-  });
+  };
+  ipcMain.on('pty:resize', handlePtyResize);
+  ipcMain.handle('pty:resize', handlePtyResize);
 
   ipcMain.handle('pty:kill', async (_e, { id }: { id: string }) => {
     const ptyProc = ptySessions.get(id);

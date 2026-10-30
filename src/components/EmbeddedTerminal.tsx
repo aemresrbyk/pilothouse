@@ -24,19 +24,20 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const isCreatedRef = useRef(false);
 
   useEffect(() => {
-    if (!containerRef.current || isCreatedRef.current) return;
-    isCreatedRef.current = true;
+    if (!containerRef.current) return;
 
+    // 1. Initialize Terminal with safe standard dimensions
     const term = new Terminal({
+      cols: 80,
+      rows: 24,
       cursorBlink: true,
       cursorStyle: 'block',
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
       fontSize: 13,
       lineHeight: 1.25,
-      scrollback: 5000,
+      scrollback: 10000,
       theme: theme.terminalTheme,
       allowTransparency: false
     });
@@ -48,24 +49,44 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({
     termRef.current = term;
     fitAddonRef.current = fitAddon;
 
-    // Small delay to ensure layout is ready before fitting
-    const timer = setTimeout(() => {
+    // 2. Safe Fit helper function
+    const safeFit = () => {
+      if (!containerRef.current || !term || !fitAddon) return;
+      const width = containerRef.current.clientWidth;
+      const height = containerRef.current.clientHeight;
+      if (width < 100 || height < 100) return;
+
       try {
-        fitAddon.fit();
-        term.focus();
-
-        window.electronAPI.ptyCreate({
-          id: tabId,
-          cwd: projectPath,
-          initialCommand,
-          cols: term.cols || 80,
-          rows: term.rows || 24
-        });
+        const dims = fitAddon.proposeDimensions();
+        if (dims && dims.cols >= 40 && dims.rows >= 8) {
+          term.resize(dims.cols, dims.rows);
+          window.electronAPI.ptyResize(tabId, dims.cols, dims.rows);
+        }
       } catch (err) {
-        console.error('PTY initialization error:', err);
+        console.warn('Fit error:', err);
       }
-    }, 60);
+    };
 
+    // 3. Spawn PTY in Electron main
+    window.electronAPI.ptyCreate({
+      id: tabId,
+      cwd: projectPath,
+      initialCommand,
+      cols: 80,
+      rows: 24
+    }).then(() => {
+      // Trigger fit right after creation
+      safeFit();
+      term.focus();
+    }).catch((err) => {
+      console.error('PTY spawn failed:', err);
+    });
+
+    // Run fit after layout settles
+    const t1 = setTimeout(safeFit, 60);
+    const t2 = setTimeout(safeFit, 250);
+
+    // 4. Data streaming: PTY -> Terminal & Terminal -> PTY
     const unbindData = window.electronAPI.onPtyData(tabId, (data) => {
       term.write(data);
     });
@@ -79,29 +100,60 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({
     });
 
     term.onResize(({ cols, rows }) => {
-      window.electronAPI.ptyResize(tabId, cols, rows);
+      if (cols >= 40 && rows >= 8) {
+        window.electronAPI.ptyResize(tabId, cols, rows);
+      }
     });
 
+    // 5. Handle Copy/Paste & Key Shortcuts
+    term.attachCustomKeyEventHandler((e) => {
+      // Paste: Cmd+V / Ctrl+V
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v' && e.type === 'keydown') {
+        navigator.clipboard.readText().then((clipText) => {
+          if (clipText) {
+            window.electronAPI.ptyWrite(tabId, clipText);
+          }
+        }).catch(() => {});
+        return false;
+      }
+      // Copy: Cmd+C / Ctrl+C when there is a selection
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c' && term.hasSelection() && e.type === 'keydown') {
+        navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+        return false;
+      }
+      return true;
+    });
+
+    // 6. Direct click-to-focus listeners
+    const el = containerRef.current;
+    const handleFocus = () => {
+      term.focus();
+    };
+    el.addEventListener('pointerdown', handleFocus);
+    el.addEventListener('click', handleFocus);
+
     const handleWindowResize = () => {
-      try {
-        fitAddon.fit();
-      } catch {}
+      safeFit();
     };
     window.addEventListener('resize', handleWindowResize);
 
     const resizeObserver = new ResizeObserver(() => {
-      try {
-        fitAddon.fit();
-      } catch {}
+      safeFit();
     });
-    resizeObserver.observe(containerRef.current);
+    resizeObserver.observe(el);
+
+    // Initial focus
+    term.focus();
 
     return () => {
-      clearTimeout(timer);
+      clearTimeout(t1);
+      clearTimeout(t2);
       unbindData();
       unbindExit();
       window.removeEventListener('resize', handleWindowResize);
       resizeObserver.disconnect();
+      el.removeEventListener('pointerdown', handleFocus);
+      el.removeEventListener('click', handleFocus);
       try {
         term.dispose();
       } catch {}
@@ -121,21 +173,26 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({
     if (isActive && fitAddonRef.current && termRef.current) {
       const timer = setTimeout(() => {
         try {
-          fitAddonRef.current?.fit();
+          const dims = fitAddonRef.current?.proposeDimensions();
+          if (dims && dims.cols >= 40 && dims.rows >= 8) {
+            termRef.current?.resize(dims.cols, dims.rows);
+            window.electronAPI.ptyResize(tabId, dims.cols, dims.rows);
+          }
           termRef.current?.focus();
         } catch {}
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [isActive]);
+  }, [isActive, tabId]);
 
   return (
     <div
       ref={containerRef}
-      onClick={() => termRef.current?.focus()}
-      className="w-full h-full select-text overflow-hidden cursor-text p-2"
-      style={{ backgroundColor: theme.terminalTheme.background }}
+      className="w-full h-full overflow-hidden cursor-text select-text"
+      style={{
+        backgroundColor: theme.terminalTheme.background,
+        padding: '6px 10px'
+      }}
     />
   );
 };
-

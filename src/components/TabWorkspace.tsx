@@ -95,6 +95,12 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   const handleRestartClaude = () => {
     playLaunchSound();
     setViewMode('terminal');
+    window.electronAPI.ptyWrite(tabSession.id, `${fullCommand}\r`);
+  };
+
+  const handleResetSession = () => {
+    playClickSound();
+    setViewMode('terminal');
     setTermSessionKey((k) => k + 1);
   };
 
@@ -174,12 +180,12 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
 
   return (
     <div
-      className="flex-1 flex flex-col overflow-hidden select-none font-mono"
+      className="flex-1 flex flex-col overflow-hidden font-mono"
       style={{ backgroundColor: themeConfig.bgMain }}
     >
       {/* 1. Slim, Sleek Control Bar (No AI-slop, clean and functional) */}
       <div
-        className="px-3 py-1.5 flex items-center justify-between text-xs border-b gap-2 flex-wrap"
+        className="px-3 py-1.5 flex items-center justify-between text-xs border-b gap-2 flex-wrap select-none"
         style={{
           backgroundColor: themeConfig.bgHeader,
           borderColor: themeConfig.border
@@ -402,10 +408,10 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
       </div>
 
       {/* 2. Workspace Body: The Embedded Terminal Canvas! */}
-      <div className="flex-1 relative overflow-hidden flex flex-col">
+      <div className="relative flex-1 w-full h-full min-h-0 min-w-0 overflow-hidden">
         {/* Terminal Canvas (Always alive in DOM so process/output isn't lost!) */}
         <div
-          className="flex-1 w-full h-full"
+          className="absolute inset-0 w-full h-full"
           style={{ display: viewMode === 'terminal' ? 'block' : 'none' }}
         >
           <EmbeddedTerminal
