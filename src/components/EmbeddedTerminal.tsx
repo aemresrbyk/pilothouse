@@ -138,3 +138,4 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({
     />
   );
 };
+

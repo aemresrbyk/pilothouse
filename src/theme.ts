@@ -243,3 +243,4 @@ export const THEMES: Record<AppTheme, ThemeConfig> = {
     }
   }
 };
+
