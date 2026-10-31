@@ -78,3 +78,4 @@ export const AppLogo: React.FC<AppLogoProps> = ({ className = 'w-5 h-5', size })
     </svg>
   );
 };
+

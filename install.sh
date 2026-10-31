@@ -149,3 +149,4 @@ echo -e "  2. Applications folder:   ${AMBER}${TARGET_APP}${NC}"
 echo -e "  3. Spotlight Search:      Type 'Claude Code Launcher' and press Enter"
 echo ""
 echo -e "Enjoy coding with zero friction! ✦"
+
