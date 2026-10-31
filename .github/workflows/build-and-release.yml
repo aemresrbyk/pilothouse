@@ -1,0 +1,75 @@
+name: Build & Release Claude Code Launcher
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-mac:
+    name: Build macOS Distribution (${{ matrix.arch }})
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [arm64, x64]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        run: bun install
+
+      - name: Build Web Assets & Electron Bundle
+        run: bun run build
+
+      - name: Package macOS DMG & ZIP
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: |
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            bun x electron-builder --mac --arm64
+          else
+            bun x electron-builder --mac --x64
+          fi
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}-installer
+          path: |
+            release/*.dmg
+            release/*.zip
+
+  release:
+    name: Create GitHub Release
+    needs: build-mac
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            macos-arm64-installer/*.dmg
+            macos-arm64-installer/*.zip
+            macos-x64-installer/*.dmg
+            macos-x64-installer/*.zip
+          generate_release_notes: true

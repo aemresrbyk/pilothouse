@@ -14,6 +14,7 @@ import {
 import { ProjectItem, TabSession, AppTheme } from '../types';
 import { THEMES, ThemeConfig } from '../theme';
 import { playClickSound } from '../utils/audio';
+import { AppLogo } from './AppLogo';
 
 interface ChromeTabBarProps {
   tabs: TabSession[];
@@ -21,7 +22,8 @@ interface ChromeTabBarProps {
   projects: ProjectItem[];
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
-  onNewTab: (projectId: string) => void;
+  onNewTab: (projectId?: string) => void;
+  onBrowseFolder: () => void;
   onOpenAddModal: () => void;
   onOpenSettings: () => void;
   onOpenPalette: () => void;
@@ -41,6 +43,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
   onSelectTab,
   onCloseTab,
   onNewTab,
+  onBrowseFolder,
   onOpenAddModal,
   onOpenSettings,
   onOpenPalette,
@@ -52,18 +55,12 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
   onSelectTheme,
   themeConfig
 }) => {
-  const [isNewTabOpen, setIsNewTabOpen] = useState(false);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
-
-  const newTabRef = useRef<HTMLDivElement>(null);
   const themeMenuRef = useRef<HTMLDivElement>(null);
 
   // Close menus on click outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (newTabRef.current && !newTabRef.current.contains(e.target as Node)) {
-        setIsNewTabOpen(false);
-      }
       if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
         setIsThemeMenuOpen(false);
       }
@@ -80,17 +77,34 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
         borderColor: themeConfig.border
       }}
     >
-      {/* Left: Window Traffic Lights Spacer + Tab Reel */}
-      <div className="flex items-center gap-1.5 flex-1 min-w-0 titlebar-no-drag h-full pt-1.5">
-        {/* Dedicated 80px space for macOS window control buttons (never overlaps!) */}
+      {/* Left: Window Traffic Lights Spacer + App Brand + Tab Reel */}
+      <div className="flex items-center gap-1.5 flex-1 min-w-0 titlebar-no-drag h-full pt-1">
+        {/* Dedicated 80px space for macOS window buttons */}
         <div className="w-20 flex-shrink-0 h-full pointer-events-none" />
 
-        {/* Tab Items */}
+        {/* Brand App Logo */}
+        <div
+          onClick={onOpenPalette}
+          title="Claude Code Launcher (⌘P)"
+          className="flex items-center gap-1.5 mr-2 px-1.5 py-1 rounded-md cursor-pointer hover:bg-black/10 transition-colors flex-shrink-0"
+        >
+          <AppLogo className="w-4 h-4" />
+          <span className="font-bold text-[11px] tracking-wide hidden lg:inline" style={{ color: themeConfig.textPrimary }}>
+            CLAUDE
+          </span>
+        </div>
+
+        {/* Tab Items Reel */}
         <div className="flex items-end gap-1 overflow-x-auto no-scrollbar flex-1 min-w-0 h-full">
           {tabs.map((tab) => {
             const project = projects.find((p) => p.id === tab.projectId);
             const isActive = tab.id === activeTabId;
-            const tabName = project?.name || 'Terminal';
+
+            // Handle duplicate project tabs cleanly (e.g. "shorts" and "shorts #2")
+            const projectTabs = tabs.filter((t) => t.projectId === tab.projectId);
+            const tabIndex = projectTabs.findIndex((t) => t.id === tab.id);
+            const baseName = project?.name || 'Terminal';
+            const tabName = projectTabs.length > 1 ? `${baseName} #${tabIndex + 1}` : baseName;
 
             return (
               <div
@@ -100,7 +114,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
                   onSelectTab(tab.id);
                 }}
                 title={project?.path}
-                className="group relative flex items-center gap-2 px-3 py-1.5 rounded-t-lg transition-all cursor-pointer max-w-[200px] min-w-[120px] text-xs font-mono border-t border-x"
+                className="group relative flex items-center gap-2 px-3 py-1.5 rounded-t-lg transition-all cursor-pointer max-w-[200px] min-w-[110px] text-xs font-mono border-t border-x flex-shrink-0"
                 style={{
                   backgroundColor: isActive ? themeConfig.bgTabActive : 'transparent',
                   borderColor: isActive ? themeConfig.border : 'transparent',
@@ -115,10 +129,10 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
                   />
                 )}
 
-                {/* Status Indicator / Icon */}
-                <div className="flex items-center gap-1.5 flex-shrink-0">
+                {/* Status Dot */}
+                <div className="flex items-center gap-1 flex-shrink-0">
                   <span
-                    className={`w-2 h-2 rounded-full ${
+                    className={`w-2 h-2 rounded-full transition-opacity ${
                       isActive ? 'opacity-100' : 'opacity-40'
                     }`}
                     style={{ backgroundColor: isActive ? themeConfig.accent : themeConfig.textMuted }}
@@ -140,7 +154,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
                       onCloseTab(tab.id);
                     }}
                     title="Close tab (⌘W)"
-                    className="p-0.5 rounded opacity-50 group-hover:opacity-100 hover:bg-black/20 transition-all flex-shrink-0"
+                    className="p-0.5 rounded opacity-40 group-hover:opacity-100 hover:bg-black/20 transition-all flex-shrink-0"
                     style={{ color: themeConfig.textMuted }}
                   >
                     <X className="w-3 h-3" />
@@ -150,99 +164,56 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
             );
           })}
 
-          {/* New Tab (+) Button */}
-          <div className="relative mb-1" ref={newTabRef}>
+          {/* New Tab Actions (+) & Folder Pick */}
+          <div className="flex items-center gap-0.5 mb-1 flex-shrink-0">
+            {/* Open / Create New Tab Button */}
             <button
+              type="button"
               onClick={() => {
                 playClickSound();
-                setIsNewTabOpen(!isNewTabOpen);
+                onOpenPalette();
               }}
-              title="Open project in new tab (⌘T)"
-              className="p-1 rounded-md hover:bg-black/20 transition-colors ml-1"
-              style={{ color: themeConfig.textMuted }}
+              title="Open or Create Terminal Tab (⌘T / ⌘P)"
+              className="p-1 rounded-md hover:bg-black/20 transition-all border flex items-center gap-1 text-[11px]"
+              style={{
+                borderColor: themeConfig.border,
+                backgroundColor: themeConfig.bgMain,
+                color: themeConfig.textPrimary
+              }}
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-3.5 h-3.5" style={{ color: themeConfig.accent }} />
             </button>
 
-            {/* New Tab Dropdown Menu */}
-            {isNewTabOpen && (
-              <div
-                className="absolute top-full left-0 mt-1 w-64 rounded-xl shadow-2xl py-1.5 z-50 animate-fade-in font-mono text-xs border"
-                style={{
-                  backgroundColor: themeConfig.bgCard,
-                  borderColor: themeConfig.border
-                }}
-              >
-                <div
-                  className="px-3 py-1 text-[10px] uppercase font-bold tracking-wider border-b"
-                  style={{
-                    color: themeConfig.textMuted,
-                    borderColor: themeConfig.border
-                  }}
-                >
-                  OPEN IN NEW TAB
-                </div>
-
-                <div className="max-h-56 overflow-y-auto py-1">
-                  {projects.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => {
-                        playClickSound();
-                        onNewTab(p.id);
-                        setIsNewTabOpen(false);
-                      }}
-                      className="w-full text-left px-3 py-1.5 hover:bg-black/20 flex items-center justify-between transition-colors"
-                      style={{ color: themeConfig.textSecondary }}
-                    >
-                      <span className="truncate">{p.name}</span>
-                      {p.gitInfo?.branch && (
-                        <span
-                          className="text-[9px] px-1 rounded ml-1"
-                          style={{
-                            color: themeConfig.textMuted,
-                            backgroundColor: themeConfig.bgHeader
-                          }}
-                        >
-                          {p.gitInfo.branch}
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-
-                <div
-                  className="pt-1 mt-1 border-t px-2"
-                  style={{ borderColor: themeConfig.border }}
-                >
-                  <button
-                    onClick={() => {
-                      playClickSound();
-                      setIsNewTabOpen(false);
-                      onOpenAddModal();
-                    }}
-                    className="w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-1.5 font-bold transition-colors"
-                    style={{ color: themeConfig.accent }}
-                  >
-                    <FolderPlus className="w-3.5 h-3.5" />
-                    <span>Add Project Folder...</span>
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* Quick Browse Finder Button */}
+            <button
+              type="button"
+              onClick={() => {
+                playClickSound();
+                onBrowseFolder();
+              }}
+              title="Browse Folder from Finder (+)"
+              className="p-1 rounded-md hover:bg-black/20 transition-all border flex items-center"
+              style={{
+                borderColor: themeConfig.border,
+                backgroundColor: themeConfig.bgMain,
+                color: themeConfig.textMuted
+              }}
+            >
+              <FolderPlus className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </div>
 
       {/* Right: Actions & Theme Picker */}
-      <div className="flex items-center gap-1.5 titlebar-no-drag pl-2 flex-shrink-0">
-        {/* Quick Search */}
+      <div className="flex items-center gap-1 titlebar-no-drag pl-2 flex-shrink-0">
+        {/* Quick Find */}
         <button
           onClick={() => {
             playClickSound();
             onOpenPalette();
           }}
-          title="Quick Find Project (⌘P)"
+          title="Command Palette (⌘P / ⌘K)"
           className="p-1.5 rounded-md hover:bg-black/20 transition-colors"
           style={{ color: themeConfig.textMuted }}
         >
@@ -255,7 +226,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
             playClickSound();
             onSyncClaude();
           }}
-          title="Sync from ~/.claude.json"
+          title="Sync Claude Repositories (~/.claude.json)"
           disabled={isSyncing}
           className="p-1.5 rounded-md hover:bg-black/20 transition-colors"
           style={{ color: themeConfig.textMuted }}
@@ -322,7 +293,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
                         <span>{t.icon}</span>
                         <span>{t.name}</span>
                       </div>
-                      {isCurrent && <span className="text-[10px]">✓</span>}
+                      {isCurrent && <span className="text-[10px] font-bold">✓</span>}
                     </button>
                   );
                 })}

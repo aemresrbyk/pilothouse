@@ -23,6 +23,9 @@ declare global {
       openInEditor: (dirPath: string, editor?: string) => Promise<boolean>;
       listFiles: (dirPath: string) => Promise<FileItem[]>;
       readFile: (filePath: string) => Promise<{ content: string; truncated: boolean }>;
+      saveFile: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>;
+      getGitStatus: (dirPath: string) => Promise<{ isGit: boolean; branch: string; modifiedCount: number; statusText: string }>;
+      getSystemHealth: () => Promise<{ claudeInstalled: boolean; claudePath: string; claudeVersion: string; nodeVersion: string }>;
       getSessions: (projectPath: string) => Promise<ClaudeSession[]>;
       validatePath: (targetPath: string) => Promise<{ exists: boolean; isDirectory: boolean }>;
       copyToClipboard: (text: string) => Promise<void>;

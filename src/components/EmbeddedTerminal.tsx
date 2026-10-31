@@ -187,12 +187,13 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({
 
   return (
     <div
-      ref={containerRef}
-      className="w-full h-full overflow-hidden cursor-text select-text"
-      style={{
-        backgroundColor: theme.terminalTheme.background,
-        padding: '6px 10px'
-      }}
-    />
+      className="w-full h-full overflow-hidden p-2"
+      style={{ backgroundColor: theme.terminalTheme.background }}
+    >
+      <div
+        ref={containerRef}
+        className="w-full h-full overflow-hidden cursor-text select-text"
+      />
+    </div>
   );
 };

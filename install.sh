@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# ==============================================================================
+#  Claude Code Launcher - macOS Automated Installer & Setup
+#  Author: Ali Emre Sarıbıyık (aemresrbyk)
+#  Repository: https://github.com/aemresrbyk/claude-code-launcher
+# ==============================================================================
+
+set -e
+
+# Colors for terminal styling
+BOLD='\033[1m'
+ACCENT='\033[38;2;204;107;73m' # Terracotta
+AMBER='\033[38;2;245;158;11m'  # Amber
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+echo -e "${ACCENT}${BOLD}"
+cat << "EOF"
+   ___ _                 _         ___          _        
+  / __\ | __ _ _   _  __| | ___   / __\___   __| | ___   
+ / /  | |/ _` | | | |/ _` |/ _ \ / /  / _ \ / _` |/ _ \  
+/ /___| | (_| | |_| | (_| |  __// /__| (_) | (_| |  __/  
+\____/|_|\__,_|\__,_|\__,_|\___|\____/\___/ \__,_|\___|  
+                                                         
+          ✦  L A U N C H E R  ✦                          
+EOF
+echo -e "${NC}"
+echo -e "${AMBER}Automated Setup & Installer for macOS${NC}"
+echo -e "Repository: ${BLUE}https://github.com/aemresrbyk/claude-code-launcher${NC}"
+echo "--------------------------------------------------------"
+
+# 1. System Check
+OS="$(uname -s)"
+if [ "$OS" != "Darwin" ]; then
+  echo -e "${RED}[ERROR] This installer is currently optimized for macOS.${NC}"
+  echo "For Linux/Windows, build from source using 'bun run build && bun run pack'."
+  exit 1
+fi
+
+ARCH="$(uname -m)"
+echo -e "${GREEN}✓${NC} Operating System: macOS (${ARCH})"
+
+# 2. Check Claude Code CLI
+echo -e "\n${BOLD}[1/4] Checking Claude Code CLI environment...${NC}"
+CLAUDE_BIN=""
+if command -v claude &>/dev/null; then
+  CLAUDE_BIN="$(command -v claude)"
+elif [ -f "$HOME/.local/bin/claude" ]; then
+  CLAUDE_BIN="$HOME/.local/bin/claude"
+elif [ -f "/opt/homebrew/bin/claude" ]; then
+  CLAUDE_BIN="/opt/homebrew/bin/claude"
+elif [ -f "$HOME/.bun/bin/claude" ]; then
+  CLAUDE_BIN="$HOME/.bun/bin/claude"
+fi
+
+if [ -n "$CLAUDE_BIN" ]; then
+  CLAUDE_VER="$("$CLAUDE_BIN" --version 2>/dev/null || echo "detected")"
+  echo -e "${GREEN}✓${NC} Claude Code CLI detected: ${BOLD}${CLAUDE_VER}${NC} (${CLAUDE_BIN})"
+else
+  echo -e "${AMBER}! Claude Code CLI is not in PATH yet.${NC}"
+  echo -e "  You can install it with: ${BOLD}npm install -g @anthropic-ai/claude-code${NC}"
+fi
+
+# 3. Installation Target
+APP_NAME="Claude Code Launcher.app"
+DEST_DIR="/Applications"
+TARGET_APP="${DEST_DIR}/${APP_NAME}"
+
+echo -e "\n${BOLD}[2/4] Installing ${APP_NAME}...${NC}"
+
+# Check if running inside git clone repository with prebuilt release
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCAL_RELEASE=""
+
+if [ "$ARCH" = "arm64" ] && [ -d "${SCRIPT_DIR}/release/mac-arm64/${APP_NAME}" ]; then
+  LOCAL_RELEASE="${SCRIPT_DIR}/release/mac-arm64/${APP_NAME}"
+elif [ -d "${SCRIPT_DIR}/release/mac/${APP_NAME}" ]; then
+  LOCAL_RELEASE="${SCRIPT_DIR}/release/mac/${APP_NAME}"
+fi
+
+if [ -n "$LOCAL_RELEASE" ]; then
+  echo -e "Installing from local release bundle..."
+  rm -rf "${TARGET_APP}"
+  cp -R "${LOCAL_RELEASE}" "${TARGET_APP}"
+elif [ -f "${SCRIPT_DIR}/package.json" ]; then
+  echo -e "Building from source repository..."
+  cd "${SCRIPT_DIR}"
+  if command -v bun &>/dev/null; then
+    bun install
+    bun run build
+    CSC_IDENTITY_AUTO_DISCOVERY=false bun run pack
+  else
+    npm install
+    npm run build
+    npm run pack
+  fi
+  
+  if [ -d "release/mac-arm64/${APP_NAME}" ]; then
+    rm -rf "${TARGET_APP}"
+    cp -R "release/mac-arm64/${APP_NAME}" "${TARGET_APP}"
+  elif [ -d "release/mac/${APP_NAME}" ]; then
+    rm -rf "${TARGET_APP}"
+    cp -R "release/mac/${APP_NAME}" "${TARGET_APP}"
+  fi
+else
+  # Remote install: download latest release from GitHub
+  echo -e "Downloading latest release package from GitHub..."
+  TMP_DIR="$(mktemp -d)"
+  GITHUB_REPO="aemresrbyk/claude-code-launcher"
+  DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/Claude-Code-Launcher-1.0.0-${ARCH}-mac.zip"
+  
+  curl -fsSL -o "${TMP_DIR}/app.zip" "${DOWNLOAD_URL}" || {
+    echo -e "${RED}[ERROR] Could not download pre-built release package.${NC}"
+    echo "Please clone the repository and run: ./install.sh"
+    exit 1
+  }
+  
+  unzip -q "${TMP_DIR}/app.zip" -d "${TMP_DIR}"
+  rm -rf "${TARGET_APP}"
+  cp -R "${TMP_DIR}/${APP_NAME}" "${TARGET_APP}"
+  rm -rf "${TMP_DIR}"
+fi
+
+echo -e "${GREEN}✓${NC} Successfully copied to ${BOLD}${TARGET_APP}${NC}"
+
+# 4. Gatekeeper Quarantine Removal
+echo -e "\n${BOLD}[3/4] Configuring macOS permissions...${NC}"
+xattr -dr com.apple.quarantine "${TARGET_APP}" 2>/dev/null || true
+echo -e "${GREEN}✓${NC} Cleared Gatekeeper quarantine flags"
+
+# 5. Create Desktop Shortcut
+echo -e "\n${BOLD}[4/4] Creating Desktop Shortcut...${NC}"
+DESKTOP_PATH="$HOME/Desktop/Claude Code Launcher"
+rm -f "$DESKTOP_PATH"
+osascript -e "tell application \"Finder\" to make alias file to POSIX file \"${TARGET_APP}\" at POSIX file \"$HOME/Desktop\"" 2>/dev/null || {
+  ln -sf "${TARGET_APP}" "$DESKTOP_PATH"
+}
+echo -e "${GREEN}✓${NC} Created shortcut at: ${BOLD}${DESKTOP_PATH}${NC}"
+
+# Success Message
+echo -e "\n========================================================"
+echo -e "${GREEN}${BOLD}✓ INSTALLATION COMPLETE!${NC}"
+echo -e "========================================================"
+echo -e "You can launch Claude Code Launcher from:"
+echo -e "  1. Your Desktop shortcut: ${AMBER}${DESKTOP_PATH}${NC}"
+echo -e "  2. Applications folder:   ${AMBER}${TARGET_APP}${NC}"
+echo -e "  3. Spotlight Search:      Type 'Claude Code Launcher' and press Enter"
+echo ""
+echo -e "Enjoy coding with zero friction! ✦"

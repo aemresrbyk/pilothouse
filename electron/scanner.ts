@@ -302,3 +302,102 @@ export function readFileContent(filePath: string, maxBytes: number = 200000): { 
     };
   }
 }
+
+export function saveFileContent(filePath: string, content: string): { success: boolean; error?: string } {
+  try {
+    const parentDir = path.dirname(filePath);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
+    fs.writeFileSync(filePath, content, 'utf-8');
+    return { success: true };
+  } catch (err: any) {
+    console.error('Failed to save file:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export function getGitStatusDetails(dirPath: string): { isGit: boolean; branch: string; modifiedCount: number; statusText: string } {
+  try {
+    if (!fs.existsSync(path.join(dirPath, '.git'))) {
+      return { isGit: false, branch: '', modifiedCount: 0, statusText: 'Not a git repo' };
+    }
+
+    const branch = execSync('git branch --show-current', {
+      cwd: dirPath,
+      encoding: 'utf-8',
+      timeout: 1500,
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim() || 'detached';
+
+    const statusOutput = execSync('git status --porcelain', {
+      cwd: dirPath,
+      encoding: 'utf-8',
+      timeout: 2000,
+      stdio: ['ignore', 'pipe', 'ignore']
+    }).trim();
+
+    const lines = statusOutput ? statusOutput.split('\n').filter(Boolean) : [];
+    const modifiedCount = lines.length;
+
+    return {
+      isGit: true,
+      branch,
+      modifiedCount,
+      statusText: modifiedCount > 0 ? `${modifiedCount} modified` : 'Clean'
+    };
+  } catch {
+    return { isGit: false, branch: '', modifiedCount: 0, statusText: '' };
+  }
+}
+
+export function getSystemHealth(): { claudeInstalled: boolean; claudePath: string; claudeVersion: string; nodeVersion: string } {
+  let claudeInstalled = false;
+  let claudePath = '';
+  let claudeVersion = '';
+  const nodeVersion = process.version;
+
+  const candidatePaths = [
+    path.join(os.homedir(), '.local/bin/claude'),
+    '/opt/homebrew/bin/claude',
+    '/usr/local/bin/claude',
+    path.join(os.homedir(), '.bun/bin/claude')
+  ];
+
+  for (const p of candidatePaths) {
+    if (fs.existsSync(p)) {
+      claudeInstalled = true;
+      claudePath = p;
+      break;
+    }
+  }
+
+  if (!claudeInstalled) {
+    try {
+      claudePath = execSync('which claude', { encoding: 'utf-8', timeout: 1000 }).trim();
+      if (claudePath && fs.existsSync(claudePath)) {
+        claudeInstalled = true;
+      }
+    } catch {}
+  }
+
+  if (claudeInstalled && claudePath) {
+    try {
+      const verOut = execSync(`"${claudePath}" --version`, {
+        encoding: 'utf-8',
+        timeout: 2000,
+        env: { ...process.env, PATH: `${os.homedir()}/.local/bin:/opt/homebrew/bin:/usr/local/bin:${process.env.PATH}` }
+      }).trim();
+      claudeVersion = verOut.split('\n')[0];
+    } catch {
+      claudeVersion = 'Ready';
+    }
+  }
+
+  return {
+    claudeInstalled,
+    claudePath,
+    claudeVersion,
+    nodeVersion
+  };
+}

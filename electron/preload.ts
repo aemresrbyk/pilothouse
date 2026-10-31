@@ -29,6 +29,12 @@ export const electronAPI = {
     ipcRenderer.invoke('project:list-files', dirPath),
   readFile: (filePath: string): Promise<{ content: string; truncated: boolean }> =>
     ipcRenderer.invoke('project:read-file', filePath),
+  saveFile: (filePath: string, content: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('project:save-file', filePath, content),
+  getGitStatus: (dirPath: string): Promise<{ isGit: boolean; branch: string; modifiedCount: number; statusText: string }> =>
+    ipcRenderer.invoke('project:git-status', dirPath),
+  getSystemHealth: (): Promise<{ claudeInstalled: boolean; claudePath: string; claudeVersion: string; nodeVersion: string }> =>
+    ipcRenderer.invoke('system:health'),
   getSessions: (projectPath: string): Promise<ClaudeSession[]> =>
     ipcRenderer.invoke('project:get-sessions', projectPath),
   validatePath: (targetPath: string): Promise<{ exists: boolean; isDirectory: boolean }> =>

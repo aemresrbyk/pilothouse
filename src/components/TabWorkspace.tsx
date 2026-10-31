@@ -16,7 +16,18 @@ import {
   FileJson,
   Folder,
   File as FileIcon,
-  Trash2
+  Trash2,
+  Sparkles,
+  Save,
+  Edit3,
+  Eye,
+  FileEdit,
+  Send,
+  X,
+  Stethoscope,
+  Minimize2,
+  HelpCircle,
+  Coins
 } from 'lucide-react';
 import { ProjectItem, TabSession, ProjectFlags, FileItem } from '../types';
 import { ThemeConfig } from '../theme';
@@ -47,10 +58,23 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   const [termSessionKey, setTermSessionKey] = useState<number>(1);
   const [copiedPath, setCopiedPath] = useState(false);
 
+  // Git Status state
+  const [gitStatus, setGitStatus] = useState<{ isGit: boolean; branch: string; modifiedCount: number; statusText: string } | null>(null);
+
+  // Scratchpad state
+  const [isScratchpadOpen, setIsScratchpadOpen] = useState(false);
+  const [scratchpadText, setScratchpadText] = useState(() => {
+    return localStorage.getItem(`scratchpad-${project.id}`) || '';
+  });
+
   // CLAUDE.md state
   const [claudeMdContent, setClaudeMdContent] = useState<string>('');
+  const [isEditingMd, setIsEditingMd] = useState(false);
+  const [editedMdContent, setEditedMdContent] = useState<string>('');
   const [isLoadingMd, setIsLoadingMd] = useState(false);
+  const [isSavingMd, setIsSavingMd] = useState(false);
   const [copiedMd, setCopiedMd] = useState(false);
+  const [mdSavedToast, setMdSavedToast] = useState(false);
 
   // Files state
   const [files, setFiles] = useState<FileItem[]>([]);
@@ -68,6 +92,24 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
     verbose: false,
     bare: false
   };
+
+  // Save scratchpad
+  useEffect(() => {
+    localStorage.setItem(`scratchpad-${project.id}`, scratchpadText);
+  }, [project.id, scratchpadText]);
+
+  // Load Git Status
+  const loadGitStatus = useCallback(() => {
+    window.electronAPI.getGitStatus?.(project.path)
+      .then((res) => {
+        if (res) setGitStatus(res);
+      })
+      .catch(() => {});
+  }, [project.path]);
+
+  useEffect(() => {
+    loadGitStatus();
+  }, [loadGitStatus, viewMode]);
 
   // Compile full command for Claude
   const fullCommand = useMemo(() => {
@@ -98,10 +140,10 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
     window.electronAPI.ptyWrite(tabSession.id, `${fullCommand}\r`);
   };
 
-  const handleResetSession = () => {
-    playClickSound();
+  const handleExecuteCommand = (cmd: string) => {
+    playLaunchSound();
     setViewMode('terminal');
-    setTermSessionKey((k) => k + 1);
+    window.electronAPI.ptyWrite(tabSession.id, `${cmd}\r`);
   };
 
   const handleSendInterrupt = () => {
@@ -124,11 +166,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   // Load files & CLAUDE.md when viewing those tabs
   useEffect(() => {
     if (viewMode === 'claude-md' && !claudeMdContent) {
-      setIsLoadingMd(true);
-      window.electronAPI.readFile(`${project.path}/CLAUDE.md`)
-        .then((res) => setClaudeMdContent(res.content))
-        .catch(() => setClaudeMdContent('// No CLAUDE.md found. Run /init in Claude Code to generate one.'))
-        .finally(() => setIsLoadingMd(false));
+      loadClaudeMd();
     }
 
     if (viewMode === 'files' && files.length === 0) {
@@ -148,15 +186,77 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
     }
   }, [viewMode, project.path]);
 
-  const loadFilePreview = async (item: FileItem) => {
-    if (item.isDirectory) return;
-    setSelectedFile(item);
+  const loadClaudeMd = () => {
+    setIsLoadingMd(true);
+    window.electronAPI.readFile(`${project.path}/CLAUDE.md`)
+      .then((res) => {
+        setClaudeMdContent(res.content);
+        setEditedMdContent(res.content);
+      })
+      .catch(() => {
+        const notFound = '';
+        setClaudeMdContent(notFound);
+        setEditedMdContent(notFound);
+      })
+      .finally(() => setIsLoadingMd(false));
+  };
+
+  const handleSaveClaudeMd = async () => {
+    setIsSavingMd(true);
+    playClickSound();
+    try {
+      const res = await window.electronAPI.saveFile(`${project.path}/CLAUDE.md`, editedMdContent);
+      if (res.success) {
+        setClaudeMdContent(editedMdContent);
+        setIsEditingMd(false);
+        setMdSavedToast(true);
+        setTimeout(() => setMdSavedToast(false), 2000);
+      }
+    } catch (err) {
+      console.error('Failed to save CLAUDE.md:', err);
+    } finally {
+      setIsSavingMd(false);
+    }
+  };
+
+  const handleGenerateSmartClaudeMd = () => {
+    playClickSound();
+    const template = `# CLAUDE.md - ${project.name} Guidelines
+
+## Project Overview
+This repository contains ${project.name}.
+Follow these engineering guidelines for all code edits, refactors, and feature additions.
+
+## Build & Test Commands
+- **Install dependencies:** \`bun install\` (or \`npm install\`)
+- **Run dev server:** \`bun run dev\` (or \`npm run dev\`)
+- **Run build:** \`bun run build\`
+- **Run tests:** \`bun test\` (or \`npm test\`)
+
+## Code Style & Architecture
+- **Language & Types:** Modern TypeScript with strict typing. Avoid \`any\`.
+- **Modularity:** Keep functions small, single-purpose, and pure where possible.
+- **Error Handling:** Always gracefully handle edge cases, missing files, and network errors.
+
+## Claude Agent Rules
+1. Test and verify all changes before declaring completion.
+2. Maintain existing documentation and preserve docstrings.
+3. Keep UI minimal, fast, and responsive.
+`;
+    setEditedMdContent(template);
+    setIsEditingMd(true);
+  };
+
+  const loadFilePreview = async (file: FileItem) => {
+    if (file.isDirectory) return;
+    playClickSound();
+    setSelectedFile(file);
     setIsLoadingContent(true);
     try {
-      const res = await window.electronAPI.readFile(item.path);
+      const res = await window.electronAPI.readFile(file.path);
       setSelectedContent(res.content);
     } catch (err: any) {
-      setSelectedContent(`// Error reading file: ${err.message}`);
+      setSelectedContent(`Failed to read file: ${err.message}`);
     } finally {
       setIsLoadingContent(false);
     }
@@ -164,39 +264,63 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
 
   const filteredFiles = useMemo(() => {
     if (!fileSearch.trim()) return files;
-    const q = fileSearch.toLowerCase().trim();
-    return files.filter((f) => f.name.toLowerCase().includes(q));
+    return files.filter((f) => f.name.toLowerCase().includes(fileSearch.toLowerCase()));
   }, [files, fileSearch]);
 
-  const getFileIcon = (file: FileItem) => {
-    if (file.isDirectory) return <Folder className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />;
-    if (file.name.toLowerCase() === 'claude.md') return <FileText className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />;
-    if (file.extension === '.json') return <FileJson className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />;
-    if (['.ts', '.tsx', '.js', '.jsx', '.py', '.rs', '.go', '.sh'].includes(file.extension || '')) {
-      return <FileCode className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />;
-    }
-    return <FileIcon className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />;
+  const handleSendScratchpadToTerminal = () => {
+    if (!scratchpadText.trim()) return;
+    playLaunchSound();
+    window.electronAPI.ptyWrite(tabSession.id, `${scratchpadText.trim()}\r`);
   };
+
+  // Quick Action Presets
+  const quickActions = [
+    { label: '/doctor', cmd: '/doctor', icon: <Stethoscope className="w-3 h-3" />, desc: 'Check health & setup' },
+    { label: '/compact', cmd: '/compact', icon: <Minimize2 className="w-3 h-3" />, desc: 'Compact conversation' },
+    { label: '/init', cmd: '/init', icon: <Sparkles className="w-3 h-3" />, desc: 'Init CLAUDE.md' },
+    { label: '/cost', cmd: '/cost', icon: <Coins className="w-3 h-3" />, desc: 'Show tokens & cost' },
+    {
+      label: 'Review Git Diff',
+      cmd: 'claude -p "Review recent git diff and summarize key changes, edge cases or bugs"',
+      icon: <GitBranch className="w-3 h-3" />,
+      desc: 'Review diff with Claude'
+    },
+    {
+      label: 'Find Bugs',
+      cmd: 'claude -p "Carefully inspect recent changes and identify any edge cases or bugs"',
+      icon: <Search className="w-3 h-3" />,
+      desc: 'Scan code for bugs'
+    },
+    {
+      label: 'Write Tests',
+      cmd: 'claude -p "Write comprehensive unit tests for the recent changes in this project"',
+      icon: <Code2 className="w-3 h-3" />,
+      desc: 'Generate test suite'
+    }
+  ];
 
   return (
     <div
-      className="flex-1 flex flex-col overflow-hidden font-mono"
-      style={{ backgroundColor: themeConfig.bgMain }}
+      className="flex flex-col h-full w-full select-text relative font-mono overflow-hidden"
+      style={{
+        backgroundColor: themeConfig.bgMain,
+        color: themeConfig.textPrimary
+      }}
     >
-      {/* 1. Slim, Sleek Control Bar (No AI-slop, clean and functional) */}
+      {/* 1. Slim Modern Control Bar */}
       <div
-        className="px-3 py-1.5 flex items-center justify-between text-xs border-b gap-2 flex-wrap select-none"
+        className="h-10 px-3 flex items-center justify-between text-xs border-b gap-2 flex-shrink-0"
         style={{
           backgroundColor: themeConfig.bgHeader,
           borderColor: themeConfig.border
         }}
       >
-        {/* Left: Project Path & Git Branch */}
-        <div className="flex items-center gap-2 min-w-0">
+        {/* Left: Project Path & Git Branch Indicator */}
+        <div className="flex items-center gap-1.5 min-w-0 flex-shrink-0">
           <div
             onClick={handleCopyPath}
-            title="Click to copy path"
-            className="flex items-center gap-1.5 px-2 py-1 rounded cursor-pointer transition-colors text-[11px] max-w-xs truncate"
+            title={`${project.path} (Click to copy)`}
+            className="flex items-center gap-1.5 px-2 py-1 rounded cursor-pointer transition-all hover:opacity-100 max-w-[150px] sm:max-w-[200px] text-[11px] font-medium border"
             style={{
               backgroundColor: themeConfig.bgTabActive,
               color: themeConfig.textSecondary,
@@ -212,16 +336,22 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
             )}
           </div>
 
-          {project.gitInfo?.isGit && (
+          {gitStatus?.isGit && (
             <div
-              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px]"
+              onClick={() => handleExecuteCommand('claude -p "Review recent git diff and summarize changes"')}
+              title={`Git Branch: ${gitStatus.branch}${gitStatus.modifiedCount > 0 ? ` (${gitStatus.modifiedCount} modified files). Click to review with Claude!` : ''}`}
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] cursor-pointer hover:opacity-90 border transition-all"
               style={{
-                backgroundColor: themeConfig.bgTabActive,
-                color: themeConfig.textMuted
+                backgroundColor: gitStatus.modifiedCount > 0 ? themeConfig.accentBg : themeConfig.bgTabActive,
+                color: gitStatus.modifiedCount > 0 ? themeConfig.accent : themeConfig.textMuted,
+                borderColor: gitStatus.modifiedCount > 0 ? themeConfig.accent : themeConfig.border
               }}
             >
               <GitBranch className="w-3 h-3" />
-              <span>{project.gitInfo.branch || 'git'}</span>
+              <span>{gitStatus.branch}</span>
+              {gitStatus.modifiedCount > 0 && (
+                <span className="font-bold">• {gitStatus.modifiedCount} modified</span>
+              )}
             </div>
           )}
         </div>
@@ -232,7 +362,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
           <button
             type="button"
             onClick={() => toggleFlag('dangerouslySkipPermissions')}
-            title="Bypass tool & permission prompts"
+            title="Bypass tool & permission prompts (Zero interruption)"
             className="px-2 py-1 rounded text-[11px] font-medium transition-all flex items-center gap-1.5 border flex-shrink-0"
             style={{
               backgroundColor: flags.dangerouslySkipPermissions ? themeConfig.accentBg : 'transparent',
@@ -267,7 +397,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
           <div className="flex-1 relative min-w-[120px] flex items-center">
             <input
               type="text"
-              placeholder="Custom flags or prompt (e.g. -p 'fix bug')..."
+              placeholder="Prompt or flags (e.g. -p 'fix bug'). Press ↵ to run..."
               value={customInput}
               onChange={(e) => setCustomInput(e.target.value)}
               onKeyDown={(e) => {
@@ -286,7 +416,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* Right: View Switcher & Actions */}
+        {/* Right: View Switcher & Action Buttons */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {/* View Mode Switcher */}
           <div
@@ -342,7 +472,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
             </button>
           </div>
 
-          {/* Action: Run / Restart Claude */}
+          {/* Action: Run / Launch Claude */}
           <button
             onClick={handleRestartClaude}
             title={`Run: ${fullCommand}`}
@@ -379,6 +509,23 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
             <Trash2 className="w-3 h-3" />
           </button>
 
+          {/* Action: Toggle Scratchpad Drawer */}
+          <button
+            onClick={() => {
+              playClickSound();
+              setIsScratchpadOpen(!isScratchpadOpen);
+            }}
+            title={isScratchpadOpen ? 'Close Scratchpad' : 'Open Prompt Drafter & Notes'}
+            className="p-1 rounded hover:bg-black/20 transition-colors border flex items-center gap-1"
+            style={{
+              borderColor: isScratchpadOpen ? themeConfig.accent : themeConfig.border,
+              backgroundColor: isScratchpadOpen ? themeConfig.accentBg : 'transparent',
+              color: isScratchpadOpen ? themeConfig.accent : themeConfig.textMuted
+            }}
+          >
+            <FileEdit className="w-3 h-3" />
+          </button>
+
           {/* Action: Open in VS Code */}
           <button
             onClick={() => onOpenEditor(project.path)}
@@ -407,11 +554,44 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
         </div>
       </div>
 
-      {/* 2. Workspace Body: The Embedded Terminal Canvas! */}
-      <div className="relative flex-1 w-full h-full min-h-0 min-w-0 overflow-hidden">
-        {/* Terminal Canvas (Always alive in DOM so process/output isn't lost!) */}
+      {/* 2. Quick Actions & Slash Commands Strip (Visible in Terminal mode) */}
+      {viewMode === 'terminal' && (
         <div
-          className="absolute inset-0 w-full h-full"
+          className="h-7 px-3 flex items-center gap-1.5 overflow-x-auto no-scrollbar border-b text-[10px] flex-shrink-0"
+          style={{
+            backgroundColor: themeConfig.bgMain,
+            borderColor: themeConfig.border
+          }}
+        >
+          <span className="text-[9px] uppercase font-bold tracking-wider mr-1" style={{ color: themeConfig.textMuted }}>
+            QUICK ACTIONS:
+          </span>
+
+          {quickActions.map((qa) => (
+            <button
+              key={qa.label}
+              type="button"
+              onClick={() => handleExecuteCommand(qa.cmd)}
+              title={`${qa.desc} (Click to execute in Claude)`}
+              className="px-2 py-0.5 rounded flex items-center gap-1 transition-all border flex-shrink-0 hover:opacity-100 opacity-80"
+              style={{
+                backgroundColor: themeConfig.bgTabActive,
+                borderColor: themeConfig.border,
+                color: themeConfig.textSecondary
+              }}
+            >
+              <span style={{ color: themeConfig.accent }}>{qa.icon}</span>
+              <span className="font-medium">{qa.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* 3. Workspace Body */}
+      <div className="relative flex-1 w-full h-full min-h-0 min-w-0 overflow-hidden flex">
+        {/* Main Terminal Canvas (Always alive in DOM!) */}
+        <div
+          className="flex-1 w-full h-full relative"
           style={{ display: viewMode === 'terminal' ? 'block' : 'none' }}
         >
           <EmbeddedTerminal
@@ -424,11 +604,101 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
           />
         </div>
 
-        {/* CLAUDE.md Reader View */}
+        {/* Collapsible Scratchpad / Prompt Drafter Sidebar */}
+        {viewMode === 'terminal' && isScratchpadOpen && (
+          <div
+            className="w-80 h-full border-l flex flex-col z-20 animate-fade-in flex-shrink-0"
+            style={{
+              backgroundColor: themeConfig.bgCard,
+              borderColor: themeConfig.border
+            }}
+          >
+            <div
+              className="h-9 px-3 border-b flex items-center justify-between text-xs font-bold"
+              style={{
+                backgroundColor: themeConfig.bgHeader,
+                borderColor: themeConfig.border
+              }}
+            >
+              <div className="flex items-center gap-1.5" style={{ color: themeConfig.accent }}>
+                <FileEdit className="w-3.5 h-3.5" />
+                <span>Prompt Drafter &amp; Notes</span>
+              </div>
+              <button
+                onClick={() => setIsScratchpadOpen(false)}
+                className="p-1 rounded hover:bg-black/20"
+                style={{ color: themeConfig.textMuted }}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="flex-1 p-2 flex flex-col min-h-0">
+              <textarea
+                value={scratchpadText}
+                onChange={(e) => setScratchpadText(e.target.value)}
+                placeholder="Draft instructions, multi-line prompts, or paste context snippets here..."
+                className="flex-1 w-full p-2.5 rounded-lg text-xs font-mono outline-none resize-none border leading-relaxed"
+                style={{
+                  backgroundColor: themeConfig.bgMain,
+                  borderColor: themeConfig.border,
+                  color: themeConfig.textPrimary
+                }}
+              />
+            </div>
+
+            <div
+              className="p-2 border-t flex items-center justify-between gap-2"
+              style={{
+                backgroundColor: themeConfig.bgHeader,
+                borderColor: themeConfig.border
+              }}
+            >
+              <button
+                onClick={() => {
+                  playClickSound();
+                  setScratchpadText('');
+                }}
+                className="px-2 py-1 rounded text-[10px] text-zinc-500 hover:text-zinc-300"
+              >
+                Clear
+              </button>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => {
+                    playClickSound();
+                    navigator.clipboard.writeText(scratchpadText);
+                  }}
+                  className="px-2 py-1 rounded text-[10px] border"
+                  style={{
+                    backgroundColor: themeConfig.bgTabActive,
+                    borderColor: themeConfig.border,
+                    color: themeConfig.textSecondary
+                  }}
+                >
+                  Copy
+                </button>
+                <button
+                  onClick={handleSendScratchpadToTerminal}
+                  disabled={!scratchpadText.trim()}
+                  className="px-2.5 py-1 rounded text-xs font-bold text-white flex items-center gap-1 disabled:opacity-40"
+                  style={{ backgroundColor: themeConfig.accent }}
+                >
+                  <Send className="w-3 h-3" />
+                  <span>Send ↵</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* CLAUDE.md Smart Generator & Live Editor */}
         {viewMode === 'claude-md' && (
           <div className="flex-1 flex flex-col overflow-hidden p-4 max-w-4xl w-full mx-auto">
+            {/* Toolbar */}
             <div
-              className="p-3 border rounded-xl flex items-center justify-between text-xs mb-3"
+              className="p-3 border rounded-xl flex items-center justify-between text-xs mb-3 flex-shrink-0"
               style={{
                 backgroundColor: themeConfig.bgCard,
                 borderColor: themeConfig.border
@@ -438,11 +708,50 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
                 <FileText className="w-4 h-4" style={{ color: themeConfig.accent }} />
                 <span>CLAUDE.md (Project Context &amp; Instructions)</span>
               </div>
+
               <div className="flex items-center gap-2">
+                {/* Save Confirmation Toast */}
+                {mdSavedToast && (
+                  <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1 animate-fade-in">
+                    <Check className="w-3 h-3" />
+                    <span>Saved!</span>
+                  </span>
+                )}
+
+                {/* Edit / Preview Toggle */}
                 <button
                   onClick={() => {
                     playClickSound();
-                    navigator.clipboard.writeText(claudeMdContent);
+                    setIsEditingMd(!isEditingMd);
+                  }}
+                  className="px-2 py-1 rounded flex items-center gap-1 text-[11px] border"
+                  style={{
+                    backgroundColor: isEditingMd ? themeConfig.accentBg : themeConfig.bgTabActive,
+                    borderColor: isEditingMd ? themeConfig.accent : themeConfig.border,
+                    color: isEditingMd ? themeConfig.accent : themeConfig.textSecondary
+                  }}
+                >
+                  {isEditingMd ? <Eye className="w-3 h-3" /> : <Edit3 className="w-3 h-3" />}
+                  <span>{isEditingMd ? 'Preview' : 'Edit'}</span>
+                </button>
+
+                {/* Save Button (when editing) */}
+                {isEditingMd && (
+                  <button
+                    onClick={handleSaveClaudeMd}
+                    disabled={isSavingMd}
+                    className="px-2.5 py-1 rounded flex items-center gap-1 text-[11px] font-bold text-white shadow-sm"
+                    style={{ backgroundColor: themeConfig.accent }}
+                  >
+                    <Save className="w-3 h-3" />
+                    <span>{isSavingMd ? 'Saving...' : 'Save Changes'}</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => {
+                    playClickSound();
+                    navigator.clipboard.writeText(isEditingMd ? editedMdContent : claudeMdContent);
                     setCopiedMd(true);
                     setTimeout(() => setCopiedMd(false), 1500);
                   }}
@@ -456,6 +765,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
                   {copiedMd ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                   <span>{copiedMd ? 'Copied' : 'Copy'}</span>
                 </button>
+
                 <button
                   onClick={() => onOpenEditor(project.path)}
                   className="px-2 py-1 rounded flex items-center gap-1 text-[11px] border"
@@ -466,13 +776,14 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
                   }}
                 >
                   <Code2 className="w-3 h-3" />
-                  <span>Edit in VS Code</span>
+                  <span>VS Code</span>
                 </button>
               </div>
             </div>
 
+            {/* Content Area */}
             <div
-              className="flex-1 overflow-auto p-4 rounded-xl border text-xs select-text font-mono leading-relaxed"
+              className="flex-1 overflow-auto rounded-xl border text-xs select-text font-mono leading-relaxed flex flex-col"
               style={{
                 backgroundColor: themeConfig.bgCard,
                 borderColor: themeConfig.border,
@@ -480,88 +791,143 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
               }}
             >
               {isLoadingMd ? (
-                <div className="text-center py-10" style={{ color: themeConfig.textMuted }}>Loading CLAUDE.md...</div>
+                <div className="text-center py-16" style={{ color: themeConfig.textMuted }}>
+                  Loading CLAUDE.md...
+                </div>
+              ) : isEditingMd ? (
+                <textarea
+                  value={editedMdContent}
+                  onChange={(e) => setEditedMdContent(e.target.value)}
+                  placeholder="Enter project instructions for Claude Code..."
+                  className="flex-1 w-full h-full p-4 bg-transparent outline-none resize-none font-mono text-xs leading-relaxed"
+                  style={{ color: themeConfig.textPrimary }}
+                />
+              ) : claudeMdContent ? (
+                <div className="p-4 overflow-auto">
+                  <pre className="whitespace-pre-wrap">{claudeMdContent}</pre>
+                </div>
               ) : (
-                <pre className="whitespace-pre-wrap">{claudeMdContent}</pre>
+                /* Empty State with Smart Generator */
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+                  <Sparkles className="w-10 h-10 mb-3" style={{ color: themeConfig.accent }} />
+                  <h3 className="text-sm font-bold" style={{ color: themeConfig.textPrimary }}>
+                    No CLAUDE.md Found in Project Root
+                  </h3>
+                  <p className="text-xs mt-1 max-w-md leading-relaxed" style={{ color: themeConfig.textMuted }}>
+                    A CLAUDE.md file helps Claude Code understand your architecture, build commands, test patterns, and style guide automatically.
+                  </p>
+                  <div className="mt-4 flex items-center gap-2">
+                    <button
+                      onClick={handleGenerateSmartClaudeMd}
+                      className="px-4 py-2 rounded-lg text-xs font-bold text-white shadow-md flex items-center gap-1.5 transition-all active:scale-95"
+                      style={{ backgroundColor: themeConfig.accent }}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>✦ Generate Smart CLAUDE.md Template</span>
+                    </button>
+                    <button
+                      onClick={() => handleExecuteCommand('/init')}
+                      className="px-3 py-2 rounded-lg text-xs font-medium border transition-colors"
+                      style={{
+                        backgroundColor: themeConfig.bgTabActive,
+                        borderColor: themeConfig.border,
+                        color: themeConfig.textSecondary
+                      }}
+                    >
+                      Run /init in Terminal
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
         )}
 
-        {/* Files Explorer & Code Viewer View */}
+        {/* Files Browser View */}
         {viewMode === 'files' && (
-          <div className="flex-1 flex overflow-hidden border-t" style={{ borderColor: themeConfig.border }}>
-            {/* File List Column */}
+          <div className="flex-1 flex overflow-hidden">
+            {/* File List Sidebar */}
             <div
-              className="w-72 border-r flex flex-col flex-shrink-0"
+              className="w-64 border-r flex flex-col flex-shrink-0"
               style={{
-                backgroundColor: themeConfig.bgHeader,
+                backgroundColor: themeConfig.bgCard,
                 borderColor: themeConfig.border
               }}
             >
-              <div className="p-2 border-b flex items-center gap-2" style={{ borderColor: themeConfig.border }}>
-                <Search className="w-3.5 h-3.5" style={{ color: themeConfig.textMuted }} />
+              <div
+                className="p-2 border-b flex items-center gap-1.5"
+                style={{
+                  backgroundColor: themeConfig.bgHeader,
+                  borderColor: themeConfig.border
+                }}
+              >
+                <Search className="w-3 h-3 text-zinc-500" />
                 <input
                   type="text"
                   placeholder="Filter files..."
                   value={fileSearch}
                   onChange={(e) => setFileSearch(e.target.value)}
-                  className="w-full bg-transparent text-xs outline-none"
+                  className="w-full bg-transparent text-[11px] outline-none"
                   style={{ color: themeConfig.textPrimary }}
                 />
               </div>
 
               <div className="flex-1 overflow-y-auto p-1 divide-y" style={{ borderColor: themeConfig.border }}>
                 {isLoadingFiles ? (
-                  <div className="text-center py-8 text-xs" style={{ color: themeConfig.textMuted }}>Loading files...</div>
-                ) : filteredFiles.map((f) => {
-                  const isSelected = selectedFile?.path === f.path;
-                  return (
-                    <div
-                      key={f.path}
-                      onClick={() => {
-                        playClickSound();
-                        loadFilePreview(f);
-                      }}
-                      className="px-2 py-1.5 rounded cursor-pointer text-xs flex items-center justify-between transition-colors"
-                      style={{
-                        backgroundColor: isSelected ? themeConfig.bgTabActive : 'transparent',
-                        color: isSelected ? themeConfig.textPrimary : themeConfig.textSecondary
-                      }}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        {getFileIcon(f)}
-                        <span className="truncate">{f.name}</span>
+                  <div className="p-4 text-center text-[11px]" style={{ color: themeConfig.textMuted }}>
+                    Scanning directory...
+                  </div>
+                ) : filteredFiles.length === 0 ? (
+                  <div className="p-4 text-center text-[11px]" style={{ color: themeConfig.textMuted }}>
+                    No files found
+                  </div>
+                ) : (
+                  filteredFiles.map((file) => {
+                    const isSelected = selectedFile?.path === file.path;
+                    return (
+                      <div
+                        key={file.path}
+                        onClick={() => loadFilePreview(file)}
+                        className="px-2 py-1.5 rounded flex items-center gap-2 cursor-pointer transition-colors text-[11px]"
+                        style={{
+                          backgroundColor: isSelected ? themeConfig.bgTabActive : 'transparent',
+                          color: isSelected ? themeConfig.textPrimary : themeConfig.textSecondary
+                        }}
+                      >
+                        {file.isDirectory ? (
+                          <Folder className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                        ) : file.name.endsWith('.ts') || file.name.endsWith('.tsx') || file.name.endsWith('.js') ? (
+                          <FileCode className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+                        ) : file.name.endsWith('.json') ? (
+                          <FileJson className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                        ) : (
+                          <FileIcon className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
+                        )}
+                        <span className="truncate flex-1">{file.name}</span>
                       </div>
-                      {f.size !== undefined && (
-                        <span className="text-[9px] ml-1 opacity-50">
-                          {f.size > 1024 ? `${Math.round(f.size / 1024)}k` : `${f.size}b`}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
             </div>
 
-            {/* File Preview Column */}
+            {/* File Preview Content */}
             <div className="flex-1 flex flex-col overflow-hidden" style={{ backgroundColor: themeConfig.bgMain }}>
               {selectedFile ? (
                 <>
                   <div
-                    className="px-4 py-2 border-b flex items-center justify-between text-xs"
+                    className="h-9 px-4 border-b flex items-center justify-between text-xs"
                     style={{
                       backgroundColor: themeConfig.bgHeader,
                       borderColor: themeConfig.border
                     }}
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      {getFileIcon(selectedFile)}
-                      <span className="font-bold truncate" style={{ color: themeConfig.textPrimary }}>
-                        {selectedFile.name}
-                      </span>
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="font-bold" style={{ color: themeConfig.textPrimary }}>{selectedFile.name}</span>
+                      <span className="text-[10px]" style={{ color: themeConfig.textMuted }}>{selectedFile.path}</span>
                     </div>
-                    <div className="flex items-center gap-2">
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
                       <button
                         onClick={() => {
                           playClickSound();
@@ -569,7 +935,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
                           setCopiedFile(true);
                           setTimeout(() => setCopiedFile(false), 1500);
                         }}
-                        className="px-2 py-1 rounded text-[11px] border flex items-center gap-1"
+                        className="px-2 py-0.5 rounded text-[10px] border flex items-center gap-1"
                         style={{
                           backgroundColor: themeConfig.bgTabActive,
                           borderColor: themeConfig.border,
@@ -579,9 +945,10 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
                         {copiedFile ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
                         <span>{copiedFile ? 'Copied' : 'Copy'}</span>
                       </button>
+
                       <button
-                        onClick={() => onOpenEditor(project.path)}
-                        className="px-2 py-1 rounded text-[11px] border flex items-center gap-1"
+                        onClick={() => onOpenEditor(selectedFile.path)}
+                        className="px-2 py-0.5 rounded text-[10px] border flex items-center gap-1"
                         style={{
                           backgroundColor: themeConfig.bgTabActive,
                           borderColor: themeConfig.border,
@@ -589,24 +956,22 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
                         }}
                       >
                         <Code2 className="w-3 h-3" />
-                        <span>Open in VS Code</span>
+                        <span>Open Editor</span>
                       </button>
                     </div>
                   </div>
 
-                  <div className="flex-1 overflow-auto p-4 text-xs select-text font-mono leading-relaxed">
+                  <div className="flex-1 overflow-auto p-4 text-xs font-mono select-text leading-relaxed">
                     {isLoadingContent ? (
-                      <div className="text-center py-10" style={{ color: themeConfig.textMuted }}>Loading file...</div>
+                      <div className="text-center py-10" style={{ color: themeConfig.textMuted }}>Reading file...</div>
                     ) : (
-                      <pre className="whitespace-pre-wrap" style={{ color: themeConfig.textPrimary }}>
-                        {selectedContent}
-                      </pre>
+                      <pre className="whitespace-pre-wrap">{selectedContent}</pre>
                     )}
                   </div>
                 </>
               ) : (
                 <div className="flex-1 flex items-center justify-center text-xs" style={{ color: themeConfig.textMuted }}>
-                  Select a file from the left to inspect
+                  Select a file on the left to preview
                 </div>
               )}
             </div>

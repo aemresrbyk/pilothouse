@@ -1,50 +1,78 @@
-# ⚡ Claude Code Launcher // Embedded Desktop Terminal
-
 <div align="center">
 
-**A bespoke, Google Chrome-tabs powered desktop cockpit and live interactive terminal for Claude Code CLI.**
+  <img src="public/logo.svg" alt="Claude Code Launcher Logo" width="108" height="108" />
 
-Designed specifically for developers who manage multiple Claude Code repositories in parallel. Switch between project terminals via tabs, toggle `--dangerously-skip-permissions` with a click, compile custom flags in real-time, inspect files directly in the app, and run Claude Code right inside an embedded, high-performance terminal.
+  # Claude Code Launcher
+  ### Supercharged Desktop Cockpit & Embedded Terminal for Claude Code CLI
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-amber.svg)](https://opensource.org/licenses/MIT)
-[![GitHub](https://img.shields.io/badge/GitHub-aemresrbyk-181717?logo=github&logoColor=white)](https://github.com/aemresrbyk)
-[![Electron](https://img.shields.io/badge/Electron-45.x-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![React](https://img.shields.io/badge/React-19.x-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+  **A bespoke, Google Chrome-tabs powered developer workstation and native interactive terminal for Claude Code.**
+
+  [![License: MIT](https://img.shields.io/badge/License-MIT-amber.svg)](https://opensource.org/licenses/MIT)
+  [![Author](https://img.shields.io/badge/Author-aemresrbyk-181717?logo=github&logoColor=white)](https://github.com/aemresrbyk)
+  [![macOS Apple Silicon & Intel](https://img.shields.io/badge/Platform-macOS%20(arm64%20%7C%20x64)-black?logo=apple&logoColor=white)](#-quick-install-macos)
+  [![Electron](https://img.shields.io/badge/Electron-45.x-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
+  [![React](https://img.shields.io/badge/React-19.x-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+  [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+  [![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 
 </div>
 
 ---
 
-## 🎛️ Key Features & Architecture
+## ⚡ 1-Line Quick Install (macOS)
 
-- **🖥️ In-App Embedded Terminal (`node-pty` + `xterm.js`)**:
-  - No external terminal app is needed. The app itself is an interactive terminal emulator.
-  - Claude Code runs directly inside each tab with full ANSI colors, syntax rendering, keyboard interaction, and scrollback.
-  - Session preservation: switching between tabs keeps background terminal processes and Claude streams active without resetting.
-- **🌐 Google Chrome-Style Project Tabs**:
-  - Seamlessly switch between multiple Claude Code repositories (`[ ⚡ my-project ✕ ] [ ⚡ api-server ✕ ] [ + ]`).
-  - Native tab management with shortcuts (`⌘1-9`, `⌘T` for new tab, `⌘W` to close tab).
-  - Clean titlebar layout with protected macOS traffic lights spacing (no overlapping window buttons).
-- **🎨 5 Built-in Themes (Theme Engine)**:
-  - **🔥 Anthropic Warm** (Warm charcoal, terracotta amber, parchment text)
-  - **🌑 OLED Pure Black** (Pure black `#000000`, minimal monochrome)
-  - **⚡ Cyber Slate** (Deep slate navy, cyan/sky accents)
-  - **❄️ Nord Frost** (Arctic ice & cool gray-blue)
-  - **☀️ Paper Minimal** (Clean crisp light mode)
-- **🛡️ Instant Flag Switches & Omnibar**:
-  - `[● --dangerously-skip-permissions]`: One-click toggle so Claude executes without permission prompts.
-  - `[● --continue (-c)]`: Quickly resume the most recent conversation.
-  - Custom input for typing extra prompts or flags (`-p "fix bugs"`, `--worktree feat`).
-  - Dedicated control actions: `Run / Restart`, `^C Interrupt`, `Clear`, `Open in VS Code`, and `Reveal in Finder`.
-- **📂 In-App File Explorer & CLAUDE.md Viewer**:
-  - Switch between `Terminal`, `CLAUDE.md`, and `Files` tabs.
-  - Inspect repository files and read code directly inside the application with line counts and syntax view.
-- **📁 Drag & Drop Folder Detection**:
-  - Drag any folder from Finder directly into the window to register it and open a new tab immediately.
-- **⌨️ Spotlight Command Palette**:
-  - Press `⌘P` or `⌘K` anywhere to quickly fuzzy search repositories and open them (`↵` to view, `⌘↵` to open in new tab).
+Open your macOS Terminal and run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aemresrbyk/claude-code-launcher/main/install.sh | bash
+```
+
+> **What this does:**
+> - Detects your Apple Silicon (`arm64`) or Intel (`x64`) architecture.
+> - Installs `Claude Code Launcher.app` directly into `/Applications`.
+> - Removes macOS Gatekeeper quarantine flags so it opens without security blocks.
+> - Creates a desktop alias at `~/Desktop/Claude Code Launcher`.
+
+---
+
+## 💡 Why Use Claude Code Launcher? (Key Reasons)
+
+While Claude Code CLI is a brilliant coding agent, running it in a standard terminal leads to repetitive friction. **Claude Code Launcher** solves these pain points:
+
+1. **🛡️ Zero Interruption Workflow (`--dangerously-skip-permissions`)**:
+   - Tired of typing `y` to approve 50 bash commands and file writes?
+   - Toggle `--dangerously-skip-permissions` with one click or keep it permanently active per project.
+2. **🌐 Google Chrome-Style Multi-Terminal Tabs (`⌘T` / `⌘1-9`)**:
+   - Work on 5 repositories simultaneously without messy separate terminal windows.
+   - Switch instantly between project tabs with `⌘1` through `⌘9`.
+   - Open multiple tabs for the *same* repository (e.g. `Tab 1: claude agent`, `Tab 2: bun run dev`).
+3. **⚡ 1-Click Slash Commands & Prompt Presets Bar**:
+   - Trigger essential Claude routines with single-click pills:
+     - `/doctor` (Check health & MCP connections)
+     - `/compact` (Compact session context)
+     - `/init` (Initialize project config)
+     - `/cost` (Inspect token usage and session expenses)
+     - `Review Git Diff` (Claude reviews uncommitted git changes)
+     - `Find Bugs` (Scan code for regressions and edge cases)
+     - `Write Tests` (Generate unit tests for recent changes)
+4. **📄 Smart CLAUDE.md Generator & In-App Live Editor**:
+   - `CLAUDE.md` is Claude Code's memory and rulebook.
+   - If missing: 1-click **"✦ Generate Smart CLAUDE.md"** detects your stack (TypeScript, Bun, Node, Python, Rust) and writes project rules.
+   - If present: live in-app editor with **Save Changes (⌘S)** directly to disk.
+5. **📝 Integrated Prompt Drafter & Scratchpad**:
+   - While Claude is generating code, draft your next multi-line prompt, paste API logs, or save snippets in the built-in scratchpad.
+   - Hit **"Send ↵"** to dispatch the drafted prompt directly to the active terminal.
+6. **🌿 Live Git Insights & Modified Files Badge**:
+   - Shows current Git branch and uncommitted modified file count (`● 3 modified`).
+   - One-click trigger to have Claude review your diff before committing.
+7. **🎨 5 Curated Developer Themes**:
+   - **🔥 Anthropic Warm** (Warm charcoal, terracotta amber, parchment text)
+   - **🌑 OLED Pure Black** (Pure black `#000000`, high contrast monochrome)
+   - **⚡ Cyber Slate** (Deep slate navy, cyan/sky accents)
+   - **❄️ Nord Frost** (Arctic ice & cool gray-blue)
+   - **☀️ Paper Minimal** (Clean crisp light mode)
+8. **🖥️ In-App Embedded Terminal (`node-pty` + `@xterm/xterm`)**:
+   - Fully embedded terminal emulator with full ANSI truecolor, mouse selection, copy (`⌘C`), paste (`⌘V`), and scrollback. No external Terminal popups.
 
 ---
 
@@ -52,10 +80,12 @@ Designed specifically for developers who manage multiple Claude Code repositorie
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ [●] [●] [●]   [⚡ my-app ✕] [⚡ api-gateway ✕] [⚡ auth ✕]  [+]   [🔥 Anthropic ▾] [⚙] │
+│ [●] [●] [●] ✦ [shorts ✕] [befass ✕] [kitefold ✕] [+] [📁]           [🔥 Anthropic ▾] [⚙]│
 ├────────────────────────────────────────────────────────────────────────────────────────┤
-│ ❯ my-app  🌿 main | [● --dangerously-skip-permissions] [--continue] [Prompt...] [▶ Run]│
-│                     [ >_ Terminal ]  [ 📄 CLAUDE.md ]  [ 📂 Files ]   [^C] [Clear]     │
+│ ❯ shorts  🌿 main • 2 modified | [● --dangerously-skip-permissions] [--continue] [▶ Run]│
+│                                [ >_ Terminal ]  [ 📄 CLAUDE.md ]  [ 📂 Files ]  [📝]   │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ QUICK: [/doctor] [/compact] [/init] [/cost] [Review Diff] [Find Bugs] [Write Tests]    │
 ├────────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                        │
 │   ╭──────────────────────────────────────────────────────────────────────────────╮     │
@@ -70,79 +100,63 @@ Designed specifically for developers who manage multiple Claude Code repositorie
 │                      [ Interactive Embedded Xterm Canvas ]                             │
 │                                                                                        │
 ├────────────────────────────────────────────────────────────────────────────────────────┤
-│ ⌘P Find  |  ⌘T Tab  |  ⌘W Close  |  ⌘1-9 Switch Tab              3 SESSIONS ACTIVE • 🔥│
+│ ⌘P Find  |  ⌘T Tab  |  ⌘W Close  |  ⌘1-9 Switch Tab    ● Claude Ready • 3 SESSIONS • 🔥│
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🚀 Getting Started
+## ⌨️ Global Keyboard Shortcuts
+
+| Shortcut | Action | Description |
+|---|---|---|
+| `⌘T` | **New Tab / Project Picker** | Opens search modal or creates new project tab |
+| `⌘P` / `⌘K` | **Command Palette** | Quick search indexed repositories & actions |
+| `⌘W` | **Close Tab** | Closes active terminal session safely |
+| `⌘1` – `⌘9` | **Switch Tab** | Instantly switches between active sessions |
+| `⌘C` | **Copy** | Copies selected text from terminal or preview |
+| `⌘V` | **Paste** | Pastes clipboard text directly into PTY stream |
+| `Enter` | **Run Omnibar** | Executes current prompt in active Claude terminal |
+
+---
+
+## 🛠️ Build From Source
 
 ### Prerequisites
+- Node.js 18+ or [Bun](https://bun.sh) (recommended)
+- Claude Code CLI (`npm install -g @anthropic-ai/claude-code`)
 
-- Node.js 18+ (or [Bun](https://bun.sh))
-- Claude Code CLI installed (`claude` in your PATH or `~/.local/bin/claude`)
-
-### 1. Clone & Install
+### Setup & Run
 
 ```bash
+# 1. Clone repository
 git clone https://github.com/aemresrbyk/claude-code-launcher.git
 cd claude-code-launcher
-bun install # or npm install
-```
 
-### 2. Development Mode
+# 2. Install dependencies
+bun install   # or npm install
 
-```bash
-bun run dev # or npm run dev
-```
+# 3. Development mode (with live reload)
+bun run dev   # or npm run dev
 
-### 3. Production Build & Run
-
-```bash
+# 4. Build application bundle & DMG
 bun run build
-bun run start
+bun run dist:mac
 ```
+
+Pre-packaged `.dmg` and `.zip` files will be placed in the `release/` folder.
 
 ---
 
-## 📦 Packaging Standalone Executables
+## 📦 Open Source Releases & CI/CD
 
-To package standalone binaries for desktop distribution:
-
-### macOS (.app & .dmg):
-```bash
-bun run pack       # Builds release/mac-arm64/Claude Code Launcher.app
-bun run dist:mac   # Builds release/Claude Code Launcher.dmg
-```
-
-### Windows (.exe / portable):
-```bash
-bun run dist:win
-```
-
-### Linux (.AppImage / .deb):
-```bash
-bun run dist:linux
-```
+This repository includes a fully automated GitHub Actions workflow (`.github/workflows/build-and-release.yml`):
+- Automatically builds native `.dmg` and `.zip` installers for **macOS Apple Silicon (`arm64`)** and **Intel (`x64`)**.
+- Releases are attached to GitHub Release tags (`v*`).
 
 ---
 
-## ⚙️ Configuration & Data Persistence
+## 📄 License & Credits
 
-User configurations, recent commands, flag preferences, themes, and active tab states are stored locally at:
-- **macOS / Linux**: `~/.claude-launcher/config.json`
-- **Windows**: `%USERPROFILE%\.claude-launcher\config.json`
-
----
-
-## 👤 Author
-
-**Ali Emre Sarıbıyık (aemresrbyk)**
-- GitHub: [@aemresrbyk](https://github.com/aemresrbyk)
-
----
-
-## 📄 License
-
-Distributed under the **MIT License**. See `LICENSE` for more information.
+- Created and maintained with ❤️ by **[Ali Emre Sarıbıyık (aemresrbyk)](https://github.com/aemresrbyk)**.
+- Licensed under the **[MIT License](LICENSE)**. Open source and free for the developer community.

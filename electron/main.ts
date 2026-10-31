@@ -6,7 +6,7 @@ import { exec } from 'child_process';
 import * as pty from 'node-pty';
 import { StorageManager } from './store';
 import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './terminal';
-import { listProjectFiles, readFileContent, getProjectSessions } from './scanner';
+import { listProjectFiles, readFileContent, getProjectSessions, saveFileContent, getGitStatusDetails, getSystemHealth } from './scanner';
 import { ProjectItem, AppSettings, ClaudeSession } from '../src/types';
 
 // The built directory structure
@@ -177,6 +177,18 @@ function registerIpcHandlers() {
 
   ipcMain.handle('project:read-file', async (_e, filePath: string) => {
     return readFileContent(filePath);
+  });
+
+  ipcMain.handle('project:save-file', async (_e, filePath: string, content: string) => {
+    return saveFileContent(filePath, content);
+  });
+
+  ipcMain.handle('project:git-status', async (_e, dirPath: string) => {
+    return getGitStatusDetails(dirPath);
+  });
+
+  ipcMain.handle('system:health', async () => {
+    return getSystemHealth();
   });
 
   ipcMain.handle('project:get-sessions', async (_e, projectPath: string) => {

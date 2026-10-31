@@ -41,6 +41,7 @@ export const App: React.FC = () => {
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
+  const [healthInfo, setHealthInfo] = useState<{ claudeInstalled: boolean; claudeVersion: string } | null>(null);
   const [toast, setToast] = useState<{ message: string; type?: 'info' | 'success' | 'error' } | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
@@ -70,6 +71,10 @@ export const App: React.FC = () => {
       if (setts.theme && THEMES[setts.theme]) {
         setTheme(setts.theme);
       }
+
+      window.electronAPI.getSystemHealth?.().then((h) => {
+        if (h) setHealthInfo(h);
+      }).catch(() => {});
 
       // Restore saved tabs or initialize
       if (setts.savedTabs && setts.savedTabs.length > 0) {
@@ -154,22 +159,34 @@ export const App: React.FC = () => {
     });
   };
 
-  const handleNewTab = (projectId: string) => {
-    const existing = tabs.find((t) => t.projectId === projectId);
-    if (existing) {
-      setActiveTabId(existing.id);
+  const handleNewTab = (projectId?: string) => {
+    if (!projectId) {
+      setIsPaletteOpen(true);
       return;
     }
 
+    const newTabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const newTab: TabSession = {
-      id: `tab-${Date.now()}-${projectId}`,
+      id: newTabId,
       projectId,
       customInput: '',
       isLaunched: true
     };
 
     setTabs((prev) => [...prev, newTab]);
-    setActiveTabId(newTab.id);
+    setActiveTabId(newTabId);
+    showToast(`OPENED TERMINAL: ${projects.find((p) => p.id === projectId)?.name || 'Project'}`);
+  };
+
+  const handleBrowseFolder = async () => {
+    try {
+      const dir = await window.electronAPI.pickDirectory();
+      if (dir) {
+        await handleAddProject(dir);
+      }
+    } catch (err: any) {
+      showToast(`Browse failed: ${err.message}`, 'error');
+    }
   };
 
   const handleUpdateFlags = async (projectId: string, flags: ProjectFlags) => {
@@ -248,16 +265,11 @@ export const App: React.FC = () => {
         return;
       }
 
-      // Cmd/Ctrl + T -> New tab
+      // Cmd/Ctrl + T -> Open New Tab / Project Selector
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 't') {
         e.preventDefault();
         playClickSound();
-        if (projects.length > 0) {
-          const nextProj = projects.find((p) => !tabs.some((t) => t.projectId === p.id)) || projects[0];
-          handleNewTab(nextProj.id);
-        } else {
-          setIsAddProjectOpen(true);
-        }
+        setIsPaletteOpen(true);
       }
 
       // Cmd/Ctrl + W -> Close active tab
@@ -303,6 +315,7 @@ export const App: React.FC = () => {
         onSelectTab={handleSelectTab}
         onCloseTab={handleCloseTab}
         onNewTab={handleNewTab}
+        onBrowseFolder={handleBrowseFolder}
         onOpenAddModal={() => setIsAddProjectOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenPalette={() => setIsPaletteOpen(true)}
@@ -388,6 +401,18 @@ export const App: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          {healthInfo && (
+            <div className="flex items-center gap-1.5" title={healthInfo.claudeVersion}>
+              <span
+                className="w-1.5 h-1.5 rounded-full animate-pulse"
+                style={{ backgroundColor: healthInfo.claudeInstalled ? '#10b981' : '#ef4444' }}
+              />
+              <span style={{ color: healthInfo.claudeInstalled ? themeConfig.textPrimary : '#ef4444' }}>
+                {healthInfo.claudeInstalled ? `Claude ${healthInfo.claudeVersion.replace(' (Claude Code)', '')}` : 'Claude Not Found'}
+              </span>
+              <span>•</span>
+            </div>
+          )}
           <span>{tabs.length} SESSIONS ACTIVE</span>
           <span>•</span>
           <span>{themeConfig.name.toUpperCase()}</span>
@@ -437,14 +462,11 @@ export const App: React.FC = () => {
         isOpen={isPaletteOpen}
         onClose={() => setIsPaletteOpen(false)}
         projects={projects}
-        onSelectProject={(pId, inNew) => {
-          if (inNew) {
-            handleNewTab(pId);
-          } else {
-            handleNewTab(pId);
-          }
-        }}
+        currentProjectId={tabs.find((t) => t.id === activeTabId)?.projectId}
+        themeConfig={themeConfig}
+        onSelectProject={(pId) => handleNewTab(pId)}
         onOpenAddModal={() => setIsAddProjectOpen(true)}
+        onBrowseFolder={handleBrowseFolder}
       />
 
       <SettingsModal
