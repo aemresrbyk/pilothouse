@@ -36,7 +36,12 @@
       "artifactName": "Electron-${arch}-mac.${ext}",
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist"
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSDesktopFolderUsageDescription": "Electron opens terminals and reads git status for projects stored in your Desktop folder.",
+        "NSDocumentsFolderUsageDescription": "Electron opens terminals and reads git status for projects stored in your Documents folder.",
+        "NSDownloadsFolderUsageDescription": "Electron opens terminals and reads git status for projects stored in your Downloads folder."
+      }
     },
     "win": {
       "icon": "build/icon.png",

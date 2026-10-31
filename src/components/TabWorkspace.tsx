@@ -398,7 +398,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
         </div>
 
         {/* Center: Essential Flags & Quick Omnibar */}
-        <div className="flex items-center gap-1.5 flex-1 max-w-xl min-w-0 justify-center">
+        <div className="flex items-center gap-1.5 flex-1 max-w-xl min-w-0 justify-start">
           {/* --dangerously-skip-permissions pill */}
           <button
             type="button"
@@ -415,8 +415,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
               className="w-1.5 h-1.5 rounded-full"
               style={{ backgroundColor: flags.dangerouslySkipPermissions ? themeConfig.accent : themeConfig.textMuted }}
             />
-            <span className="hidden sm:inline">--dangerously-skip-permissions</span>
-            <span className="sm:hidden">--skip-perm</span>
+            <span className="hidden 2xl:inline">--dangerously-skip-permissions</span>
+            <span className="2xl:hidden">--skip-perm</span>
           </button>
 
           {/* --continue pill */}
