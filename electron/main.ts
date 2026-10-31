@@ -195,7 +195,8 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('project:get-sessions', async (_e, projectPath: string) => {
-    return getProjectSessions(projectPath);
+    // Sessions without a user prompt (opened and closed) have nothing to resume.
+    return getProjectSessions(projectPath, true).filter((s) => s.title);
   });
 
   ipcMain.handle('system:validate-path', async (_e, targetPath: string) => {

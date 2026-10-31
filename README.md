@@ -40,6 +40,7 @@ If you run `./install.sh` inside a clone, it builds from source instead of downl
 - **Tabbed embedded terminals.** Each tab runs a login shell in the project folder and starts Claude automatically. You can open several tabs for the same project (e.g. one for Claude, one for `npm run dev`). Open tabs come back when you restart the app.
 - **Per-project flags.** Toggle `--dangerously-skip-permissions` and `--continue`, or add any extra flags/prompt in the input bar. **Run** restarts the session with the current command.
 - **Quick actions.** One-click `/doctor`, `/compact`, `/init`, `/cost`, plus "Review Git Diff", "Find Bugs" and "Write Tests" prompts sent to the running Claude session.
+- **Conversation history.** Claude Code saves every conversation. The **History** view lists a project's previous sessions by their first prompt, and one click reopens a session in the tab with `claude --resume`.
 - **CLAUDE.md editor.** View and edit the project's `CLAUDE.md` in the app, or start from a template if the project doesn't have one.
 - **File browser.** Browse project folders and preview files (large files are truncated, open them in your editor for the full content).
 - **Prompt drafter.** A per-project scratchpad for multi-line prompts, sent to the terminal with one click.

@@ -20,6 +20,7 @@ export interface ClaudeSession {
   sizeBytes: number;
   formattedSize: string;
   dateStr: string;
+  title?: string;
 }
 
 export interface ClaudeMetrics {

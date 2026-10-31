@@ -27,9 +27,10 @@ import {
   Stethoscope,
   Minimize2,
   HelpCircle,
-  Coins
+  Coins,
+  History
 } from 'lucide-react';
-import { ProjectItem, TabSession, ProjectFlags, FileItem } from '../types';
+import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession } from '../types';
 import { ThemeConfig } from '../theme';
 import { EmbeddedTerminal } from './EmbeddedTerminal';
 import { playClickSound, playToggleSound, playLaunchSound } from '../utils/audio';
@@ -55,7 +56,10 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   isActive,
   claudePath
 }) => {
-  const [viewMode, setViewMode] = useState<'terminal' | 'claude-md' | 'files'>('terminal');
+  const [viewMode, setViewMode] = useState<'terminal' | 'claude-md' | 'files' | 'history'>('terminal');
+  // Command the next terminal (re)mount runs; null = the normal fullCommand.
+  const [launchCommand, setLaunchCommand] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ClaudeSession[] | null>(null);
   const [customInput, setCustomInput] = useState<string>(tabSession.customInput || '');
   const [termSessionKey, setTermSessionKey] = useState<number>(1);
   const [copiedPath, setCopiedPath] = useState(false);
@@ -115,19 +119,22 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
     loadGitStatus();
   }, [loadGitStatus, viewMode]);
 
-  // Compile full command for Claude
-  const fullCommand = useMemo(() => {
+  // Compile full command for Claude; with resumeId it reopens that session instead of --continue / the input bar.
+  const buildCommand = (resumeId?: string) => {
     const parts = [/\s/.test(claudePath) ? `"${claudePath}"` : claudePath];
     if (flags.dangerouslySkipPermissions) parts.push('--dangerously-skip-permissions');
-    if (flags.continueLast) parts.push('--continue');
+    if (flags.continueLast && !resumeId) parts.push('--continue');
     if (flags.chrome) parts.push('--chrome');
     if (flags.verbose) parts.push('--verbose');
     if (flags.bare) parts.push('--bare');
-    if (customInput.trim()) {
+    if (resumeId) {
+      parts.push('--resume', resumeId);
+    } else if (customInput.trim()) {
       parts.push(customInput.trim());
     }
     return parts.join(' ');
-  }, [flags, customInput, claudePath]);
+  };
+  const fullCommand = useMemo(() => buildCommand(), [flags, customInput, claudePath]);
 
   const toggleFlag = (key: keyof ProjectFlags) => {
     const nextVal = !flags[key];
@@ -141,6 +148,14 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   // Remounting the terminal kills the old PTY and spawns a fresh one running fullCommand.
   const handleRestartClaude = () => {
     playLaunchSound();
+    setLaunchCommand(null);
+    setViewMode('terminal');
+    setTermSessionKey((k) => k + 1);
+  };
+
+  const handleResumeSession = (sessionId: string) => {
+    playLaunchSound();
+    setLaunchCommand(buildCommand(sessionId));
     setViewMode('terminal');
     setTermSessionKey((k) => k + 1);
   };
@@ -178,6 +193,11 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   useEffect(() => {
     if (viewMode === 'claude-md' && !claudeMdContent) {
       loadClaudeMd();
+    }
+
+    if (viewMode === 'history') {
+      setSessions(null);
+      window.electronAPI.getSessions(project.path).then(setSessions).catch(() => setSessions([]));
     }
 
     if (viewMode === 'files') {
@@ -491,6 +511,22 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
               <Layers className="w-3 h-3" />
               <span>Files</span>
             </button>
+
+            <button
+              onClick={() => {
+                playClickSound();
+                setViewMode('history');
+              }}
+              title="Previous Claude sessions in this project"
+              className="px-2 py-0.5 rounded text-[10px] font-medium transition-colors flex items-center gap-1"
+              style={{
+                backgroundColor: viewMode === 'history' ? themeConfig.bgTabActive : 'transparent',
+                color: viewMode === 'history' ? themeConfig.textPrimary : themeConfig.textMuted
+              }}
+            >
+              <History className="w-3 h-3" />
+              <span>History</span>
+            </button>
           </div>
 
           {/* Action: Run / Launch Claude */}
@@ -619,7 +655,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             key={`term-${tabSession.id}-${termSessionKey}`}
             tabId={tabSession.id}
             projectPath={project.path}
-            initialCommand={fullCommand}
+            initialCommand={launchCommand ?? fullCommand}
             theme={themeConfig}
             isActive={isActive && viewMode === 'terminal'}
           />
@@ -869,6 +905,48 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
         )}
 
         {/* Files Browser View */}
+        {viewMode === 'history' && (
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="max-w-4xl mx-auto">
+              <div className="text-[11px] mb-3" style={{ color: themeConfig.textMuted }}>
+                Claude Code saves every conversation for this project. Pick one to reopen it with <code>--resume</code> in this tab.
+              </div>
+              {sessions === null ? (
+                <div className="text-center py-16 text-xs" style={{ color: themeConfig.textMuted }}>Loading sessions...</div>
+              ) : sessions.length === 0 ? (
+                <div className="text-center py-16 text-xs" style={{ color: themeConfig.textMuted }}>No saved sessions for this project yet.</div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {sessions.map((sess) => (
+                    <button
+                      key={sess.id}
+                      type="button"
+                      onClick={() => handleResumeSession(sess.id)}
+                      title={`${sess.title}\n\nSession ${sess.id}`}
+                      className="group w-full text-left px-3 py-2 rounded-lg border flex items-center gap-3 transition-colors hover:opacity-100"
+                      style={{ backgroundColor: themeConfig.bgCard, borderColor: themeConfig.border }}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs truncate" style={{ color: themeConfig.textPrimary }}>{sess.title}</div>
+                        <div className="text-[10px] mt-0.5" style={{ color: themeConfig.textMuted }}>
+                          {sess.dateStr} · {sess.formattedSize} · {sess.id.slice(0, 8)}
+                        </div>
+                      </div>
+                      <span
+                        className="px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 flex-shrink-0 text-white"
+                        style={{ backgroundColor: themeConfig.accent }}
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        Resume
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {viewMode === 'files' && (
           <div className="flex-1 flex overflow-hidden">
             {/* File List Sidebar */}

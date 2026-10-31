@@ -8,7 +8,7 @@ export function getClaudeJsonPath(): string {
   return path.join(os.homedir(), '.claude.json');
 }
 
-export function getProjectSessions(projectPath: string): ClaudeSession[] {
+export function getProjectSessions(projectPath: string, withTitles = false): ClaudeSession[] {
   try {
     const homedir = os.homedir();
     // Claude Code encodes the project dir by replacing every non-alphanumeric char with '-'.
@@ -38,7 +38,8 @@ export function getProjectSessions(projectPath: string): ClaudeSession[] {
             modifiedAt: stat.mtimeMs,
             sizeBytes: stat.size,
             formattedSize,
-            dateStr
+            dateStr,
+            title: withTitles ? getSessionTitle(fullPath) : undefined
           });
         } catch {
           // ignore stat errors
@@ -51,6 +52,29 @@ export function getProjectSessions(projectPath: string): ClaudeSession[] {
     console.error('Failed to get project sessions:', err);
     return [];
   }
+}
+
+// First real user prompt of a session transcript, used as its title in the History view.
+export function getSessionTitle(filePath: string, maxBytes = 256 * 1024): string | undefined {
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    const buf = Buffer.alloc(maxBytes);
+    const n = fs.readSync(fd, buf, 0, maxBytes, 0);
+    fs.closeSync(fd);
+    for (const line of buf.toString('utf-8', 0, n).split('\n')) {
+      if (!line.includes('"type":"user"')) continue;
+      let o: any;
+      try { o = JSON.parse(line); } catch { continue; } // last line may be cut off at maxBytes
+      if (o.type !== 'user' || o.isMeta) continue;
+      const c = o.message?.content;
+      const text = typeof c === 'string' ? c : Array.isArray(c) ? c.find((b: any) => b?.type === 'text')?.text : undefined;
+      // skip command wrappers / tool output, which start with an XML-ish tag
+      if (typeof text === 'string' && text.trim() && !text.trimStart().startsWith('<')) {
+        return text.trim().replace(/\s+/g, ' ').slice(0, 160);
+      }
+    }
+  } catch {}
+  return undefined;
 }
 
 export function getProjectClaudeMetrics(projectPath: string): ClaudeMetrics | undefined {
