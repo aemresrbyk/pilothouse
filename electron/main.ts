@@ -121,8 +121,7 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('project:launch', async (_e, projectId: string, customCommand?: string) => {
-    const projects = storage.getProjects();
-    const project = projects.find(p => p.id === projectId);
+    const project = storage.getProject(projectId);
     if (!project) {
       return { success: false, error: 'Project not found' };
     }

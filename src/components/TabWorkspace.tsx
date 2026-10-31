@@ -380,7 +380,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
           {gitStatus?.isGit && (
             <div
               onClick={() => handleExecuteCommand('Review the recent git diff and summarize changes')}
-              title={`Git Branch: ${gitStatus.branch}${gitStatus.modifiedCount > 0 ? ` (${gitStatus.modifiedCount} modified files). Click to review with Claude!` : ''}`}
+              title={`Git Branch: ${gitStatus.branch} (${gitStatus.statusText}). Click to review with Claude!`}
               className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] cursor-pointer hover:opacity-90 border transition-all"
               style={{
                 backgroundColor: gitStatus.modifiedCount > 0 ? themeConfig.accentBg : themeConfig.bgTabActive,

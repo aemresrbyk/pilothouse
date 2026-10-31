@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { ProjectItem, AppSettings } from '../src/types';
-import { scanClaudeProjects, buildProjectItem } from './scanner';
+import { scanClaudeProjects, buildProjectItem, getGitInfo } from './scanner';
 import { findClaudeBinary } from './terminal';
 
 const CONFIG_DIR = path.join(os.homedir(), '.electron-app');
@@ -98,14 +98,19 @@ export class StorageManager {
     this.saveDirect(this.data);
   }
 
-  public getProjects(): ProjectItem[] {
+  // Stored entries, without refreshing disk/git metadata.
+  public getProject(id: string): ProjectItem | undefined {
+    return this.data.projects.find(p => p.id === id);
+  }
+
+  public async getProjects(): Promise<ProjectItem[]> {
     // Re-verify that projects still exist on disk and refresh their metadata (git branch, claude.md, etc.)
-    return this.data.projects.map(p => {
-      if (fs.existsSync(p.path)) {
-        return buildProjectItem(p.path, p, p.lastLaunched);
-      }
-      return p;
-    });
+    return Promise.all(this.data.projects.map(async p => {
+      if (!fs.existsSync(p.path)) return p;
+      const item = buildProjectItem(p.path, p, p.lastLaunched);
+      item.gitInfo = await getGitInfo(p.path);
+      return item;
+    }));
   }
 
   public getSettings(): AppSettings {

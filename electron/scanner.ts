@@ -1,8 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { execSync } from 'child_process';
+import { execSync, execFile } from 'child_process';
+import { promisify } from 'util';
 import { ProjectItem, FileItem, GitInfo, ClaudeMetrics, ClaudeSession } from '../src/types';
+
+const execFileAsync = promisify(execFile);
 
 export function getClaudeJsonPath(): string {
   return path.join(os.homedir(), '.claude.json');
@@ -157,67 +160,44 @@ export function scanClaudeProjects(): Array<{ path: string; lastStartTime?: numb
   }
 }
 
-export function getGitInfo(projectPath: string): GitInfo {
+// Async + parallel: the old execSync version blocked the main process ~200ms per project on every list refresh.
+export async function getGitInfo(projectPath: string): Promise<GitInfo> {
   const gitDir = path.join(projectPath, '.git');
   if (!fs.existsSync(gitDir)) {
     return { isGit: false };
   }
 
+  const git = (...args: string[]) =>
+    // timeout kills git: `status` can take minutes in repos with huge untracked trees
+    execFileAsync('git', args, { cwd: projectPath, encoding: 'utf-8', timeout: 1500 })
+      .then((r) => r.stdout.trim())
+      .catch(() => undefined);
+
+  let branch: string | undefined;
   try {
-    let branch = 'main';
-    // Try fast file read of .git/HEAD
-    const headPath = path.join(gitDir, 'HEAD');
-    if (fs.existsSync(headPath)) {
-      const headContent = fs.readFileSync(headPath, 'utf-8').trim();
-      if (headContent.startsWith('ref: refs/heads/')) {
-        branch = headContent.replace('ref: refs/heads/', '').trim();
-      }
-    } else {
-      branch = execSync('git rev-parse --abbrev-ref HEAD', {
-        cwd: projectPath,
-        encoding: 'utf-8',
-        timeout: 800,
-        stdio: ['ignore', 'pipe', 'ignore']
-      }).trim();
+    const headContent = fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf-8').trim();
+    if (headContent.startsWith('ref: refs/heads/')) {
+      branch = headContent.replace('ref: refs/heads/', '').trim();
     }
-
-    let uncommittedCount = 0;
-    try {
-      const statusOut = execSync('git status --porcelain', {
-        cwd: projectPath,
-        encoding: 'utf-8',
-        timeout: 800,
-        stdio: ['ignore', 'pipe', 'ignore']
-      }).trim();
-      if (statusOut) {
-        uncommittedCount = statusOut.split('\n').filter(Boolean).length;
-      }
-    } catch {
-      // ignore
-    }
-
-    let commitHash: string | undefined = undefined;
-    try {
-      commitHash = execSync('git rev-parse --short HEAD', {
-        cwd: projectPath,
-        encoding: 'utf-8',
-        timeout: 800,
-        stdio: ['ignore', 'pipe', 'ignore']
-      }).trim();
-    } catch {
-      // ignore
-    }
-
-    return {
-      isGit: true,
-      branch,
-      hasUncommitted: uncommittedCount > 0,
-      uncommittedCount,
-      commitHash
-    };
   } catch {
-    return { isGit: true, branch: 'git' };
+    // .git may be a file (worktree/submodule); fall back to git below
   }
+
+  const [statusOut, commitHash, gitBranch] = await Promise.all([
+    git('status', '--porcelain'),
+    git('rev-parse', '--short', 'HEAD'),
+    branch ? Promise.resolve(branch) : git('rev-parse', '--abbrev-ref', 'HEAD')
+  ]);
+
+  // undefined = status timed out/failed: unknown, not "clean"
+  const uncommittedCount = statusOut === undefined ? undefined : statusOut.split('\n').filter(Boolean).length;
+  return {
+    isGit: true,
+    branch: gitBranch || 'git',
+    hasUncommitted: uncommittedCount === undefined ? undefined : uncommittedCount > 0,
+    uncommittedCount,
+    commitHash: commitHash || undefined
+  };
 }
 
 export function buildProjectItem(
@@ -229,7 +209,6 @@ export function buildProjectItem(
   const folderName = path.basename(projectPath) || projectPath;
   const hasClaudeMd = fs.existsSync(path.join(projectPath, 'CLAUDE.md')) || fs.existsSync(path.join(projectPath, 'claude.md'));
   const hasPackageJson = fs.existsSync(path.join(projectPath, 'package.json'));
-  const gitInfo = getGitInfo(projectPath);
   const resolvedMetrics = metrics || existing?.metrics || getProjectClaudeMetrics(projectPath);
 
   return {
@@ -249,7 +228,7 @@ export function buildProjectItem(
     isFavorite: existing?.isFavorite || false,
     tags: existing?.tags || [],
     terminalOverride: existing?.terminalOverride || 'default',
-    gitInfo,
+    gitInfo: existing?.gitInfo, // refreshed asynchronously by StorageManager.getProjects()
     hasClaudeMd,
     hasPackageJson,
     metrics: resolvedMetrics
@@ -339,38 +318,18 @@ export function saveFileContent(filePath: string, content: string): { success: b
   }
 }
 
-export function getGitStatusDetails(dirPath: string): { isGit: boolean; branch: string; modifiedCount: number; statusText: string } {
-  try {
-    if (!fs.existsSync(path.join(dirPath, '.git'))) {
-      return { isGit: false, branch: '', modifiedCount: 0, statusText: 'Not a git repo' };
-    }
-
-    const branch = execSync('git branch --show-current', {
-      cwd: dirPath,
-      encoding: 'utf-8',
-      timeout: 1500,
-      stdio: ['ignore', 'pipe', 'ignore']
-    }).trim() || 'detached';
-
-    const statusOutput = execSync('git status --porcelain', {
-      cwd: dirPath,
-      encoding: 'utf-8',
-      timeout: 2000,
-      stdio: ['ignore', 'pipe', 'ignore']
-    }).trim();
-
-    const lines = statusOutput ? statusOutput.split('\n').filter(Boolean) : [];
-    const modifiedCount = lines.length;
-
-    return {
-      isGit: true,
-      branch,
-      modifiedCount,
-      statusText: modifiedCount > 0 ? `${modifiedCount} modified` : 'Clean'
-    };
-  } catch {
-    return { isGit: false, branch: '', modifiedCount: 0, statusText: '' };
+export async function getGitStatusDetails(dirPath: string): Promise<{ isGit: boolean; branch: string; modifiedCount: number; statusText: string }> {
+  const info = await getGitInfo(dirPath);
+  if (!info.isGit) {
+    return { isGit: false, branch: '', modifiedCount: 0, statusText: 'Not a git repo' };
   }
+  const n = info.uncommittedCount;
+  return {
+    isGit: true,
+    branch: info.branch || 'git',
+    modifiedCount: n ?? 0,
+    statusText: n === undefined ? 'status unavailable (git status too slow)' : n > 0 ? `${n} modified` : 'Clean'
+  };
 }
 
 export function getSystemHealth(): { claudeInstalled: boolean; claudePath: string; claudeVersion: string; nodeVersion: string } {

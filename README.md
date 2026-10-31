@@ -88,6 +88,20 @@ Settings and the project list are stored in `~/.electron-app/config.json`. Confi
 
 `.github/workflows/build-and-release.yml` builds macOS `arm64` and `x64` packages on every push to `main`. When you push a `v*` tag, it attaches `Electron-<arch>-mac.zip` / `.dmg` to a GitHub Release.
 
+### Code signing & notarization
+
+Builds are unsigned unless these repository secrets exist. Once they do, CI signs with the hardened runtime (`build/entitlements.mac.plist`) and notarizes automatically:
+
+| Secret | Value |
+|---|---|
+| `MAC_CERT_P12_BASE64` | `base64 -i cert.p12` of a **Developer ID Application** certificate (an *Apple Development* cert is not enough) |
+| `MAC_CERT_PASSWORD` | the `.p12` export password |
+| `APPLE_ID` | Apple ID email |
+| `APPLE_APP_SPECIFIC_PASSWORD` | app-specific password from appleid.apple.com |
+| `APPLE_TEAM_ID` | 10-character team ID |
+
+Local `npm run pack` / `dist:mac` builds stay unsigned on purpose.
+
 ---
 
 ## License

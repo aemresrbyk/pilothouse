@@ -8,9 +8,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "start": "env -u ELECTRON_RUN_AS_NODE electron .",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder",
-    "dist:mac": "electron-builder --mac",
+    "pack": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir",
+    "dist": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
+    "dist:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
     "dist:win": "electron-builder --win",
     "dist:linux": "electron-builder --linux",
     "postinstall": "node -e \"const fs=require('fs'),p=require('path'),d='node_modules/node-pty/prebuilds';if(process.platform!=='win32'&&fs.existsSync(d))for(const x of fs.readdirSync(d)){const f=p.join(d,x,'spawn-helper');if(fs.existsSync(f))fs.chmodSync(f,0o755)}\"",
@@ -29,12 +29,14 @@
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "build/icon.icns",
-      "identity": null,
       "target": [
         "dmg",
         "zip"
       ],
-      "artifactName": "Electron-${arch}-mac.${ext}"
+      "artifactName": "Electron-${arch}-mac.${ext}",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     },
     "win": {
       "icon": "build/icon.png",
