@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================
-#  Claude Code Launcher - macOS Automated Installer & Setup
+#  Electron - macOS Automated Installer & Setup
 #  Author: Ali Emre Sarıbıyık (aemresrbyk)
-#  Repository: https://github.com/aemresrbyk/claude-code-launcher
+#  Repository: https://github.com/aemresrbyk/electron
 # ==============================================================================
 
 set -e
@@ -18,17 +18,16 @@ NC='\033[0m' # No Color
 
 echo -e "${ACCENT}${BOLD}"
 cat << "EOF"
-   ___ _                 _         ___          _        
-  / __\ | __ _ _   _  __| | ___   / __\___   __| | ___   
- / /  | |/ _` | | | |/ _` |/ _ \ / /  / _ \ / _` |/ _ \  
-/ /___| | (_| | |_| | (_| |  __// /__| (_) | (_| |  __/  
-\____/|_|\__,_|\__,_|\__,_|\___|\____/\___/ \__,_|\___|  
-                                                         
-          ✦  L A U N C H E R  ✦                          
+   ___ _              _
+  / __| |___ __| |_ _ _ ___ _ _
+ | _|| / -_) _|  _| '_/ _ \ ' \
+ |___|_\___\__|\__|_| \___/_||_|
+
+     >_  desktop cockpit for Claude Code
 EOF
 echo -e "${NC}"
 echo -e "${AMBER}Automated Setup & Installer for macOS${NC}"
-echo -e "Repository: ${BLUE}https://github.com/aemresrbyk/claude-code-launcher${NC}"
+echo -e "Repository: ${BLUE}https://github.com/aemresrbyk/electron${NC}"
 echo "--------------------------------------------------------"
 
 # 1. System Check
@@ -64,7 +63,7 @@ else
 fi
 
 # 3. Installation Target
-APP_NAME="Claude Code Launcher.app"
+APP_NAME="Electron.app"
 DEST_DIR="/Applications"
 TARGET_APP="${DEST_DIR}/${APP_NAME}"
 
@@ -108,8 +107,10 @@ else
   # Remote install: download latest release from GitHub
   echo -e "Downloading latest release package from GitHub..."
   TMP_DIR="$(mktemp -d)"
-  GITHUB_REPO="aemresrbyk/claude-code-launcher"
-  DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/Claude-Code-Launcher-1.0.0-${ARCH}-mac.zip"
+  GITHUB_REPO="aemresrbyk/electron"
+  # electron-builder calls Intel "x64"; uname reports "x86_64"
+  RELEASE_ARCH="$ARCH"; [ "$ARCH" = "x86_64" ] && RELEASE_ARCH="x64"
+  DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/Electron-${RELEASE_ARCH}-mac.zip"
   
   curl -fsSL -o "${TMP_DIR}/app.zip" "${DOWNLOAD_URL}" || {
     echo -e "${RED}[ERROR] Could not download pre-built release package.${NC}"
@@ -132,7 +133,7 @@ echo -e "${GREEN}✓${NC} Cleared Gatekeeper quarantine flags"
 
 # 5. Create Desktop Shortcut
 echo -e "\n${BOLD}[4/4] Creating Desktop Shortcut...${NC}"
-DESKTOP_PATH="$HOME/Desktop/Claude Code Launcher"
+DESKTOP_PATH="$HOME/Desktop/Electron"
 rm -f "$DESKTOP_PATH"
 osascript -e "tell application \"Finder\" to make alias file to POSIX file \"${TARGET_APP}\" at POSIX file \"$HOME/Desktop\"" 2>/dev/null || {
   ln -sf "${TARGET_APP}" "$DESKTOP_PATH"
@@ -143,10 +144,10 @@ echo -e "${GREEN}✓${NC} Created shortcut at: ${BOLD}${DESKTOP_PATH}${NC}"
 echo -e "\n========================================================"
 echo -e "${GREEN}${BOLD}✓ INSTALLATION COMPLETE!${NC}"
 echo -e "========================================================"
-echo -e "You can launch Claude Code Launcher from:"
+echo -e "You can launch Electron from:"
 echo -e "  1. Your Desktop shortcut: ${AMBER}${DESKTOP_PATH}${NC}"
 echo -e "  2. Applications folder:   ${AMBER}${TARGET_APP}${NC}"
-echo -e "  3. Spotlight Search:      Type 'Claude Code Launcher' and press Enter"
+echo -e "  3. Spotlight Search:      Type 'Electron' and press Enter"
 echo ""
 echo -e "Enjoy coding with zero friction! ✦"
 

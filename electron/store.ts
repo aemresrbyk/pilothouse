@@ -5,8 +5,10 @@ import { ProjectItem, AppSettings } from '../src/types';
 import { scanClaudeProjects, buildProjectItem } from './scanner';
 import { findClaudeBinary } from './terminal';
 
-const CONFIG_DIR = path.join(os.homedir(), '.claude-launcher');
+const CONFIG_DIR = path.join(os.homedir(), '.electron-app');
 const DATA_FILE = path.join(CONFIG_DIR, 'config.json');
+// Pre-rename location; migrated once so existing projects/tabs/settings survive the rename.
+const LEGACY_DATA_FILE = path.join(os.homedir(), '.claude-launcher', 'config.json');
 
 interface StoredData {
   projects: ProjectItem[];
@@ -46,6 +48,14 @@ export class StorageManager {
   }
 
   private load(): StoredData {
+    if (!fs.existsSync(DATA_FILE) && fs.existsSync(LEGACY_DATA_FILE)) {
+      try {
+        fs.copyFileSync(LEGACY_DATA_FILE, DATA_FILE);
+      } catch (err) {
+        console.error('Failed to migrate legacy config:', err);
+      }
+    }
+
     if (!fs.existsSync(DATA_FILE)) {
       // First run: auto-detect projects from ~/.claude.json
       const detected = scanClaudeProjects();

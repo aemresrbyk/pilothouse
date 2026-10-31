@@ -11,7 +11,8 @@ export function getClaudeJsonPath(): string {
 export function getProjectSessions(projectPath: string): ClaudeSession[] {
   try {
     const homedir = os.homedir();
-    const encodedDirName = projectPath.replace(/[/.]/g, '-');
+    // Claude Code encodes the project dir by replacing every non-alphanumeric char with '-'.
+    const encodedDirName = projectPath.replace(/[^a-zA-Z0-9]/g, '-');
     const projectSessionsDir = path.join(homedir, '.claude', 'projects', encodedDirName);
 
     if (!fs.existsSync(projectSessionsDir)) {
@@ -275,7 +276,7 @@ export function listProjectFiles(dirPath: string): FileItem[] {
   }
 }
 
-export function readFileContent(filePath: string, maxBytes: number = 200000): { content: string; truncated: boolean } {
+export function readFileContent(filePath: string, maxBytes: number = 200000): { content: string; truncated: boolean; error?: string } {
   try {
     if (!fs.existsSync(filePath)) {
       throw new Error('File not found');
@@ -296,10 +297,7 @@ export function readFileContent(filePath: string, maxBytes: number = 200000): { 
       truncated: stat.size > maxBytes
     };
   } catch (err: any) {
-    return {
-      content: `Error reading file: ${err.message}`,
-      truncated: false
-    };
+    return { content: '', truncated: false, error: err.message };
   }
 }
 

@@ -1,7 +1,7 @@
 {
-  "name": "claude-code-launcher",
+  "name": "electron-app",
   "version": "1.0.0",
-  "description": "A sleek desktop launcher and project manager for Claude Code CLI",
+  "description": "Electron: a desktop cockpit with tabbed embedded terminals for Claude Code",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -12,11 +12,13 @@
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
     "dist:win": "electron-builder --win",
-    "dist:linux": "electron-builder --linux"
+    "dist:linux": "electron-builder --linux",
+    "postinstall": "node -e \"const fs=require('fs'),p=require('path'),d='node_modules/node-pty/prebuilds';if(process.platform!=='win32'&&fs.existsSync(d))for(const x of fs.readdirSync(d)){const f=p.join(d,x,'spawn-helper');if(fs.existsSync(f))fs.chmodSync(f,0o755)}\"",
+    "typecheck": "tsc --noEmit"
   },
   "build": {
-    "appId": "com.claude.launcher",
-    "productName": "Claude Code Launcher",
+    "appId": "com.aemresrbyk.electron",
+    "productName": "Electron",
     "directories": {
       "output": "release"
     },
@@ -31,7 +33,8 @@
       "target": [
         "dmg",
         "zip"
-      ]
+      ],
+      "artifactName": "Electron-${arch}-mac.${ext}"
     },
     "win": {
       "icon": "build/icon.png",
@@ -47,7 +50,10 @@
         "deb"
       ],
       "category": "Development"
-    }
+    },
+    "asarUnpack": [
+      "node_modules/node-pty/**"
+    ]
   },
   "keywords": [
     "claude",
@@ -60,12 +66,12 @@
   "author": "Ali Emre Sarıbıyık (aemresrbyk) <https://github.com/aemresrbyk>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/aemresrbyk/claude-code-launcher.git"
+    "url": "https://github.com/aemresrbyk/electron.git"
   },
   "bugs": {
-    "url": "https://github.com/aemresrbyk/claude-code-launcher/issues"
+    "url": "https://github.com/aemresrbyk/electron/issues"
   },
-  "homepage": "https://github.com/aemresrbyk/claude-code-launcher#readme",
+  "homepage": "https://github.com/aemresrbyk/electron#readme",
   "license": "MIT",
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",

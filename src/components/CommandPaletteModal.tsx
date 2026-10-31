@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, FolderPlus, GitBranch, Terminal, Plus, X, CopyPlus } from 'lucide-react';
+import { Search, FolderPlus, GitBranch, Terminal, X, CopyPlus, Trash2 } from 'lucide-react';
 import { ProjectItem } from '../types';
 import { ThemeConfig } from '../theme';
 import { playClickSound } from '../utils/audio';
@@ -12,6 +12,7 @@ interface CommandPaletteModalProps {
   currentProjectId?: string;
   themeConfig: ThemeConfig;
   onSelectProject: (projectId: string, inNewTab: boolean) => void;
+  onRemoveProject: (projectId: string) => void;
   onOpenAddModal: () => void;
   onBrowseFolder: () => void;
 }
@@ -23,6 +24,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   currentProjectId,
   themeConfig,
   onSelectProject,
+  onRemoveProject,
   onOpenAddModal,
   onBrowseFolder
 }) => {
@@ -49,6 +51,7 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
   });
 
   const totalItems = filtered.length;
+  if (selectedIndex >= totalItems && totalItems > 0) setSelectedIndex(totalItems - 1);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
@@ -250,6 +253,20 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
                     >
                       ↵ Open in New Tab
                     </span>
+                    <button
+                      type="button"
+                      title="Remove from launcher (does not delete files)"
+                      aria-label={`Remove ${item.name} from launcher`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        playClickSound();
+                        onRemoveProject(item.id);
+                      }}
+                      className="p-1 rounded hover:bg-black/20 hover:text-red-400 transition-colors"
+                      style={{ color: themeConfig.textMuted }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
               );

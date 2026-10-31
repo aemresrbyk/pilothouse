@@ -1,5 +1,5 @@
-import { contextBridge, ipcRenderer } from 'electron';
-import { ProjectItem, AppSettings, TerminalOption, FileItem } from '../src/types';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession } from '../src/types';
 
 export const electronAPI = {
   getProjects: (): Promise<ProjectItem[]> => ipcRenderer.invoke('projects:get'),
@@ -27,7 +27,7 @@ export const electronAPI = {
     ipcRenderer.invoke('project:open-editor', dirPath, editor),
   listFiles: (dirPath: string): Promise<FileItem[]> =>
     ipcRenderer.invoke('project:list-files', dirPath),
-  readFile: (filePath: string): Promise<{ content: string; truncated: boolean }> =>
+  readFile: (filePath: string): Promise<{ content: string; truncated: boolean; error?: string }> =>
     ipcRenderer.invoke('project:read-file', filePath),
   saveFile: (filePath: string, content: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('project:save-file', filePath, content),
@@ -41,6 +41,8 @@ export const electronAPI = {
     ipcRenderer.invoke('system:validate-path', targetPath),
   copyToClipboard: (text: string): Promise<void> =>
     ipcRenderer.invoke('clipboard:write', text),
+  // File.path was removed in Electron 32; this is the supported replacement for drag & drop.
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 
   // Embedded Terminal PTY APIs
   ptyCreate: (opts: { id: string; cwd: string; initialCommand?: string; cols?: number; rows?: number }): Promise<{ success: boolean; pid?: number; error?: string }> =>

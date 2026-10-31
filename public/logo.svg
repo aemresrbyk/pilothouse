@@ -1,79 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <defs>
-    <!-- Background Gradient -->
-    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#181B24"/>
-      <stop offset="50%" stop-color="#0F1117"/>
-      <stop offset="100%" stop-color="#08090D"/>
+    <linearGradient id="elBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1B1F2A"/>
+      <stop offset="1" stop-color="#0A0C11"/>
     </linearGradient>
-
-    <!-- Border Gradient -->
-    <linearGradient id="borderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FF8A65" stop-opacity="0.8"/>
-      <stop offset="50%" stop-color="#D9643A" stop-opacity="0.3"/>
-      <stop offset="100%" stop-color="#F59E0B" stop-opacity="0.6"/>
+    <linearGradient id="elAccent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFA270"/>
+      <stop offset="1" stop-color="#D9572B"/>
     </linearGradient>
-
-    <!-- Claude Flame / Spark Gradient -->
-    <linearGradient id="claudeFlame" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FF9E67"/>
-      <stop offset="50%" stop-color="#E0683B"/>
-      <stop offset="100%" stop-color="#C24E25"/>
-    </linearGradient>
-
-    <!-- Amber Glow Gradient -->
-    <linearGradient id="amberGlow" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#F59E0B"/>
-      <stop offset="100%" stop-color="#FDE68A"/>
-    </linearGradient>
-
-    <!-- Subtle Radial Glow Behind Symbol -->
-    <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#E0683B" stop-opacity="0.25"/>
-      <stop offset="70%" stop-color="#0F1117" stop-opacity="0"/>
-    </radialGradient>
-
-    <!-- Drop Shadow for Inner Marks -->
-    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="24" result="blur"/>
-      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-    </filter>
   </defs>
-
-  <!-- Squircle Base with Inner Dark Slate -->
-  <rect x="40" y="40" width="944" height="944" rx="210" ry="210" fill="url(#bgGrad)"/>
-  
-  <!-- Subtle Ambient Glow -->
-  <circle cx="512" cy="512" r="380" fill="url(#centerGlow)"/>
-
-  <!-- Sleek Border -->
-  <rect x="40" y="40" width="944" height="944" rx="210" ry="210" fill="none" stroke="url(#borderGrad)" stroke-width="14" stroke-opacity="0.85"/>
-
-  <!-- Terminal Chevron (>_) on the left -->
-  <g filter="url(#glow)">
-    <!-- Chevron (>) -->
-    <path d="M 270 330 L 450 512 L 270 694" 
-          fill="none" 
-          stroke="url(#claudeFlame)" 
-          stroke-width="56" 
-          stroke-linecap="round" 
-          stroke-linejoin="round"/>
-
-    <!-- Claude Spark / AI Star (✦) on the right -->
-    <!-- Center of Spark at (660, 480) -->
-    <path d="M 660 260 
-             C 660 380, 710 440, 830 480 
-             C 710 520, 660 580, 660 700 
-             C 660 580, 610 520, 490 480 
-             C 610 440, 660 380, 660 260 Z" 
-          fill="url(#claudeFlame)"/>
-
-    <circle cx="660" cy="480" r="26" fill="#FFF2EC"/>
-
-    <!-- Modern Terminal Cursor Bar (_) at the bottom -->
-    <line x1="330" y1="760" x2="520" y2="760" 
-          stroke="url(#amberGlow)" 
-          stroke-width="38" 
-          stroke-linecap="round"/>
-  </g>
+  <!-- macOS-style squircle tile with standard 100px safe margin -->
+  <rect x="100" y="100" width="824" height="824" rx="190" fill="url(#elBg)"/>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="188.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="3"/>
+  <!-- single tilted orbit -->
+  <ellipse cx="512" cy="512" rx="300" ry="122" transform="rotate(-28 512 512)" fill="none" stroke="url(#elAccent)" stroke-width="26" stroke-opacity="0.9"/>
+  <!-- terminal prompt >_ as the nucleus -->
+  <path d="M404 420 L496 512 L404 604" fill="none" stroke="#F4F1EA" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="528" y="580" width="112" height="44" rx="22" fill="#F4F1EA"/>
+  <!-- the electron -->
+  <circle cx="776" cy="371" r="40" fill="url(#elAccent)"/>
 </svg>

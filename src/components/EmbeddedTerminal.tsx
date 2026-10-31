@@ -107,17 +107,13 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({
 
     // 5. Handle Copy/Paste & Key Shortcuts
     term.attachCustomKeyEventHandler((e) => {
-      // Paste: Cmd+V / Ctrl+V
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v' && e.type === 'keydown') {
-        navigator.clipboard.readText().then((clipText) => {
-          if (clipText) {
-            window.electronAPI.ptyWrite(tabId, clipText);
-          }
-        }).catch(() => {});
-        return false;
-      }
-      // Copy: Cmd+C / Ctrl+C when there is a selection
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c' && term.hasSelection() && e.type === 'keydown') {
+      // Paste is left to xterm's native paste handler, which honours bracketed-paste mode.
+      // Copy: Cmd+C (mac) / Ctrl+C (others) when there is a selection; otherwise Ctrl+C stays SIGINT.
+      const isMac = navigator.platform.startsWith('Mac');
+      const mod = isMac ? e.metaKey : e.ctrlKey;
+      // Off mac, don't let xterm turn Ctrl+V into ^V; returning false lets the browser fire a native paste.
+      if (!isMac && e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'v') return false;
+      if (mod && e.key.toLowerCase() === 'c' && term.hasSelection() && e.type === 'keydown') {
         navigator.clipboard.writeText(term.getSelection()).catch(() => {});
         return false;
       }

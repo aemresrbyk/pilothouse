@@ -23,8 +23,6 @@ const ptySessions = new Map<string, pty.IPty>();
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 
 function createWindow() {
-  storage = new StorageManager();
-
   win = new BrowserWindow({
     width: 1100,
     height: 760,
@@ -67,6 +65,7 @@ app.on('activate', () => {
 });
 
 app.whenReady().then(() => {
+  storage = new StorageManager();
   registerIpcHandlers();
   createWindow();
 });
@@ -81,7 +80,11 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('projects:add', async (_e, dirPath: string) => {
-    return storage.addProject(dirPath);
+    const resolved = path.resolve(dirPath.trim().replace(/^~(?=$|[\\/])/, os.homedir()));
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+      throw new Error(`Not a directory: ${resolved}`);
+    }
+    return storage.addProject(resolved);
   });
 
   ipcMain.handle('projects:remove', async (_e, id: string) => {
@@ -230,7 +233,8 @@ function registerIpcHandlers() {
 
       const cleanEnv: Record<string, string> = {};
       for (const [k, v] of Object.entries(process.env)) {
-        if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') {
+        // Drop Claude Code's own session markers so a launcher started from inside Claude doesn't leak them into new sessions.
+        if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE' && k !== 'CLAUDECODE' && !k.startsWith('CLAUDE_CODE_')) {
           cleanEnv[k] = v;
         }
       }
@@ -238,6 +242,8 @@ function registerIpcHandlers() {
       const home = os.homedir();
       const envPath = `${home}/.local/bin:/opt/homebrew/bin:/usr/local/bin:${cleanEnv.PATH || ''}`;
       cleanEnv.PATH = envPath;
+      // Apple Terminal's per-window session restore must not run inside our PTY.
+      for (const k of ['TERM_PROGRAM', 'TERM_PROGRAM_VERSION', 'TERM_SESSION_ID']) delete cleanEnv[k];
       cleanEnv.TERM = 'xterm-256color';
       cleanEnv.COLORTERM = 'truecolor';
 
@@ -246,7 +252,11 @@ function registerIpcHandlers() {
       const safeCols = Math.max(80, Number(cols) || 80);
       const safeRows = Math.max(24, Number(rows) || 24);
 
-      const ptyProcess = pty.spawn(shell, isWin ? [] : ['-l'], {
+      // On POSIX the command is handed to the shell directly (typing it in after a fixed delay lost
+      // characters while slow rc files were still loading); an interactive shell takes over when it exits.
+      const cmd = initialCommand?.trim();
+      const args = isWin ? [] : cmd ? ['-l', '-i', '-c', `${cmd}; exec "${shell}" -l`] : ['-l'];
+      const ptyProcess = pty.spawn(shell, args, {
         name: 'xterm-256color',
         cols: safeCols,
         rows: safeRows,
@@ -256,7 +266,11 @@ function registerIpcHandlers() {
 
       ptySessions.set(id, ptyProcess);
 
+      // A replaced/killed session must not touch the map entry or UI of its successor (same id).
+      const isCurrent = () => ptySessions.get(id) === ptyProcess;
+
       ptyProcess.onData((data: string) => {
+        if (!isCurrent()) return;
         try {
           if (!event.sender.isDestroyed()) {
             event.sender.send(`pty:data:${id}`, data);
@@ -265,6 +279,7 @@ function registerIpcHandlers() {
       });
 
       ptyProcess.onExit(({ exitCode, signal }) => {
+        if (!isCurrent()) return;
         try {
           if (!event.sender.isDestroyed()) {
             event.sender.send(`pty:exit:${id}`, { exitCode, signal });
@@ -273,11 +288,11 @@ function registerIpcHandlers() {
         ptySessions.delete(id);
       });
 
-      if (initialCommand && initialCommand.trim().length > 0) {
+      if (isWin && cmd) {
         setTimeout(() => {
           try {
-            if (ptySessions.has(id)) {
-              ptyProcess.write(`${initialCommand.trim()}\r`);
+            if (isCurrent()) {
+              ptyProcess.write(`${cmd}\r`);
             }
           } catch {}
         }, 650);

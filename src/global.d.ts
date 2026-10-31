@@ -22,13 +22,14 @@ declare global {
       openFolder: (dirPath: string) => Promise<void>;
       openInEditor: (dirPath: string, editor?: string) => Promise<boolean>;
       listFiles: (dirPath: string) => Promise<FileItem[]>;
-      readFile: (filePath: string) => Promise<{ content: string; truncated: boolean }>;
+      readFile: (filePath: string) => Promise<{ content: string; truncated: boolean; error?: string }>;
       saveFile: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>;
       getGitStatus: (dirPath: string) => Promise<{ isGit: boolean; branch: string; modifiedCount: number; statusText: string }>;
       getSystemHealth: () => Promise<{ claudeInstalled: boolean; claudePath: string; claudeVersion: string; nodeVersion: string }>;
       getSessions: (projectPath: string) => Promise<ClaudeSession[]>;
       validatePath: (targetPath: string) => Promise<{ exists: boolean; isDirectory: boolean }>;
       copyToClipboard: (text: string) => Promise<void>;
+      getPathForFile: (file: File) => string;
       // Embedded PTY
       ptyCreate: (opts: { id: string; cwd: string; initialCommand?: string; cols?: number; rows?: number }) => Promise<{ success: boolean; pid?: number; error?: string }>;
       ptyWrite: (id: string, data: string) => void;

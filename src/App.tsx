@@ -110,7 +110,7 @@ export const App: React.FC = () => {
 
   // Save tabs state on changes (debounced)
   useEffect(() => {
-    if (tabs.length > 0 && activeTabId) {
+    if (projects.length > 0) {
       const timer = setTimeout(() => {
         window.electronAPI.updateSettings({
           savedTabs: tabs,
@@ -120,7 +120,7 @@ export const App: React.FC = () => {
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [tabs, activeTabId, theme]);
+  }, [tabs, activeTabId, theme, projects.length]);
 
   const handleSelectTheme = (newTheme: AppTheme) => {
     setTheme(newTheme);
@@ -150,13 +150,23 @@ export const App: React.FC = () => {
   };
 
   const handleCloseTab = (tabId: string) => {
-    setTabs((prev) => {
-      const remaining = prev.filter((t) => t.id !== tabId);
-      if (activeTabId === tabId && remaining.length > 0) {
-        setActiveTabId(remaining[remaining.length - 1].id);
-      }
-      return remaining;
-    });
+    const remaining = tabs.filter((t) => t.id !== tabId);
+    setTabs(remaining);
+    if (activeTabId === tabId) {
+      setActiveTabId(remaining.length > 0 ? remaining[remaining.length - 1].id : '');
+    }
+  };
+
+  const handleRemoveProject = async (projectId: string) => {
+    const proj = projects.find((p) => p.id === projectId);
+    await window.electronAPI.removeProject(projectId);
+    const remaining = tabs.filter((t) => t.projectId !== projectId);
+    setTabs(remaining);
+    if (!remaining.some((t) => t.id === activeTabId)) {
+      setActiveTabId(remaining.length > 0 ? remaining[remaining.length - 1].id : '');
+    }
+    setProjects((prev) => prev.filter((p) => p.id !== projectId));
+    showToast(`REMOVED: ${proj?.name || 'project'} (files untouched)`, 'info');
   };
 
   const handleNewTab = (projectId?: string) => {
@@ -232,7 +242,7 @@ export const App: React.FC = () => {
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDraggingOver(false);
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDraggingOver(false);
   };
 
   const handleDrop = async (e: React.DragEvent) => {
@@ -241,7 +251,7 @@ export const App: React.FC = () => {
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
-      const targetPath = (file as any).path;
+      const targetPath = window.electronAPI.getPathForFile(file);
       if (targetPath) {
         const check = await window.electronAPI.validatePath(targetPath);
         if (check.exists && check.isDirectory) {
@@ -350,6 +360,7 @@ export const App: React.FC = () => {
                   onOpenEditor={handleOpenEditor}
                   themeConfig={themeConfig}
                   isActive={isTabActive}
+                  claudePath={settings.claudePath || 'claude'}
                 />
               </div>
             );
@@ -465,6 +476,7 @@ export const App: React.FC = () => {
         currentProjectId={tabs.find((t) => t.id === activeTabId)?.projectId}
         themeConfig={themeConfig}
         onSelectProject={(pId) => handleNewTab(pId)}
+        onRemoveProject={handleRemoveProject}
         onOpenAddModal={() => setIsAddProjectOpen(true)}
         onBrowseFolder={handleBrowseFolder}
       />

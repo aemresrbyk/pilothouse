@@ -42,6 +42,7 @@ interface TabWorkspaceProps {
   onOpenEditor: (path: string, editor?: string) => void;
   themeConfig: ThemeConfig;
   isActive: boolean;
+  claudePath: string;
 }
 
 export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
@@ -51,7 +52,8 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   onOpenFolder,
   onOpenEditor,
   themeConfig,
-  isActive
+  isActive,
+  claudePath
 }) => {
   const [viewMode, setViewMode] = useState<'terminal' | 'claude-md' | 'files'>('terminal');
   const [customInput, setCustomInput] = useState<string>(tabSession.customInput || '');
@@ -75,9 +77,11 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   const [isSavingMd, setIsSavingMd] = useState(false);
   const [copiedMd, setCopiedMd] = useState(false);
   const [mdSavedToast, setMdSavedToast] = useState(false);
+  const [mdSaveError, setMdSaveError] = useState<string | null>(null);
 
   // Files state
   const [files, setFiles] = useState<FileItem[]>([]);
+  const [currentDir, setCurrentDir] = useState<string>(project.path);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [fileSearch, setFileSearch] = useState('');
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
@@ -113,7 +117,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
 
   // Compile full command for Claude
   const fullCommand = useMemo(() => {
-    const parts = ['claude'];
+    const parts = [/\s/.test(claudePath) ? `"${claudePath}"` : claudePath];
     if (flags.dangerouslySkipPermissions) parts.push('--dangerously-skip-permissions');
     if (flags.continueLast) parts.push('--continue');
     if (flags.chrome) parts.push('--chrome');
@@ -123,7 +127,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
       parts.push(customInput.trim());
     }
     return parts.join(' ');
-  }, [flags, customInput]);
+  }, [flags, customInput, claudePath]);
 
   const toggleFlag = (key: keyof ProjectFlags) => {
     const nextVal = !flags[key];
@@ -134,16 +138,23 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
     });
   };
 
+  // Remounting the terminal kills the old PTY and spawns a fresh one running fullCommand.
   const handleRestartClaude = () => {
     playLaunchSound();
     setViewMode('terminal');
-    window.electronAPI.ptyWrite(tabSession.id, `${fullCommand}\r`);
+    setTermSessionKey((k) => k + 1);
+  };
+
+  // Send text to the running Claude session; Enter goes separately so the TUI doesn't treat it as part of a paste.
+  const sendToTerminal = (text: string) => {
+    window.electronAPI.ptyWrite(tabSession.id, text);
+    setTimeout(() => window.electronAPI.ptyWrite(tabSession.id, '\r'), 80);
   };
 
   const handleExecuteCommand = (cmd: string) => {
     playLaunchSound();
     setViewMode('terminal');
-    window.electronAPI.ptyWrite(tabSession.id, `${cmd}\r`);
+    sendToTerminal(cmd);
   };
 
   const handleSendInterrupt = () => {
@@ -153,7 +164,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
 
   const handleClearTerminal = () => {
     playClickSound();
-    window.electronAPI.ptyWrite(tabSession.id, 'clear\r');
+    window.electronAPI.ptyWrite(tabSession.id, '\x0c'); // Ctrl+L: clears in both shell and Claude
   };
 
   const handleCopyPath = () => {
@@ -169,11 +180,12 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
       loadClaudeMd();
     }
 
-    if (viewMode === 'files' && files.length === 0) {
+    if (viewMode === 'files') {
       setIsLoadingFiles(true);
-      window.electronAPI.listFiles(project.path)
+      window.electronAPI.listFiles(currentDir)
         .then((items) => {
           setFiles(items);
+          if (selectedFile) return;
           const firstFile = items.find((f) => !f.isDirectory && f.name.toLowerCase() === 'claude.md')
             || items.find((f) => !f.isDirectory && f.name.toLowerCase() === 'package.json')
             || items.find((f) => !f.isDirectory);
@@ -184,14 +196,16 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
         .catch(() => setFiles([]))
         .finally(() => setIsLoadingFiles(false));
     }
-  }, [viewMode, project.path]);
+  }, [viewMode, currentDir]);
 
   const loadClaudeMd = () => {
     setIsLoadingMd(true);
     window.electronAPI.readFile(`${project.path}/CLAUDE.md`)
       .then((res) => {
-        setClaudeMdContent(res.content);
-        setEditedMdContent(res.content);
+        // Missing file → empty state (shows the generator), not an error string.
+        const content = res.error ? '' : res.content;
+        setClaudeMdContent(content);
+        setEditedMdContent(content);
       })
       .catch(() => {
         const notFound = '';
@@ -203,10 +217,13 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
 
   const handleSaveClaudeMd = async () => {
     setIsSavingMd(true);
+    setMdSaveError(null);
     playClickSound();
     try {
       const res = await window.electronAPI.saveFile(`${project.path}/CLAUDE.md`, editedMdContent);
-      if (res.success) {
+      if (!res.success) {
+        setMdSaveError(res.error || 'Save failed');
+      } else {
         setClaudeMdContent(editedMdContent);
         setIsEditingMd(false);
         setMdSavedToast(true);
@@ -248,13 +265,17 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
   };
 
   const loadFilePreview = async (file: FileItem) => {
-    if (file.isDirectory) return;
     playClickSound();
+    if (file.isDirectory) {
+      setFileSearch('');
+      setCurrentDir(file.path);
+      return;
+    }
     setSelectedFile(file);
     setIsLoadingContent(true);
     try {
       const res = await window.electronAPI.readFile(file.path);
-      setSelectedContent(res.content);
+      setSelectedContent(res.error ? `Error: ${res.error}` : res.content + (res.truncated ? '\n\n… (truncated, open in editor to see the full file)' : ''));
     } catch (err: any) {
       setSelectedContent(`Failed to read file: ${err.message}`);
     } finally {
@@ -270,7 +291,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
   const handleSendScratchpadToTerminal = () => {
     if (!scratchpadText.trim()) return;
     playLaunchSound();
-    window.electronAPI.ptyWrite(tabSession.id, `${scratchpadText.trim()}\r`);
+    sendToTerminal(scratchpadText.trim());
   };
 
   // Quick Action Presets
@@ -281,19 +302,19 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
     { label: '/cost', cmd: '/cost', icon: <Coins className="w-3 h-3" />, desc: 'Show tokens & cost' },
     {
       label: 'Review Git Diff',
-      cmd: 'claude -p "Review recent git diff and summarize key changes, edge cases or bugs"',
+      cmd: 'Review the recent git diff and summarize key changes, edge cases or bugs',
       icon: <GitBranch className="w-3 h-3" />,
       desc: 'Review diff with Claude'
     },
     {
       label: 'Find Bugs',
-      cmd: 'claude -p "Carefully inspect recent changes and identify any edge cases or bugs"',
+      cmd: 'Carefully inspect recent changes and identify any edge cases or bugs',
       icon: <Search className="w-3 h-3" />,
       desc: 'Scan code for bugs'
     },
     {
       label: 'Write Tests',
-      cmd: 'claude -p "Write comprehensive unit tests for the recent changes in this project"',
+      cmd: 'Write unit tests for the recent changes in this project',
       icon: <Code2 className="w-3 h-3" />,
       desc: 'Generate test suite'
     }
@@ -338,7 +359,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
 
           {gitStatus?.isGit && (
             <div
-              onClick={() => handleExecuteCommand('claude -p "Review recent git diff and summarize changes"')}
+              onClick={() => handleExecuteCommand('Review the recent git diff and summarize changes')}
               title={`Git Branch: ${gitStatus.branch}${gitStatus.modifiedCount > 0 ? ` (${gitStatus.modifiedCount} modified files). Click to review with Claude!` : ''}`}
               className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] cursor-pointer hover:opacity-90 border transition-all"
               style={{
@@ -718,6 +739,10 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                   </span>
                 )}
 
+                {mdSaveError && (
+                  <span className="text-[11px] font-bold text-red-400" title={mdSaveError}>Save failed</span>
+                )}
+
                 {/* Edit / Preview Toggle */}
                 <button
                   onClick={() => {
@@ -877,7 +902,18 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                   <div className="p-4 text-center text-[11px]" style={{ color: themeConfig.textMuted }}>
                     Scanning directory...
                   </div>
-                ) : filteredFiles.length === 0 ? (
+                ) : (currentDir !== project.path && (
+                  <div
+                    onClick={() => setCurrentDir(currentDir.replace(/[\\/][^\\/]+[\\/]?$/, '') || project.path)}
+                    title={currentDir}
+                    className="px-2 py-1.5 rounded flex items-center gap-2 cursor-pointer text-[11px]"
+                    style={{ color: themeConfig.textSecondary }}
+                  >
+                    <Folder className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                    <span>..</span>
+                  </div>
+                ))}
+                {isLoadingFiles ? null : filteredFiles.length === 0 ? (
                   <div className="p-4 text-center text-[11px]" style={{ color: themeConfig.textMuted }}>
                     No files found
                   </div>

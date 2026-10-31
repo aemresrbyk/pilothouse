@@ -85,12 +85,12 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
         {/* Brand App Logo */}
         <div
           onClick={onOpenPalette}
-          title="Claude Code Launcher (⌘P)"
+          title="Electron (⌘P)"
           className="flex items-center gap-1.5 mr-2 px-1.5 py-1 rounded-md cursor-pointer hover:bg-black/10 transition-colors flex-shrink-0"
         >
           <AppLogo className="w-4 h-4" />
           <span className="font-bold text-[11px] tracking-wide hidden lg:inline" style={{ color: themeConfig.textPrimary }}>
-            CLAUDE
+            ELECTRON
           </span>
         </div>
 
