@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { execSync, execFile } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { ProjectItem, FileItem, GitInfo, ClaudeMetrics, ClaudeSession } from '../src/types';
 
@@ -173,20 +173,13 @@ export async function getGitInfo(projectPath: string): Promise<GitInfo> {
       .then((r) => r.stdout.trim())
       .catch(() => undefined);
 
-  let branch: string | undefined;
-  try {
-    const headContent = fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf-8').trim();
-    if (headContent.startsWith('ref: refs/heads/')) {
-      branch = headContent.replace('ref: refs/heads/', '').trim();
-    }
-  } catch {
-    // .git may be a file (worktree/submodule); fall back to git below
-  }
-
+  // No direct reads of project files in the main process: on an iCloud "optimized" Desktop a file can be
+  // evicted (dataless) and a sync read blocks until it downloads, which froze the whole app. git runs in a
+  // child process that the timeout kills instead.
   const [statusOut, commitHash, gitBranch] = await Promise.all([
     git('status', '--porcelain'),
     git('rev-parse', '--short', 'HEAD'),
-    branch ? Promise.resolve(branch) : git('rev-parse', '--abbrev-ref', 'HEAD')
+    git('rev-parse', '--abbrev-ref', 'HEAD')
   ]);
 
   // undefined = status timed out/failed: unknown, not "clean"
@@ -279,20 +272,25 @@ export function listProjectFiles(dirPath: string): FileItem[] {
   }
 }
 
-export function readFileContent(filePath: string, maxBytes: number = 200000): { content: string; truncated: boolean; error?: string } {
+// Async for the same iCloud reason as getGitInfo: a stuck read must not freeze the main process.
+export async function readFileContent(filePath: string, maxBytes: number = 200000): Promise<{ content: string; truncated: boolean; error?: string }> {
   try {
     if (!fs.existsSync(filePath)) {
       throw new Error('File not found');
     }
-    const stat = fs.statSync(filePath);
+    const stat = await fs.promises.stat(filePath);
     if (stat.isDirectory()) {
       throw new Error('Cannot read directory as file');
     }
 
-    const fd = fs.openSync(filePath, 'r');
+    const fh = await fs.promises.open(filePath, 'r');
     const buffer = Buffer.alloc(Math.min(stat.size, maxBytes));
-    const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, 0);
-    fs.closeSync(fd);
+    let bytesRead = 0;
+    try {
+      ({ bytesRead } = await fh.read(buffer, 0, buffer.length, 0));
+    } finally {
+      await fh.close();
+    }
 
     const content = buffer.toString('utf-8', 0, bytesRead);
     return {
@@ -304,13 +302,10 @@ export function readFileContent(filePath: string, maxBytes: number = 200000): { 
   }
 }
 
-export function saveFileContent(filePath: string, content: string): { success: boolean; error?: string } {
+export async function saveFileContent(filePath: string, content: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const parentDir = path.dirname(filePath);
-    if (!fs.existsSync(parentDir)) {
-      fs.mkdirSync(parentDir, { recursive: true });
-    }
-    fs.writeFileSync(filePath, content, 'utf-8');
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.promises.writeFile(filePath, content, 'utf-8');
     return { success: true };
   } catch (err: any) {
     console.error('Failed to save file:', err);
@@ -332,7 +327,7 @@ export async function getGitStatusDetails(dirPath: string): Promise<{ isGit: boo
   };
 }
 
-export function getSystemHealth(): { claudeInstalled: boolean; claudePath: string; claudeVersion: string; nodeVersion: string } {
+export async function getSystemHealth(): Promise<{ claudeInstalled: boolean; claudePath: string; claudeVersion: string; nodeVersion: string }> {
   let claudeInstalled = false;
   let claudePath = '';
   let claudeVersion = '';
@@ -355,7 +350,7 @@ export function getSystemHealth(): { claudeInstalled: boolean; claudePath: strin
 
   if (!claudeInstalled) {
     try {
-      claudePath = execSync('which claude', { encoding: 'utf-8', timeout: 1000 }).trim();
+      claudePath = (await execFileAsync('which', ['claude'], { encoding: 'utf-8', timeout: 1000 })).stdout.trim();
       if (claudePath && fs.existsSync(claudePath)) {
         claudeInstalled = true;
       }
@@ -364,12 +359,12 @@ export function getSystemHealth(): { claudeInstalled: boolean; claudePath: strin
 
   if (claudeInstalled && claudePath) {
     try {
-      const verOut = execSync(`"${claudePath}" --version`, {
+      const { stdout: verOut } = await execFileAsync(claudePath, ['--version'], {
         encoding: 'utf-8',
         timeout: 2000,
         env: { ...process.env, PATH: `${os.homedir()}/.local/bin:/opt/homebrew/bin:/usr/local/bin:${process.env.PATH}` }
-      }).trim();
-      claudeVersion = verOut.split('\n')[0];
+      });
+      claudeVersion = verOut.trim().split('\n')[0];
     } catch {
       claudeVersion = 'Ready';
     }
