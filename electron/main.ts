@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, clipboard, globalShortcut, systemPreferences } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, clipboard, globalShortcut, systemPreferences, Tray, Menu, nativeImage } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -66,8 +66,17 @@ function createWindow() {
     show: false
   });
 
+  // Started at login with the wake word on: stay in the menu bar until "Hey Pilothouse" or a click.
+  const startHidden = app.getLoginItemSettings().wasOpenedAtLogin && storage?.getSettings().wakeWordEnabled;
   win.once('ready-to-show', () => {
-    win?.show();
+    if (!startHidden) win?.show();
+  });
+  // While listening for the wake word, closing the window only hides it so the listener keeps running.
+  win.on('close', (e) => {
+    if (!quitting && storage?.getSettings().wakeWordEnabled) {
+      e.preventDefault();
+      win?.hide();
+    }
   });
 
   if (VITE_DEV_SERVER_URL) {
@@ -75,6 +84,41 @@ function createWindow() {
   } else {
     win.loadFile(path.join(process.env.DIST || '', 'index.html'));
   }
+}
+
+let quitting = false;
+app.on('before-quit', () => { quitting = true; });
+
+// Bundled assets: <Resources>/<sub> when packaged, <repo>/resources/<sub> in dev.
+const resourceDir = (sub: string) => (app.isPackaged ? path.join(process.resourcesPath, sub) : path.join(app.getAppPath(), 'resources', sub));
+
+let tray: Tray | null = null;
+function applyWakeWord(settings: AppSettings) {
+  if (settings.wakeWordEnabled && !tray) {
+    const icon = nativeImage.createFromPath(path.join(resourceDir('tray'), 'trayTemplate.png'));
+    icon.setTemplateImage(true);
+    tray = new Tray(icon);
+    tray.setToolTip('Pilothouse: say "Hey Pilothouse"');
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: 'Listening for "Hey Pilothouse"', enabled: false },
+      { label: 'Show Pilothouse', click: () => focusWindow() },
+      {
+        label: 'Stop Listening',
+        click: () => {
+          const s = storage.updateSettings({ wakeWordEnabled: false });
+          applyWakeWord(s);
+          win?.webContents.send('settings:changed', s);
+        }
+      },
+      { type: 'separator' },
+      { label: 'Quit Pilothouse', click: () => app.quit() }
+    ]));
+    tray.on('click', () => focusWindow());
+  } else if (!settings.wakeWordEnabled && tray) {
+    tray.destroy();
+    tray = null;
+  }
+  if (app.isPackaged && process.platform === 'darwin') app.setLoginItemSettings({ openAtLogin: !!settings.openAtLogin });
 }
 
 app.on('window-all-closed', () => {
@@ -94,6 +138,7 @@ app.whenReady().then(() => {
   registerIpcHandlers();
   createWindow();
   applyVoiceHotkey(storage.getSettings());
+  applyWakeWord(storage.getSettings());
   // Tab status dots + "Claude finished / needs approval" notifications.
   setInterval(() => {
     const now = Date.now();
@@ -185,6 +230,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle('settings:update', async (_e, newSettings: Partial<AppSettings>) => {
     const s = storage.updateSettings(newSettings);
+    if ('wakeWordEnabled' in newSettings || 'openAtLogin' in newSettings) applyWakeWord(s);
     if ('voiceEnabled' in newSettings || 'voiceHotkey' in newSettings) {
       const err = applyVoiceHotkey(s);
       if (err) win?.webContents.send('voice:error', err);
@@ -193,6 +239,24 @@ function registerIpcHandlers() {
   });
 
   const whisper = () => whisperBinary(app.isPackaged ? process.resourcesPath : undefined, app.getAppPath());
+  // Wake word models + ORT's wasm binary, handed to the renderer as bytes (no file:// fetches in production).
+  ipcMain.handle('wake:assets', async () => {
+    const dir = resourceDir('wakeword');
+    const wasm = app.isPackaged
+      ? path.join(dir, 'ort-wasm-simd-threaded.wasm')
+      : path.join(app.getAppPath(), 'node_modules', 'onnxruntime-web', 'dist', 'ort-wasm-simd-threaded.wasm');
+    try {
+      return {
+        mel: fs.readFileSync(path.join(dir, 'melspectrogram.onnx')),
+        embedding: fs.readFileSync(path.join(dir, 'embedding_model.onnx')),
+        wake: fs.readFileSync(path.join(dir, 'hey_pilothouse.onnx')),
+        wasm: fs.readFileSync(wasm)
+      };
+    } catch (err: any) {
+      return { error: err.message };
+    }
+  });
+
   ipcMain.handle('voice:status', async () => ({ binary: !!whisper(), model: hasModel(), modelBytes: MODEL_BYTES }));
   ipcMain.handle('voice:download-model', async (e) => {
     try {

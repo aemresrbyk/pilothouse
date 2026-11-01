@@ -72,6 +72,18 @@
       {
         "from": "vendor/whisper/whisper-cli",
         "to": "whisper-cli"
+      },
+      {
+        "from": "resources/wakeword",
+        "to": "wakeword"
+      },
+      {
+        "from": "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm",
+        "to": "wakeword/ort-wasm-simd-threaded.wasm"
+      },
+      {
+        "from": "resources/tray",
+        "to": "tray"
       }
     ]
   },
@@ -99,6 +111,7 @@
     "electron-updater": "^6.8.11",
     "lucide-react": "^1.65.0",
     "node-pty": "^1.1.0",
+    "onnxruntime-web": "^1.31.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

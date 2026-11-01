@@ -7,6 +7,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { startRecording, Recording } from './utils/voice';
+import { WakeWordDetector, startWakeListener, WakeListener } from './utils/wakeword';
 import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme, PtyStatus, agentById, agentBinary, agentFlagPresets } from './types';
 import { THEMES, ThemeConfig } from './theme';
 import { ChromeTabBar } from './components/ChromeTabBar';
@@ -17,7 +18,8 @@ import { CommandPaletteModal } from './components/CommandPaletteModal';
 import {
   isSoundEnabled,
   toggleSound,
-  playClickSound
+  playClickSound,
+  playLaunchSound
 } from './utils/audio';
 
 export const App: React.FC = () => {
@@ -306,6 +308,39 @@ export const App: React.FC = () => {
     else if (event === 'progress') setVoice((v) => (v.phase === 'downloading' ? { ...v, progress: data.received / data.total } : v));
     else if (event === 'error') flashVoice(String(data));
   }), []);
+
+  // "Hey Pilothouse": keep a wake-word listener running while the setting is on; it starts a voice prompt.
+  useEffect(() => {
+    if (!settings.wakeWordEnabled) return;
+    let cancelled = false;
+    let listener: WakeListener | null = null;
+    (async () => {
+      const assets = await window.electronAPI.wakeAssets();
+      if ('error' in assets) return flashVoice(`"Hey Pilothouse" is unavailable: ${assets.error}`);
+      if (!(await window.electronAPI.voiceMicAccess())) {
+        return flashVoice('Microphone access is off. Allow Pilothouse in System Settings → Privacy & Security → Microphone.');
+      }
+      const detector = await WakeWordDetector.create(assets);
+      if (cancelled) return;
+      listener = await startWakeListener(
+        detector,
+        () => {
+          window.electronAPI.focusApp();
+          playLaunchSound();
+          toggleVoiceRef.current();
+        },
+        () => voicePhase.current !== 'idle'
+      );
+      if (cancelled) listener.stop();
+    })().catch((err) => flashVoice(`"Hey Pilothouse" failed to start: ${err.message}`));
+    return () => {
+      cancelled = true;
+      listener?.stop();
+    };
+  }, [settings.wakeWordEnabled]);
+
+  // The menu bar's "Stop Listening" changes settings from main.
+  useEffect(() => window.electronAPI.onSettingsChanged((s) => setSettings(s)), []);
 
   // Esc while listening throws the recording away.
   useEffect(() => {

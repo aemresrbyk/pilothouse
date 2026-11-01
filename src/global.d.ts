@@ -30,6 +30,8 @@ declare global {
       validatePath: (targetPath: string) => Promise<{ exists: boolean; isDirectory: boolean }>;
       getTranscript: (file: string) => Promise<TranscriptMessage[]>;
       searchHistory: (projectPath: string, agentId: string, query: string) => Promise<HistoryHit[]>;
+      wakeAssets: () => Promise<{ mel: Uint8Array; embedding: Uint8Array; wake: Uint8Array; wasm: Uint8Array } | { error: string }>;
+      onSettingsChanged: (handler: (s: AppSettings) => void) => () => void;
       voiceStatus: () => Promise<{ binary: boolean; model: boolean; modelBytes: number }>;
       voiceDownloadModel: () => Promise<{ success: boolean; error?: string }>;
       voiceMicAccess: () => Promise<boolean>;

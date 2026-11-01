@@ -114,4 +114,29 @@ if (bin && hasModel()) {
   console.log('voice ok:', text);
 }
 
+// Wake word: the bundled "hey pilothouse" model fires on the phrase and not on look-alikes.
+{
+  const { WakeWordDetector, CHUNK, Trigger } = await import('../src/utils/wakeword');
+  const R = path.join(import.meta.dir, '..', 'resources', 'wakeword');
+  if (fs.existsSync(path.join(R, 'hey_pilothouse.onnx'))) {
+    const read = (f: string) => fs.readFileSync(path.join(R, f));
+    const scores = async (file: string) => {
+      const d = await WakeWordDetector.create({ mel: read('melspectrogram.onnx'), embedding: read('embedding_model.onnx'), wake: read('hey_pilothouse.onnx') });
+      const pcm = new Int16Array(fs.readFileSync(path.join(import.meta.dir, 'fixtures', file)).buffer.slice(4096)); // say's WAV header is 4 KB
+      const out: number[] = [];
+      for (let i = 0; i + CHUNK <= pcm.length; i += CHUNK) out.push(await d.process(pcm.slice(i, i + CHUNK)));
+      return out;
+    };
+    for (const f of ['wake-pos.wav', 'wake-pos2.wav']) {
+      const max = Math.max(...(await scores(f)));
+      assert.ok(max > 0.5, `${f}: max score ${max.toFixed(3)}`);
+    }
+    const neg = Math.max(...(await scores('wake-neg.wav')));
+    assert.ok(neg < 0.5, `wake-neg.wav: max score ${neg.toFixed(3)}`);
+    const t = new Trigger(0.5, 2000);
+    assert.deepStrictEqual([t.hit(0.9, 0), t.hit(0.9, 500), t.hit(0.9, 2500), t.hit(0.2, 6000)], [true, false, true, false]);
+    console.log('wake word ok');
+  }
+}
+
 console.log('selfcheck ok');

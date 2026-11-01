@@ -42,6 +42,13 @@ export const electronAPI = {
   getTranscript: (file: string): Promise<TranscriptMessage[]> => ipcRenderer.invoke('history:transcript', file),
   searchHistory: (projectPath: string, agentId: string, query: string): Promise<HistoryHit[]> =>
     ipcRenderer.invoke('history:search', projectPath, agentId, query),
+  wakeAssets: (): Promise<{ mel: Uint8Array; embedding: Uint8Array; wake: Uint8Array; wasm: Uint8Array } | { error: string }> =>
+    ipcRenderer.invoke('wake:assets'),
+  onSettingsChanged: (handler: (s: AppSettings) => void): (() => void) => {
+    const l = (_e: any, s: AppSettings) => handler(s);
+    ipcRenderer.on('settings:changed', l);
+    return () => { ipcRenderer.removeListener('settings:changed', l); };
+  },
   voiceStatus: (): Promise<{ binary: boolean; model: boolean; modelBytes: number }> => ipcRenderer.invoke('voice:status'),
   voiceDownloadModel: (): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('voice:download-model'),
   voiceMicAccess: (): Promise<boolean> => ipcRenderer.invoke('voice:mic-access'),

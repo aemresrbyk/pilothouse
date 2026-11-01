@@ -302,6 +302,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span className="text-xs text-zinc-300">Send right away</span>
                 <span className="text-[10px] text-zinc-600">(off: the text is typed and you press Enter)</span>
               </label>
+              <label className="flex items-start gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!formData.wakeWordEnabled}
+                  onChange={(e) => setFormData({ ...formData, wakeWordEnabled: e.target.checked })}
+                  className="mt-0.5 w-3.5 h-3.5 accent-amber-500 cursor-pointer"
+                />
+                <span>
+                  <span className="text-xs text-zinc-300 block">Say "Hey Pilothouse" to start</span>
+                  <span className="text-[10px] text-zinc-600">
+                    Keeps the microphone on (macOS shows the orange dot) and listens for the phrase on this Mac. Closing the window keeps Pilothouse in the menu bar.
+                  </span>
+                </span>
+              </label>
+              {formData.wakeWordEnabled && (
+                <label className="flex items-center gap-2 cursor-pointer select-none pl-5">
+                  <input
+                    type="checkbox"
+                    checked={!!formData.openAtLogin}
+                    onChange={(e) => setFormData({ ...formData, openAtLogin: e.target.checked })}
+                    className="w-3.5 h-3.5 accent-amber-500 cursor-pointer"
+                  />
+                  <span className="text-xs text-zinc-300">Open at login, in the menu bar</span>
+                </label>
+              )}
               <p className="text-[10px] text-zinc-600">Speech is recognised on this Mac with Whisper; audio never leaves your computer.</p>
             </div>
           </div>

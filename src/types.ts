@@ -158,6 +158,8 @@ export interface AppSettings {
   voiceHotkey?: string; // Electron accelerator, default CommandOrControl+Shift+Space
   voiceLanguage?: string; // 'auto' | 'en' | 'tr' …
   voiceAutoSend?: boolean; // press Enter after typing the transcript
+  wakeWordEnabled?: boolean; // keep the mic open for "Hey Pilothouse"
+  openAtLogin?: boolean;
   soundEnabled?: boolean;
   savedTabs?: TabSession[];
   activeTabId?: string;
