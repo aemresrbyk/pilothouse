@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import { exec } from 'child_process';
 import * as pty from 'node-pty';
+import { autoUpdater } from 'electron-updater';
 import { StorageManager } from './store';
 import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './terminal';
 import { listProjectFiles, readFileContent, getProjectSessions, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
@@ -90,6 +91,12 @@ app.whenReady().then(() => {
   storage = new StorageManager();
   registerIpcHandlers();
   createWindow();
+  if (app.isPackaged) {
+    // Downloads from GitHub Releases, notifies, installs on quit. macOS only applies signed updates.
+    const check = () => autoUpdater.checkForUpdatesAndNotify().catch((err) => console.error('Update check failed:', err.message));
+    check();
+    setInterval(check, 6 * 60 * 60 * 1000);
+  }
   // Opt-in: other local tools can drive the app through it (Settings → Local control API).
   if (storage.getSettings().controlApiEnabled) startControlServer({
     listProjects: () => storage.listStoredProjects(),

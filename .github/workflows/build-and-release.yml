@@ -16,11 +16,8 @@ permissions:
 
 jobs:
   build-mac:
-    name: Build macOS Distribution (${{ matrix.arch }})
+    name: Build macOS Distribution (arm64 + x64)
     runs-on: macos-latest
-    strategy:
-      matrix:
-        arch: [arm64, x64]
 
     steps:
       - name: Checkout repository
@@ -57,15 +54,18 @@ jobs:
           elif [ -n "$APPLE_ID" ]; then
             EXTRA="-c.mac.notarize=true"
           fi
-          bun x electron-builder --mac --${{ matrix.arch }} --publish never $EXTRA
+          # Both archs in one run so latest-mac.yml (the auto-updater's feed) lists both.
+          bun x electron-builder --mac --arm64 --x64 --publish never $EXTRA
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-${{ matrix.arch }}-installer
+          name: macos-installers
           path: |
             release/*.dmg
             release/*.zip
+            release/*.blockmap
+            release/latest-mac.yml
 
   release:
     name: Create GitHub Release
@@ -80,9 +80,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            macos-arm64-installer/*.dmg
-            macos-arm64-installer/*.zip
-            macos-x64-installer/*.dmg
-            macos-x64-installer/*.zip
+            macos-installers/*.dmg
+            macos-installers/*.zip
+            macos-installers/*.blockmap
+            macos-installers/latest-mac.yml
           generate_release_notes: true
 
