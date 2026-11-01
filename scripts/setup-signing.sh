@@ -14,6 +14,7 @@ OSSL=/usr/bin/openssl # LibreSSL writes 3DES .p12 files, which macOS's `security
 
 [ -f "$KEY" ] || { echo "Private key not found: $KEY"; exit 1; }
 [ -f "${CER:-}" ] || { echo "Certificate not found. Pass the .cer path as the first argument."; exit 1; }
+[ -t 0 ] || { echo "Run this in a Terminal window: it asks for your Apple ID and an app-specific password."; exit 1; }
 command -v gh >/dev/null || { echo "Install the GitHub CLI (brew install gh) and run: gh auth login"; exit 1; }
 
 # The certificate must belong to this key, or signing fails later in CI.
