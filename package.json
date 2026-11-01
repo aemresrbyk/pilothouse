@@ -1,7 +1,7 @@
 {
-  "name": "electron-app",
+  "name": "pilothouse",
   "version": "1.1.2",
-  "description": "Electron: a desktop cockpit with tabbed embedded terminals for Claude Code",
+  "description": "Pilothouse: a desktop cockpit with tabbed embedded terminals for Claude Code",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -17,8 +17,8 @@
     "typecheck": "tsc --noEmit"
   },
   "build": {
-    "appId": "com.aemresrbyk.electron",
-    "productName": "Electron",
+    "appId": "com.aemresrbyk.pilothouse",
+    "productName": "Pilothouse",
     "directories": {
       "output": "release"
     },
@@ -33,14 +33,14 @@
         "dmg",
         "zip"
       ],
-      "artifactName": "Electron-${arch}-mac.${ext}",
+      "artifactName": "Pilothouse-${arch}-mac.${ext}",
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "extendInfo": {
-        "NSDesktopFolderUsageDescription": "Electron opens terminals and reads git status for projects stored in your Desktop folder.",
-        "NSDocumentsFolderUsageDescription": "Electron opens terminals and reads git status for projects stored in your Documents folder.",
-        "NSDownloadsFolderUsageDescription": "Electron opens terminals and reads git status for projects stored in your Downloads folder."
+        "NSDesktopFolderUsageDescription": "Pilothouse opens terminals and reads git status for projects stored in your Desktop folder.",
+        "NSDocumentsFolderUsageDescription": "Pilothouse opens terminals and reads git status for projects stored in your Documents folder.",
+        "NSDownloadsFolderUsageDescription": "Pilothouse opens terminals and reads git status for projects stored in your Downloads folder."
       }
     },
     "win": {
@@ -73,12 +73,12 @@
   "author": "Ali Emre Sarıbıyık (aemresrbyk) <https://github.com/aemresrbyk>",
   "repository": {
     "type": "git",
-    "url": "https://github.com/aemresrbyk/electron.git"
+    "url": "https://github.com/aemresrbyk/pilothouse.git"
   },
   "bugs": {
-    "url": "https://github.com/aemresrbyk/electron/issues"
+    "url": "https://github.com/aemresrbyk/pilothouse/issues"
   },
-  "homepage": "https://github.com/aemresrbyk/electron#readme",
+  "homepage": "https://github.com/aemresrbyk/pilothouse#readme",
   "license": "MIT",
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",

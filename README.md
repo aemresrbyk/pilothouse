@@ -1,8 +1,8 @@
 <div align="center">
 
-  <img src="public/logo.svg" alt="Electron logo" width="108" height="108" />
+  <img src="public/logo.svg" alt="Pilothouse logo" width="108" height="108" />
 
-  # Electron
+  # Pilothouse
   ### Desktop cockpit with tabbed, embedded terminals for Claude Code
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-amber.svg)](LICENSE)
@@ -13,9 +13,9 @@
 
 </div>
 
-> **Name note:** this app is called *Electron* and is built **with** the [Electron framework](https://www.electronjs.org/), but it is an independent project and not affiliated with or endorsed by the OpenJS Foundation or the Electron project.
+> Built with the [Electron framework](https://www.electronjs.org/); not affiliated with the OpenJS Foundation or the Electron project.
 
-Electron keeps all your Claude Code projects in one window: every project gets its own real terminal tab (`node-pty` + `xterm.js`) that starts `claude` with the flags you choose. You can switch between projects with `⌘1-9`, edit `CLAUDE.md`, browse files and send prompts without leaving the app.
+Pilothouse keeps all your Claude Code projects in one window: every project gets its own real terminal tab (`node-pty` + `xterm.js`) that starts `claude` with the flags you choose. You can switch between projects with `⌘1-9`, edit `CLAUDE.md`, browse files and send prompts without leaving the app.
 
 ---
 
@@ -27,9 +27,9 @@ curl -fsSL https://raw.githubusercontent.com/aemresrbyk/electron/main/install.sh
 
 The installer:
 - picks the right build for Apple Silicon (`arm64`) or Intel (`x64`),
-- installs `Electron.app` into `/Applications`,
+- installs `Pilothouse.app` into `/Applications`,
 - clears the Gatekeeper quarantine flag (the app is not code-signed),
-- puts an `Electron` alias on your Desktop.
+- puts a `Pilothouse` alias on your Desktop.
 
 If you run `./install.sh` inside a clone, it builds from source instead of downloading.
 
@@ -80,13 +80,13 @@ npm run build        # type-check + production bundle
 npm run dist:mac     # .dmg / .zip into release/
 ```
 
-Settings and the project list are stored in `~/.electron-app/config.json`. Configs from older versions (`~/.claude-launcher`) are migrated automatically.
+Settings and the project list are stored in `~/.pilothouse/config.json`. Configs from older versions (`~/.electron-app`, `~/.claude-launcher`) are migrated automatically.
 
 ---
 
 ## Releases
 
-`.github/workflows/build-and-release.yml` builds macOS `arm64` and `x64` packages on every push to `main`. When you push a `v*` tag, it attaches `Electron-<arch>-mac.zip` / `.dmg` to a GitHub Release.
+`.github/workflows/build-and-release.yml` builds macOS `arm64` and `x64` packages on every push to `main`. When you push a `v*` tag, it attaches `Pilothouse-<arch>-mac.zip` / `.dmg` to a GitHub Release.
 
 ### Code signing & notarization
 

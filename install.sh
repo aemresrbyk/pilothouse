@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ==============================================================================
-#  Electron - macOS Automated Installer & Setup
+#  Pilothouse - macOS Automated Installer & Setup
 #  Author: Ali Emre Sarıbıyık (aemresrbyk)
-#  Repository: https://github.com/aemresrbyk/electron
+#  Repository: https://github.com/aemresrbyk/pilothouse
 # ==============================================================================
 
 set -e
@@ -27,7 +27,7 @@ cat << "EOF"
 EOF
 echo -e "${NC}"
 echo -e "${AMBER}Automated Setup & Installer for macOS${NC}"
-echo -e "Repository: ${BLUE}https://github.com/aemresrbyk/electron${NC}"
+echo -e "Repository: ${BLUE}https://github.com/aemresrbyk/pilothouse${NC}"
 echo "--------------------------------------------------------"
 
 # 1. System Check
@@ -63,7 +63,7 @@ else
 fi
 
 # 3. Installation Target
-APP_NAME="Electron.app"
+APP_NAME="Pilothouse.app"
 DEST_DIR="/Applications"
 TARGET_APP="${DEST_DIR}/${APP_NAME}"
 
@@ -107,10 +107,10 @@ else
   # Remote install: download latest release from GitHub
   echo -e "Downloading latest release package from GitHub..."
   TMP_DIR="$(mktemp -d)"
-  GITHUB_REPO="aemresrbyk/electron"
+  GITHUB_REPO="aemresrbyk/pilothouse"
   # electron-builder calls Intel "x64"; uname reports "x86_64"
   RELEASE_ARCH="$ARCH"; [ "$ARCH" = "x86_64" ] && RELEASE_ARCH="x64"
-  DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/Electron-${RELEASE_ARCH}-mac.zip"
+  DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/latest/download/Pilothouse-${RELEASE_ARCH}-mac.zip"
   
   curl -fsSL -o "${TMP_DIR}/app.zip" "${DOWNLOAD_URL}" || {
     echo -e "${RED}[ERROR] Could not download pre-built release package.${NC}"
@@ -133,7 +133,7 @@ echo -e "${GREEN}✓${NC} Cleared Gatekeeper quarantine flags"
 
 # 5. Create Desktop Shortcut
 echo -e "\n${BOLD}[4/4] Creating Desktop Shortcut...${NC}"
-DESKTOP_PATH="$HOME/Desktop/Electron"
+DESKTOP_PATH="$HOME/Desktop/Pilothouse"
 rm -f "$DESKTOP_PATH"
 osascript -e "tell application \"Finder\" to make alias file to POSIX file \"${TARGET_APP}\" at POSIX file \"$HOME/Desktop\"" 2>/dev/null || {
   ln -sf "${TARGET_APP}" "$DESKTOP_PATH"
@@ -144,10 +144,10 @@ echo -e "${GREEN}✓${NC} Created shortcut at: ${BOLD}${DESKTOP_PATH}${NC}"
 echo -e "\n========================================================"
 echo -e "${GREEN}${BOLD}✓ INSTALLATION COMPLETE!${NC}"
 echo -e "========================================================"
-echo -e "You can launch Electron from:"
+echo -e "You can launch Pilothouse from:"
 echo -e "  1. Your Desktop shortcut: ${AMBER}${DESKTOP_PATH}${NC}"
 echo -e "  2. Applications folder:   ${AMBER}${TARGET_APP}${NC}"
-echo -e "  3. Spotlight Search:      Type 'Electron' and press Enter"
+echo -e "  3. Spotlight Search:      Type 'Pilothouse' and press Enter"
 echo ""
 echo -e "Enjoy coding with zero friction! ✦"
 

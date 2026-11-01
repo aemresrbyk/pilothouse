@@ -13,27 +13,32 @@ export const AppLogo: React.FC<AppLogoProps> = ({ className = 'w-5 h-5', size })
     className={className}
     style={size ? { width: size, height: size } : undefined}
     role="img"
-    aria-label="Electron"
+    aria-label="Pilothouse"
   >
   <defs>
-    <linearGradient id="elBg" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="phBg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stopColor="#1B1F2A"/>
       <stop offset="1" stopColor="#0A0C11"/>
     </linearGradient>
-    <linearGradient id="elAccent" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="phAccent" gradientUnits="userSpaceOnUse" x1="200" y1="200" x2="824" y2="824">
       <stop offset="0" stopColor="#FFA270"/>
       <stop offset="1" stopColor="#D9572B"/>
     </linearGradient>
   </defs>
   {/* macOS-style squircle tile with standard 100px safe margin */}
-  <rect x="100" y="100" width="824" height="824" rx="190" fill="url(#elBg)"/>
+  <rect x="100" y="100" width="824" height="824" rx="190" fill="url(#phBg)"/>
   <rect x="101.5" y="101.5" width="821" height="821" rx="188.5" fill="none" stroke="#FFFFFF" strokeOpacity="0.08" strokeWidth="3"/>
-  {/* single tilted orbit */}
-  <ellipse cx="512" cy="512" rx="300" ry="122" transform="rotate(-28 512 512)" fill="none" stroke="url(#elAccent)" strokeWidth="26" strokeOpacity="0.9"/>
-  {/* terminal prompt >_ as the nucleus */}
-  <path d="M404 420 L496 512 L404 604" fill="none" stroke="#F4F1EA" strokeWidth="46" strokeLinecap="round" strokeLinejoin="round"/>
-  <rect x="528" y="580" width="112" height="44" rx="22" fill="#F4F1EA"/>
-  {/* the electron */}
-  <circle cx="776" cy="371" r="40" fill="url(#elAccent)"/>
-  </svg>
+  {/* ship's helm: rim + eight handles */}
+  <g stroke="url(#phAccent)" strokeLinecap="round" fill="none">
+    <circle cx="512" cy="512" r="232" strokeWidth="30"/>
+    <g strokeWidth="34">
+      <path d="M512 262 V212"/><path d="M512 762 V812"/><path d="M262 512 H212"/><path d="M762 512 H812"/>
+      <path d="M335 335 L300 300"/><path d="M689 335 L724 300"/><path d="M335 689 L300 724"/><path d="M689 689 L724 724"/>
+    </g>
+  </g>
+  <g fill="url(#phAccent)"><circle cx="812" cy="512" r="30"/><circle cx="724" cy="724" r="30"/><circle cx="512" cy="812" r="30"/><circle cx="300" cy="724" r="30"/><circle cx="212" cy="512" r="30"/><circle cx="300" cy="300" r="30"/><circle cx="512" cy="212" r="30"/><circle cx="724" cy="300" r="30"/></g>
+  {/* terminal prompt >_ as the hub */}
+  <path d="M420 440 L492 512 L420 584" fill="none" stroke="#F4F1EA" strokeWidth="40" strokeLinecap="round" strokeLinejoin="round"/>
+  <rect x="520" y="556" width="88" height="36" rx="18" fill="#F4F1EA"/>
+</svg>
 );

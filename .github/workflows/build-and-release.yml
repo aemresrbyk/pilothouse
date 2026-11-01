@@ -1,4 +1,4 @@
-name: Build & Release Electron
+name: Build & Release Pilothouse
 
 on:
   push:
@@ -34,7 +34,7 @@ jobs:
       - name: Install Dependencies
         run: bun install
 
-      - name: Build Web Assets & Electron Bundle
+      - name: Build Web Assets & App Bundle
         run: bun run build
 
       # Signing/notarization switch on automatically once these repository secrets exist:

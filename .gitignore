@@ -37,3 +37,6 @@ Thumbs.db
 *.sln
 *.sw?
 
+
+# keep iCloud from evicting deps
+node_modules.nosync
