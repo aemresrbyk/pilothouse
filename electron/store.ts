@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { ProjectItem, AppSettings } from '../src/types';
+import { ProjectItem, AppSettings, toFlagList } from '../src/types';
 import { scanClaudeProjects, buildProjectItem, getGitInfo } from './scanner';
 import { findClaudeBinary } from './terminal';
 
@@ -28,13 +28,7 @@ interface StoredData {
 const DEFAULT_SETTINGS: AppSettings = {
   defaultTerminal: 'Terminal',
   defaultEditor: 'VSCode',
-  defaultFlags: {
-    dangerouslySkipPermissions: true,
-    continueLast: false,
-    chrome: false,
-    verbose: false,
-    bare: false
-  },
+  defaultFlags: [],
   claudePath: findClaudeBinary(),
   autoDetectOnStartup: true
 };
@@ -84,10 +78,10 @@ export class StorageManager {
     try {
       const raw = fs.readFileSync(DATA_FILE, 'utf-8');
       const parsed = JSON.parse(raw);
-      return {
-        projects: parsed.projects || [],
-        settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) }
-      };
+      const settings: AppSettings = { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) };
+      settings.defaultFlags = toFlagList(settings.defaultFlags);
+      const projects: ProjectItem[] = (parsed.projects || []).map((p: ProjectItem) => ({ ...p, flags: toFlagList(p.flags) }));
+      return { projects, settings };
     } catch (err) {
       console.error('Failed to read config file:', err);
       return {

@@ -1,9 +1,25 @@
-export interface ProjectFlags {
-  dangerouslySkipPermissions: boolean;
-  continueLast: boolean;
-  chrome: boolean;
-  verbose: boolean;
-  bare: boolean;
+// CLI flags that are switched on, e.g. ['--continue', '--model opus'].
+export type ProjectFlags = string[];
+
+export const SKIP_PERMS_FLAG = '--dangerously-skip-permissions';
+// Toggle pills shown in the toolbar until the user edits the list in Settings.
+export const DEFAULT_FLAG_PRESETS = ['--continue', SKIP_PERMS_FLAG, '--verbose', '--chrome'];
+
+const LEGACY_FLAG_KEYS: Record<string, string> = {
+  dangerouslySkipPermissions: SKIP_PERMS_FLAG,
+  continueLast: '--continue',
+  chrome: '--chrome',
+  verbose: '--verbose',
+  bare: '--bare'
+};
+
+// Configs before v1.2 stored flags as { dangerouslySkipPermissions: true, ... }.
+export function toFlagList(flags: unknown): ProjectFlags {
+  if (Array.isArray(flags)) return flags.filter((f): f is string => typeof f === 'string');
+  if (!flags || typeof flags !== 'object') return [];
+  return Object.entries(flags as Record<string, unknown>)
+    .filter(([k, on]) => on === true && LEGACY_FLAG_KEYS[k])
+    .map(([k]) => LEGACY_FLAG_KEYS[k]);
 }
 
 export interface GitInfo {
@@ -70,6 +86,7 @@ export interface AppSettings {
   defaultTerminal: string;
   defaultEditor: string;
   defaultFlags: ProjectFlags;
+  flagPresets?: string[];
   claudePath: string;
   autoDetectOnStartup: boolean;
   controlApiEnabled?: boolean;

@@ -4,7 +4,7 @@ import {
   Terminal,
   UploadCloud
 } from 'lucide-react';
-import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme } from './types';
+import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme, DEFAULT_FLAG_PRESETS } from './types';
 import { THEMES, ThemeConfig } from './theme';
 import { ChromeTabBar } from './components/ChromeTabBar';
 import { TabWorkspace } from './components/TabWorkspace';
@@ -27,13 +27,7 @@ export const App: React.FC = () => {
     theme: 'claude',
     defaultTerminal: 'Terminal',
     defaultEditor: 'VSCode',
-    defaultFlags: {
-      dangerouslySkipPermissions: true,
-      continueLast: false,
-      chrome: false,
-      verbose: false,
-      bare: false
-    },
+    defaultFlags: [],
     claudePath: 'claude',
     autoDetectOnStartup: true,
     soundEnabled: true
@@ -381,6 +375,7 @@ export const App: React.FC = () => {
                   themeConfig={themeConfig}
                   isActive={isTabActive}
                   claudePath={settings.claudePath || 'claude'}
+                  flagPresets={settings.flagPresets ?? DEFAULT_FLAG_PRESETS}
                   onRunCommand={(cmd) => handleNewTab(proj.id, cmd)}
                   onSaveCustomCommands={async (cmds) => {
                     const updated = await window.electronAPI.updateProject(proj.id, { customRunCommands: cmds });

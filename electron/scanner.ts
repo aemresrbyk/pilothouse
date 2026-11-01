@@ -208,13 +208,7 @@ export function buildProjectItem(
     id: existing?.id || Buffer.from(projectPath).toString('base64url'),
     name: existing?.name || folderName,
     path: projectPath,
-    flags: existing?.flags || {
-      dangerouslySkipPermissions: true, // Default to true as user specifically requested this flag!
-      continueLast: false,
-      chrome: false,
-      verbose: false,
-      bare: false
-    },
+    flags: existing?.flags || [],
     customFlags: existing?.customFlags || '',
     lastLaunched: existing?.lastLaunched || lastStartTime,
     createdAt: existing?.createdAt || Date.now(),

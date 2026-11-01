@@ -38,7 +38,7 @@ If you run `./install.sh` inside a clone, it builds from source instead of downl
 ## Features
 
 - **Tabbed embedded terminals.** Each tab runs a login shell in the project folder and starts Claude automatically. You can open several tabs for the same project (e.g. one for Claude, one for `npm run dev`). Open tabs come back when you restart the app.
-- **Per-project flags.** Toggle `--dangerously-skip-permissions` and `--continue`, or add any extra flags/prompt in the input bar. **Run** restarts the session with the current command.
+- **Per-project flags.** The toolbar has on/off toggles for the flags you use (`--continue`, `--verbose`, `--model opus`…). You choose the list, and which ones new projects start with, in Settings. Add any extra flags/prompt in the input bar. **Run** restarts the session with the current command.
 - **Quick actions.** One-click `/doctor`, `/compact`, `/init`, `/cost`, plus "Review Git Diff", "Find Bugs" and "Write Tests" prompts sent to the running Claude session.
 - **Conversation history.** Claude Code saves every conversation. The **History** view lists a project's previous sessions by their first prompt, and one click reopens a session in the tab with `claude --resume`.
 - **CLAUDE.md editor.** View and edit the project's `CLAUDE.md` in the app, or start from a template if the project doesn't have one.
@@ -48,7 +48,7 @@ If you run `./install.sh` inside a clone, it builds from source instead of downl
 - **Project discovery.** On first run, imports the projects Claude Code already knows about (`~/.claude.json`). Use the sync button to pick up new ones later. You can add folders with the picker, by typing a path, or by drag & drop.
 - **5 themes.** Anthropic Warm, OLED Black, Cyber Slate, Nord Frost, Paper Minimal.
 
-> ⚠️ New projects start with `--dangerously-skip-permissions` **on**, which means Claude runs tools without asking you first. You can turn it off for each project in the control bar, or change the default in Settings.
+> All flags start **off**, including `--dangerously-skip-permissions` (shown in red when on: Claude then runs tools without asking first).
 
 ---
 

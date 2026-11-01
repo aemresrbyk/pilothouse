@@ -9,23 +9,7 @@ export function buildClaudeCommand(
   customFlags?: string,
   claudeBinary: string = 'claude'
 ): string {
-  const parts: string[] = [claudeBinary];
-
-  if (flags.dangerouslySkipPermissions) {
-    parts.push('--dangerously-skip-permissions');
-  }
-  if (flags.continueLast) {
-    parts.push('--continue');
-  }
-  if (flags.chrome) {
-    parts.push('--chrome');
-  }
-  if (flags.verbose) {
-    parts.push('--verbose');
-  }
-  if (flags.bare) {
-    parts.push('--bare');
-  }
+  const parts: string[] = [claudeBinary, ...flags];
 
   if (customFlags && customFlags.trim().length > 0) {
     parts.push(customFlags.trim());

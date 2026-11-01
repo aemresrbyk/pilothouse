@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Settings, Terminal, Code2, Sliders, Check, Palette } from 'lucide-react';
-import { AppSettings, TerminalOption, AppTheme } from '../types';
+import { AppSettings, TerminalOption, AppTheme, DEFAULT_FLAG_PRESETS, SKIP_PERMS_FLAG } from '../types';
 import { THEMES } from '../theme';
 import { playClickSound } from '../utils/audio';
 
@@ -20,9 +20,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [formData, setFormData] = useState<AppSettings>(settings);
   const [terminals, setTerminals] = useState<TerminalOption[]>([]);
   const [isSaved, setIsSaved] = useState(false);
+  const [presetsText, setPresetsText] = useState('');
+  const presetList = [...new Set(presetsText.split('\n').map((l) => l.trim()).filter(Boolean))];
 
   useEffect(() => {
     setFormData(settings);
+    setPresetsText((settings.flagPresets ?? DEFAULT_FLAG_PRESETS).join('\n'));
     if (isOpen) {
       window.electronAPI.getTerminals().then(setTerminals);
     }
@@ -32,7 +35,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleSave = () => {
     playClickSound();
-    onSaveSettings(formData);
+    // Drop defaults whose toolbar toggle was removed.
+    onSaveSettings({ ...formData, flagPresets: presetList, defaultFlags: formData.defaultFlags.filter((f) => presetList.includes(f)) });
     setIsSaved(true);
     setTimeout(() => {
       setIsSaved(false);
@@ -177,56 +181,61 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </p>
           </div>
 
-          {/* Default Flags for New Projects */}
+          {/* Toolbar flags + which of them new projects start with */}
           <div>
             <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
               <Sliders className="w-3.5 h-3.5 text-purple-400" />
-              <span>DEFAULT FLAGS FOR NEW REPOSITORIES</span>
+              <span>TOOLBAR FLAGS</span>
             </label>
+            <textarea
+              value={presetsText}
+              onChange={(e) => setPresetsText(e.target.value)}
+              rows={4}
+              spellCheck={false}
+              placeholder={'--continue\n--model opus'}
+              className="w-full bg-[#10131c] border border-[#1b2233] focus:border-amber-500 text-xs text-zinc-200 rounded px-2.5 py-1.5 outline-none font-mono resize-y"
+            />
+            <p className="text-[10px] text-zinc-600 mt-1 mb-2">
+              One flag per line. Each becomes an on/off toggle in the project toolbar. Tick the ones new projects should start with:
+            </p>
             <div className="bg-[#10131c] border border-[#1b2233] rounded p-2.5 space-y-2">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={formData.defaultFlags.dangerouslySkipPermissions}
-                  onChange={(e) => {
-                    playClickSound();
-                    setFormData({
-                      ...formData,
-                      defaultFlags: {
-                        ...formData.defaultFlags,
-                        dangerouslySkipPermissions: e.target.checked
-                      }
-                    });
-                  }}
-                  className="w-3.5 h-3.5 rounded bg-zinc-900 border-[#2a344a] text-amber-500 accent-amber-500 cursor-pointer"
-                />
-                <span className="text-xs text-zinc-300 font-mono">
-                  --dangerously-skip-permissions
-                </span>
-              </label>
-
-              <label className="flex items-center gap-2 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={formData.defaultFlags.continueLast}
-                  onChange={(e) => {
-                    playClickSound();
-                    setFormData({
-                      ...formData,
-                      defaultFlags: {
-                        ...formData.defaultFlags,
-                        continueLast: e.target.checked
-                      }
-                    });
-                  }}
-                  className="w-3.5 h-3.5 rounded bg-zinc-900 border-[#2a344a] text-amber-500 accent-amber-500 cursor-pointer"
-                />
-                <span className="text-xs text-zinc-300 font-mono">
-                  --continue (-c)
-                </span>
-              </label>
+              {presetList.map((flag) => (
+                <label key={flag} className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={formData.defaultFlags.includes(flag)}
+                    onChange={(e) => {
+                      playClickSound();
+                      setFormData({
+                        ...formData,
+                        defaultFlags: e.target.checked
+                          ? [...formData.defaultFlags, flag]
+                          : formData.defaultFlags.filter((f) => f !== flag)
+                      });
+                    }}
+                    className="w-3.5 h-3.5 rounded bg-zinc-900 border-[#2a344a] text-amber-500 accent-amber-500 cursor-pointer"
+                  />
+                  <span className={`text-xs font-mono ${flag === SKIP_PERMS_FLAG ? 'text-red-400' : 'text-zinc-300'}`}>{flag}</span>
+                </label>
+              ))}
             </div>
           </div>
+
+          {/* Local control API */}
+          <label className="flex items-start gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={!!formData.controlApiEnabled}
+              onChange={(e) => setFormData({ ...formData, controlApiEnabled: e.target.checked })}
+              className="mt-0.5 w-3.5 h-3.5 rounded bg-zinc-900 border-[#2a344a] accent-amber-500 cursor-pointer"
+            />
+            <span>
+              <span className="text-xs text-zinc-300 block">Local control API</span>
+              <span className="text-[10px] text-zinc-600">
+                Lets other apps on this Mac open tabs, send prompts and read terminal output (token in ~/.pilothouse/control.json). Takes effect after a restart.
+              </span>
+            </span>
+          </label>
         </div>
 
         {/* Footer */}

@@ -33,7 +33,7 @@ import {
   Rocket,
   Plus
 } from 'lucide-react';
-import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile } from '../types';
+import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile, SKIP_PERMS_FLAG } from '../types';
 import { ThemeConfig } from '../theme';
 import { EmbeddedTerminal } from './EmbeddedTerminal';
 import { playClickSound, playToggleSound, playLaunchSound } from '../utils/audio';
@@ -47,6 +47,7 @@ interface TabWorkspaceProps {
   themeConfig: ThemeConfig;
   isActive: boolean;
   claudePath: string;
+  flagPresets: string[];
   onRunCommand: (command: string) => void;
   onSaveCustomCommands: (commands: RunCommand[]) => void;
 }
@@ -60,6 +61,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   themeConfig,
   isActive,
   claudePath,
+  flagPresets,
   onRunCommand,
   onSaveCustomCommands
 }) => {
@@ -108,13 +110,9 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [copiedFile, setCopiedFile] = useState(false);
 
-  const flags = project.flags || {
-    dangerouslySkipPermissions: true,
-    continueLast: false,
-    chrome: false,
-    verbose: false,
-    bare: false
-  };
+  const flags: ProjectFlags = project.flags || [];
+  // Presets first, then any active flag that was since removed from the presets (so it can still be switched off).
+  const flagPills = [...flagPresets, ...flags.filter((f) => !flagPresets.includes(f))];
 
   // Save scratchpad
   useEffect(() => {
@@ -137,11 +135,8 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   // Compile full command for Claude; with resumeId it reopens that session instead of --continue / the input bar.
   const buildCommand = (resumeId?: string) => {
     const parts = [/\s/.test(claudePath) ? `"${claudePath}"` : claudePath];
-    if (flags.dangerouslySkipPermissions) parts.push('--dangerously-skip-permissions');
-    if (flags.continueLast && !resumeId) parts.push('--continue');
-    if (flags.chrome) parts.push('--chrome');
-    if (flags.verbose) parts.push('--verbose');
-    if (flags.bare) parts.push('--bare');
+    // --resume replaces --continue
+    parts.push(...flags.filter((f) => !(resumeId && (f === '--continue' || f === '-c'))));
     if (resumeId) {
       parts.push('--resume', resumeId);
     } else if (customInput.trim()) {
@@ -151,13 +146,10 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   };
   const fullCommand = useMemo(() => buildCommand(), [flags, customInput, claudePath]);
 
-  const toggleFlag = (key: keyof ProjectFlags) => {
-    const nextVal = !flags[key];
-    playToggleSound(nextVal);
-    onUpdateFlags(project.id, {
-      ...flags,
-      [key]: nextVal
-    });
+  const toggleFlag = (flag: string) => {
+    const on = !flags.includes(flag);
+    playToggleSound(on);
+    onUpdateFlags(project.id, on ? [...flags, flag] : flags.filter((f) => f !== flag));
   };
 
   // Remounting the terminal kills the old PTY and spawns a fresh one running fullCommand.
@@ -447,40 +439,33 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
 
         {/* Center: Essential Flags & Quick Omnibar */}
         <div className="flex items-center gap-1.5 flex-1 max-w-xl min-w-0 justify-start">
-          {/* --dangerously-skip-permissions pill */}
-          <button
-            type="button"
-            onClick={() => toggleFlag('dangerouslySkipPermissions')}
-            title="Bypass tool & permission prompts (Zero interruption)"
-            className="px-2 py-1 rounded text-[11px] font-medium transition-all flex items-center gap-1.5 border flex-shrink-0"
-            style={{
-              backgroundColor: flags.dangerouslySkipPermissions ? themeConfig.accentBg : 'transparent',
-              borderColor: flags.dangerouslySkipPermissions ? themeConfig.accent : themeConfig.border,
-              color: flags.dangerouslySkipPermissions ? themeConfig.accent : themeConfig.textMuted
-            }}
-          >
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ backgroundColor: flags.dangerouslySkipPermissions ? themeConfig.accent : themeConfig.textMuted }}
-            />
-            <span className="hidden 2xl:inline">--dangerously-skip-permissions</span>
-            <span className="2xl:hidden">--skip-perm</span>
-          </button>
-
-          {/* --continue pill */}
-          <button
-            type="button"
-            onClick={() => toggleFlag('continueLast')}
-            title="Resume latest conversation (-c)"
-            className="px-2 py-1 rounded text-[11px] font-medium transition-all border flex-shrink-0"
-            style={{
-              backgroundColor: flags.continueLast ? themeConfig.accentBg : 'transparent',
-              borderColor: flags.continueLast ? themeConfig.accent : themeConfig.border,
-              color: flags.continueLast ? themeConfig.accent : themeConfig.textMuted
-            }}
-          >
-            --continue
-          </button>
+          {/* Flag toggles: the list is set in Settings → Toolbar flags */}
+          <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto flex-shrink [scrollbar-width:none]">
+            {flagPills.map((flag) => {
+              const on = flags.includes(flag);
+              const danger = flag === SKIP_PERMS_FLAG;
+              const color = danger ? '#ef4444' : themeConfig.accent;
+              return (
+                <button
+                  key={flag}
+                  type="button"
+                  onClick={() => toggleFlag(flag)}
+                  title={danger ? 'Claude runs every tool without asking first. Use only in projects you trust.' : `Toggle ${flag}`}
+                  className="px-2 py-1 rounded text-[11px] font-medium transition-all flex items-center gap-1.5 border flex-shrink-0 whitespace-nowrap"
+                  style={{
+                    backgroundColor: on ? (danger ? 'rgba(239,68,68,0.12)' : themeConfig.accentBg) : 'transparent',
+                    borderColor: on ? color : themeConfig.border,
+                    color: on ? color : themeConfig.textMuted
+                  }}
+                >
+                  {danger && (
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: on ? color : themeConfig.textMuted }} />
+                  )}
+                  {danger ? '--skip-permissions' : flag}
+                </button>
+              );
+            })}
+          </div>
 
           {/* Omnibar Input Field for Extra Flags / Prompt */}
           <div className="flex-1 relative min-w-[120px] flex items-center">
