@@ -92,7 +92,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
         >
           <AppLogo className="w-4 h-4" />
           <span className="font-bold text-[11px] tracking-wide hidden lg:inline" style={{ color: themeConfig.textPrimary }}>
-            ELECTRON
+            PILOTHOUSE
           </span>
         </div>
 

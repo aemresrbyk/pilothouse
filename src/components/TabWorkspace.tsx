@@ -31,9 +31,10 @@ import {
   History,
   Brain,
   Rocket,
-  Plus
+  Plus,
+  SlidersHorizontal
 } from 'lucide-react';
-import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile, SKIP_PERMS_FLAG, isDangerFlag, AGENTS, AgentProfile, buildAgentCommand } from '../types';
+import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile, isDangerFlag, AGENTS, AgentProfile, buildAgentCommand } from '../types';
 import { ThemeConfig } from '../theme';
 import { EmbeddedTerminal } from './EmbeddedTerminal';
 import { playClickSound, playToggleSound, playLaunchSound } from '../utils/audio';
@@ -84,6 +85,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   const [customInput, setCustomInput] = useState<string>(tabSession.customInput || '');
   const [termSessionKey, setTermSessionKey] = useState<number>(1);
   const [copiedPath, setCopiedPath] = useState(false);
+  const [isFlagsOpen, setIsFlagsOpen] = useState(false);
 
   // Git Status state
   const [gitStatus, setGitStatus] = useState<{ isGit: boolean; branch: string; modifiedCount: number; statusText: string } | null>(null);
@@ -462,36 +464,69 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             ))}
           </select>
 
-          {/* Flag toggles: the list is set in Settings → Toolbar flags */}
-          <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto flex-shrink [scrollbar-width:none]">
-            {flagPills.map((flag) => {
-              const on = flags.includes(flag);
-              const danger = isDangerFlag(flag);
-              const color = danger ? '#ef4444' : themeConfig.accent;
-              return (
+          {/* Flags menu: one button keeps the toolbar from overflowing however many flags there are. List is set in Settings. */}
+          {(() => {
+            const dangerOn = flags.some(isDangerFlag);
+            return (
+              <div className="relative flex-shrink-0">
                 <button
-                  key={flag}
                   type="button"
-                  onClick={() => toggleFlag(flag)}
-                  title={danger ? 'The agent runs every tool without asking first. Use only in projects you trust.' : `Toggle ${flag}`}
-                  className="px-2 py-1 rounded text-[11px] font-medium transition-all flex items-center gap-1.5 border flex-shrink-0 whitespace-nowrap"
+                  onClick={() => setIsFlagsOpen((o) => !o)}
+                  title={flags.length ? `Active: ${flags.join(' ')}` : 'No flags on'}
+                  aria-expanded={isFlagsOpen}
+                  className="px-2 py-1 rounded text-[11px] font-medium transition-all flex items-center gap-1.5 border whitespace-nowrap"
                   style={{
-                    backgroundColor: on ? (danger ? 'rgba(239,68,68,0.12)' : themeConfig.accentBg) : 'transparent',
-                    borderColor: on ? color : themeConfig.border,
-                    color: on ? color : themeConfig.textMuted
+                    backgroundColor: dangerOn ? 'rgba(239,68,68,0.12)' : flags.length ? themeConfig.accentBg : 'transparent',
+                    borderColor: dangerOn ? '#ef4444' : flags.length ? themeConfig.accent : themeConfig.border,
+                    color: dangerOn ? '#ef4444' : flags.length ? themeConfig.accent : themeConfig.textMuted
                   }}
                 >
-                  {danger && (
-                    <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: on ? color : themeConfig.textMuted }} />
-                  )}
-                  {flag === SKIP_PERMS_FLAG ? '--skip-permissions' : flag}
+                  <SlidersHorizontal className="w-3 h-3" />
+                  <span>Flags{flags.length ? ` · ${flags.length}` : ''}</span>
                 </button>
-              );
-            })}
-          </div>
+                {isFlagsOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsFlagsOpen(false)} />
+                    <div
+                      className="absolute left-0 top-full mt-1 z-50 min-w-[240px] rounded-lg border shadow-2xl p-1.5"
+                      style={{ backgroundColor: themeConfig.bgCard, borderColor: themeConfig.border }}
+                    >
+                      {flagPills.length === 0 && (
+                        <div className="px-2 py-1.5 text-[11px]" style={{ color: themeConfig.textMuted }}>
+                          No flags for {agent.name}. Add some in Settings.
+                        </div>
+                      )}
+                      {flagPills.map((flag) => {
+                        const danger = isDangerFlag(flag);
+                        return (
+                          <label
+                            key={flag}
+                            className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-[11px] hover:bg-black/10"
+                            title={danger ? 'The agent runs every tool without asking first. Use only in projects you trust.' : undefined}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={flags.includes(flag)}
+                              onChange={() => toggleFlag(flag)}
+                              className="w-3.5 h-3.5 cursor-pointer"
+                              style={{ accentColor: danger ? '#ef4444' : themeConfig.accent }}
+                            />
+                            <span className="font-mono" style={{ color: danger ? '#ef4444' : themeConfig.textPrimary }}>{flag}</span>
+                          </label>
+                        );
+                      })}
+                      <div className="px-2 pt-1 mt-1 border-t text-[10px]" style={{ borderColor: themeConfig.border, color: themeConfig.textMuted }}>
+                        Takes effect on the next Run.
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Omnibar Input Field for Extra Flags / Prompt */}
-          <div className="flex-1 relative min-w-[120px] flex items-center">
+          <div className="flex-1 relative min-w-0 flex items-center">
             <input
               type="text"
               placeholder="Prompt or flags (e.g. -p 'fix bug'). Press ↵ to run..."
