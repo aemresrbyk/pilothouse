@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile, PtyStatus } from '../src/types';
+import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile, PtyStatus, TranscriptMessage, HistoryHit } from '../src/types';
 
 export const electronAPI = {
   getProjects: (): Promise<ProjectItem[]> => ipcRenderer.invoke('projects:get'),
@@ -39,6 +39,9 @@ export const electronAPI = {
     ipcRenderer.invoke('project:get-sessions', projectPath, agentId),
   validatePath: (targetPath: string): Promise<{ exists: boolean; isDirectory: boolean }> =>
     ipcRenderer.invoke('system:validate-path', targetPath),
+  getTranscript: (file: string): Promise<TranscriptMessage[]> => ipcRenderer.invoke('history:transcript', file),
+  searchHistory: (projectPath: string, agentId: string, query: string): Promise<HistoryHit[]> =>
+    ipcRenderer.invoke('history:search', projectPath, agentId, query),
   getRunCommands: (dirPath: string): Promise<RunCommand[]> =>
     ipcRenderer.invoke('project:run-commands', dirPath),
   getMemoryFiles: (projectPath: string): Promise<MemoryFile[]> =>

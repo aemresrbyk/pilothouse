@@ -3,7 +3,7 @@ import assert from 'assert';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { detectRunCommands, getCodexSessions } from '../electron/scanner';
+import { detectRunCommands, getCodexSessions, readTranscript, searchHistory } from '../electron/scanner';
 import { findProject, stripAnsi } from '../electron/control';
 import { toFlagList, buildAgentCommand, agentById } from '../src/types';
 import { newActivity, noteOutput, nextStatus } from '../electron/activity';
@@ -51,6 +51,28 @@ assert.equal(agentById('nope').id, 'claude');
   fs.writeFileSync(path.join(home, 'session_index.jsonl'), JSON.stringify({ id: 'other', thread_name: 'x' }) + '\n');
   const s = getCodexSessions(d, home);
   assert.deepStrictEqual(s.map((x) => [x.id, x.title]), [[id1, 'add tests']]);
+}
+
+{
+  // Transcript: prompts + text answers only; consecutive answer blocks merge; tool calls, meta and command wrappers drop out.
+  const f = path.join(d, 's.jsonl');
+  const L = (o: any) => JSON.stringify(o);
+  fs.writeFileSync(f, [
+    L({ type: 'user', timestamp: 't1', message: { content: 'Fix the login bug' } }),
+    L({ type: 'assistant', message: { content: [{ type: 'thinking', thinking: 'x' }, { type: 'text', text: 'Looking.' }] } }),
+    L({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash' }] } }),
+    L({ type: 'user', message: { content: [{ type: 'tool_result', content: 'ok' }] } }),
+    L({ type: 'assistant', message: { content: [{ type: 'text', text: 'Fixed the Login check.' }] } }),
+    L({ type: 'user', isMeta: true, message: { content: 'meta' } }),
+    L({ type: 'user', message: { content: '<command-name>/cost</command-name>' } }),
+    L({ type: 'event_msg', timestamp: 't9', payload: { type: 'agent_message', message: 'codex says hi' } })
+  ].join('\n'));
+  assert.deepStrictEqual(readTranscript(f).map((m) => [m.role, m.text, m.time]), [
+    ['user', 'Fix the login bug', 't1'],
+    ['assistant', 'Looking.\n\nFixed the Login check.\n\ncodex says hi', undefined]
+  ]);
+  const hits = searchHistory([{ id: 's', file: f, title: 'T' } as any], 'LOGIN');
+  assert.deepStrictEqual(hits.map((h) => [h.index, h.role]), [[0, 'user'], [1, 'assistant']]);
 }
 
 const ps: any[] = [{ id: 'a', name: 'kitefold', path: '/x/kitefold' }, { id: 'b', name: 'claudecodeproject', path: '/x/ccp' }];

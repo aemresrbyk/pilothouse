@@ -78,6 +78,23 @@ export interface ClaudeSession {
   formattedSize: string;
   dateStr: string;
   title?: string;
+  file?: string; // the session's .jsonl on disk
+}
+
+export interface TranscriptMessage {
+  role: 'user' | 'assistant';
+  text: string;
+  time?: string; // ISO timestamp
+}
+
+export interface HistoryHit {
+  sessionId: string;
+  file: string;
+  title?: string;
+  index: number; // message index in the transcript
+  role: 'user' | 'assistant';
+  time?: string;
+  snippet: string;
 }
 
 export interface ClaudeMetrics {

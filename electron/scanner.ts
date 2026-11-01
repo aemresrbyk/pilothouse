@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { ProjectItem, FileItem, GitInfo, ClaudeMetrics, ClaudeSession, RunCommand, MemoryFile } from '../src/types';
+import { ProjectItem, FileItem, GitInfo, ClaudeMetrics, ClaudeSession, RunCommand, MemoryFile, TranscriptMessage, HistoryHit } from '../src/types';
 
 const execFileAsync = promisify(execFile);
 
@@ -42,7 +42,8 @@ export function getProjectSessions(projectPath: string, withTitles = false): Cla
             sizeBytes: stat.size,
             formattedSize,
             dateStr,
-            title: withTitles ? getSessionTitle(fullPath) : undefined
+            title: withTitles ? getSessionTitle(fullPath) : undefined,
+            file: fullPath
           });
         } catch {
           // ignore stat errors
@@ -104,11 +105,80 @@ export function getCodexSessions(projectPath: string, codexHome = path.join(os.h
         sizeBytes: stat.size,
         formattedSize: sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${sizeKb} KB`,
         dateStr: new Date(stat.mtimeMs).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
-        title: titles.get(id) || (firstPrompt ? firstPrompt.replace(/\\n/g, ' ').trim() : undefined)
+        title: titles.get(id) || (firstPrompt ? firstPrompt.replace(/\\n/g, ' ').trim() : undefined),
+        file: f
       });
     } catch {}
   }
   return sessions.sort((a, b) => b.modifiedAt - a.modifiedAt);
+}
+
+// Only Claude Code / Codex session logs may be read through the history IPC.
+export function isSessionFile(file: string): boolean {
+  const home = os.homedir();
+  const resolved = path.resolve(file);
+  return resolved.endsWith('.jsonl') &&
+    [path.join(home, '.claude', 'projects'), path.join(home, '.codex', 'sessions')].some((root) => resolved.startsWith(root + path.sep));
+}
+
+// The visible conversation of a Claude Code or Codex session: prompts and text answers, no tool calls.
+export function readTranscript(file: string): TranscriptMessage[] {
+  let raw: string;
+  try { raw = fs.readFileSync(file, 'utf-8'); } catch { return []; }
+  const out: TranscriptMessage[] = [];
+  const add = (role: 'user' | 'assistant', text: string, time?: string) => {
+    text = text.trim();
+    if (!text) return;
+    const last = out[out.length - 1];
+    // Claude logs each answer block separately; one turn reads better as one message.
+    if (last && last.role === role && role === 'assistant') last.text += '\n\n' + text;
+    else out.push({ role, text, time });
+  };
+  for (const line of raw.split('\n')) {
+    const claude = line.includes('"type":"user"') || line.includes('"type":"assistant"');
+    const codex = line.includes('"user_message"') || line.includes('"agent_message"');
+    if (!claude && !codex) continue;
+    let o: any;
+    try { o = JSON.parse(line); } catch { continue; }
+    if (o.type === 'event_msg') {
+      const p = o.payload || {};
+      if (p.type === 'user_message' && typeof p.message === 'string') add('user', p.message, o.timestamp);
+      else if (p.type === 'agent_message' && typeof p.message === 'string') add('assistant', p.message, o.timestamp);
+      continue;
+    }
+    if ((o.type !== 'user' && o.type !== 'assistant') || o.isMeta) continue;
+    const c = o.message?.content;
+    const text = typeof c === 'string' ? c
+      : Array.isArray(c) ? c.filter((b: any) => b?.type === 'text' && typeof b.text === 'string').map((b: any) => b.text).join('\n\n')
+      : '';
+    // Command wrappers, hook output and system reminders start with an XML-ish tag.
+    if (o.type === 'user' && text.trimStart().startsWith('<')) continue;
+    add(o.type, text, o.timestamp);
+  }
+  return out;
+}
+
+// Case-insensitive search through every session of a project.
+export function searchHistory(sessions: ClaudeSession[], query: string, limit = 200): HistoryHit[] {
+  const q = query.trim().toLocaleLowerCase();
+  if (!q) return [];
+  const hits: HistoryHit[] = [];
+  for (const s of sessions) {
+    if (!s.file) continue;
+    let raw: string;
+    try { raw = fs.readFileSync(s.file, 'utf-8'); } catch { continue; }
+    if (!raw.toLocaleLowerCase().includes(q)) continue; // cheap skip before parsing
+    readTranscript(s.file).forEach((m, index) => {
+      if (hits.length >= limit) return;
+      const at = m.text.toLocaleLowerCase().indexOf(q);
+      if (at < 0) return;
+      const from = Math.max(0, at - 60);
+      const snippet = (from > 0 ? '…' : '') + m.text.slice(from, at + q.length + 100).replace(/\s+/g, ' ');
+      hits.push({ sessionId: s.id, file: s.file!, title: s.title, index, role: m.role, time: m.time, snippet });
+    });
+    if (hits.length >= limit) break;
+  }
+  return hits;
 }
 
 export function getSessionTitle(filePath: string, maxBytes = 256 * 1024): string | undefined {

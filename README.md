@@ -50,7 +50,7 @@ If you run `./install.sh` inside a clone, it builds from source instead of downl
 - **Knows when you're needed.** A tab's dot pulses while the agent works, turns amber when it asks for approval and green when it finished while you were in another tab. You also get a macOS notification and a Dock badge.
 - **Per-project flags.** The toolbar has on/off toggles for the flags you use (`--continue`, `--verbose`, `--model opus`…). You choose the list, and which ones new projects start with, in Settings. Add any extra flags/prompt in the input bar. **Run** restarts the session with the current command.
 - **Quick actions.** One-click `/doctor`, `/compact`, `/init`, `/cost`, plus "Review Git Diff", "Find Bugs" and "Write Tests" prompts sent to the running Claude session.
-- **Conversation history.** Claude Code saves every conversation. The **History** view lists a project's previous sessions by their first prompt, and one click reopens a session in the tab with `claude --resume`.
+- **Conversation history & search.** Read every past conversation of a project with dates and times, search across all of them with `⌘F`, and reopen one with one click. Works for Claude Code and Codex.
 - **CLAUDE.md editor.** View and edit the project's `CLAUDE.md` in the app, or start from a template if the project doesn't have one.
 - **File browser.** Browse project folders and preview files (large files are truncated, open them in your editor for the full content).
 - **Prompt drafter.** A per-project scratchpad for multi-line prompts, sent to the terminal with one click.

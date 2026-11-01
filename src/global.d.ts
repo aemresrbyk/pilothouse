@@ -1,4 +1,4 @@
-import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile, PtyStatus } from './types';
+import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile, PtyStatus, TranscriptMessage, HistoryHit } from './types';
 
 declare module '*.css';
 declare module '*.svg' {
@@ -28,6 +28,8 @@ declare global {
       getSystemHealth: () => Promise<{ claudeInstalled: boolean; claudePath: string; claudeVersion: string; nodeVersion: string }>;
       getSessions: (projectPath: string, agentId?: string) => Promise<ClaudeSession[]>;
       validatePath: (targetPath: string) => Promise<{ exists: boolean; isDirectory: boolean }>;
+      getTranscript: (file: string) => Promise<TranscriptMessage[]>;
+      searchHistory: (projectPath: string, agentId: string, query: string) => Promise<HistoryHit[]>;
       getRunCommands: (dirPath: string) => Promise<RunCommand[]>;
       getMemoryFiles: (projectPath: string) => Promise<MemoryFile[]>;
       onControlOpenTab: (handler: (req: { projectId: string; command?: string }) => string) => () => void;

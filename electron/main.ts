@@ -7,7 +7,7 @@ import * as pty from 'node-pty';
 import { autoUpdater } from 'electron-updater';
 import { StorageManager } from './store';
 import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './terminal';
-import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
+import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions, readTranscript, searchHistory, isSessionFile, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
 import { startControlServer, CONTROL_FILE, stripAnsi } from './control';
 import { Activity, newActivity, noteOutput, nextStatus } from './activity';
 import { ProjectItem, AppSettings, ClaudeSession, agentById, agentBinary } from '../src/types';
@@ -262,11 +262,13 @@ function registerIpcHandlers() {
     return getSystemHealth();
   });
 
-  ipcMain.handle('project:get-sessions', async (_e, projectPath: string, agentId?: string) => {
-    // Sessions without a user prompt (opened and closed) have nothing to resume.
-    const all = agentId === 'codex' ? getCodexSessions(projectPath) : getProjectSessions(projectPath, true);
-    return all.filter((s) => s.title);
-  });
+  // Sessions without a user prompt (opened and closed) have nothing to resume.
+  const listSessions = (projectPath: string, agentId?: string) =>
+    (agentId === 'codex' ? getCodexSessions(projectPath) : getProjectSessions(projectPath, true)).filter((s) => s.title);
+  ipcMain.handle('project:get-sessions', async (_e, projectPath: string, agentId?: string) => listSessions(projectPath, agentId));
+  ipcMain.handle('history:transcript', async (_e, file: string) => (isSessionFile(file) ? readTranscript(file) : []));
+  ipcMain.handle('history:search', async (_e, projectPath: string, agentId: string, query: string) =>
+    searchHistory(listSessions(projectPath, agentId), query));
 
   ipcMain.handle('system:validate-path', async (_e, targetPath: string) => {
     try {
