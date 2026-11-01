@@ -5,10 +5,20 @@ import { ProjectItem, AppSettings } from '../src/types';
 import { scanClaudeProjects, buildProjectItem, getGitInfo } from './scanner';
 import { findClaudeBinary } from './terminal';
 
-const CONFIG_DIR = path.join(os.homedir(), '.electron-app');
+const CONFIG_DIR = path.join(os.homedir(), '.pilothouse');
 const DATA_FILE = path.join(CONFIG_DIR, 'config.json');
-// Pre-rename location; migrated once so existing projects/tabs/settings survive the rename.
-const LEGACY_DATA_FILE = path.join(os.homedir(), '.claude-launcher', 'config.json');
+// Pre-rename locations (newest first); migrated once so existing projects/tabs/settings survive the rename.
+const LEGACY_DATA_FILES = ['.electron-app', '.claude-launcher'].map(d => path.join(os.homedir(), d, 'config.json'));
+
+// Same folder reached through a symlink (e.g. a moved ~/Desktop/projects) must count as the same project.
+function samePath(a: string, b: string): boolean {
+  if (a === b) return true;
+  try {
+    return fs.realpathSync(a) === fs.realpathSync(b);
+  } catch {
+    return false;
+  }
+}
 
 interface StoredData {
   projects: ProjectItem[];
@@ -48,9 +58,10 @@ export class StorageManager {
   }
 
   private load(): StoredData {
-    if (!fs.existsSync(DATA_FILE) && fs.existsSync(LEGACY_DATA_FILE)) {
+    const legacy = LEGACY_DATA_FILES.find(f => fs.existsSync(f));
+    if (!fs.existsSync(DATA_FILE) && legacy) {
       try {
-        fs.copyFileSync(LEGACY_DATA_FILE, DATA_FILE);
+        fs.copyFileSync(legacy, DATA_FILE);
       } catch (err) {
         console.error('Failed to migrate legacy config:', err);
       }
@@ -103,6 +114,10 @@ export class StorageManager {
     return this.data.projects.find(p => p.id === id);
   }
 
+  public listStoredProjects(): ProjectItem[] {
+    return this.data.projects;
+  }
+
   public async getProjects(): Promise<ProjectItem[]> {
     // Re-verify that projects still exist on disk and refresh their metadata (git branch, claude.md, etc.)
     return Promise.all(this.data.projects.map(async p => {
@@ -125,7 +140,7 @@ export class StorageManager {
 
   public addProject(projectPath: string, flags?: any): ProjectItem {
     // Check if already in list
-    const existingIndex = this.data.projects.findIndex(p => p.path === projectPath);
+    const existingIndex = this.data.projects.findIndex(p => samePath(p.path, projectPath));
     if (existingIndex >= 0) {
       return this.data.projects[existingIndex];
     }
@@ -175,7 +190,7 @@ export class StorageManager {
     let addedCount = 0;
 
     for (const d of detected) {
-      const exists = this.data.projects.some(p => p.path === d.path);
+      const exists = this.data.projects.some(p => samePath(p.path, d.path));
       if (!exists && fs.existsSync(d.path)) {
         const item = buildProjectItem(d.path, {
           flags: this.data.settings.defaultFlags

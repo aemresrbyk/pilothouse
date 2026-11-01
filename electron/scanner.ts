@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { ProjectItem, FileItem, GitInfo, ClaudeMetrics, ClaudeSession } from '../src/types';
+import { ProjectItem, FileItem, GitInfo, ClaudeMetrics, ClaudeSession, RunCommand, MemoryFile } from '../src/types';
 
 const execFileAsync = promisify(execFile);
 
@@ -376,4 +376,83 @@ export async function getSystemHealth(): Promise<{ claudeInstalled: boolean; cla
     claudeVersion,
     nodeVersion
   };
+}
+
+function readText(p: string): string | null {
+  try { return fs.readFileSync(p, 'utf-8'); } catch { return null; }
+}
+
+// Startup commands a cloned repo (GitHub or elsewhere) declares, so they can be picked instead of guessed.
+export function detectRunCommands(dir: string): RunCommand[] {
+  const out: RunCommand[] = [];
+  const add = (label: string, command: string, source: string) => {
+    if (!out.some(c => c.command === command)) out.push({ label, command, source });
+  };
+  const has = (f: string) => fs.existsSync(path.join(dir, f));
+
+  const pkgRaw = readText(path.join(dir, 'package.json'));
+  if (pkgRaw) {
+    const pm = has('bun.lock') || has('bun.lockb') ? 'bun' : has('pnpm-lock.yaml') ? 'pnpm' : has('yarn.lock') ? 'yarn' : 'npm';
+    if (!has('node_modules')) add('install', `${pm} install`, 'package.json');
+    try {
+      const scripts = JSON.parse(pkgRaw).scripts || {};
+      for (const name of Object.keys(scripts)) {
+        if (/^(pre|post)/.test(name) && scripts[name.replace(/^(pre|post)/, '')]) continue;
+        add(name, `${pm} run ${name}`, 'package.json');
+      }
+    } catch {}
+  }
+
+  const deno = readText(path.join(dir, 'deno.json')) ?? readText(path.join(dir, 'deno.jsonc'));
+  if (deno) {
+    try { for (const t of Object.keys(JSON.parse(deno).tasks || {})) add(t, `deno task ${t}`, 'deno.json'); } catch {}
+  }
+
+  for (const [file, tool] of [['Makefile', 'make'], ['makefile', 'make'], ['justfile', 'just']] as const) {
+    const txt = readText(path.join(dir, file));
+    if (!txt) continue;
+    for (const m of txt.matchAll(/^([A-Za-z0-9][\w.-]*)\s*:(?!=)/gm)) add(m[1], `${tool} ${m[1]}`, file);
+  }
+
+  if (has('Cargo.toml')) { add('run', 'cargo run', 'Cargo.toml'); add('test', 'cargo test', 'Cargo.toml'); }
+  if (has('go.mod')) { add('run', 'go run .', 'go.mod'); add('test', 'go test ./...', 'go.mod'); }
+  if (has('requirements.txt')) add('install', 'pip install -r requirements.txt', 'requirements.txt');
+  if (has('manage.py')) add('runserver', 'python manage.py runserver', 'manage.py');
+  for (const f of ['main.py', 'app.py']) if (has(f)) add(f, `python ${f}`, f);
+  for (const f of ['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml']) {
+    if (has(f)) { add('compose up', 'docker compose up', f); break; }
+  }
+
+  // Shell lines from the README's code blocks: that is where most repos document how to start them.
+  const readme = ['README.md', 'readme.md', 'README.MD', 'Readme.md'].map(f => readText(path.join(dir, f))).find(Boolean);
+  if (readme) {
+    let n = 0;
+    for (const block of readme.matchAll(/```(?:bash|sh|shell|zsh|console)\s*\n([\s\S]*?)```/g)) {
+      for (let line of block[1].split('\n')) {
+        line = line.replace(/^\s*\$\s+/, '').replace(/\s+#.*$/, '').trim();
+        if (!line || line.startsWith('#') || line.length > 160 || n >= 20) continue;
+        add(line.split(/\s+/).slice(0, 3).join(' '), line, 'README');
+        n++;
+      }
+    }
+  }
+  return out;
+}
+
+// Everything Claude Code loads as memory for this project: CLAUDE.md files and its auto-memory folder.
+export function listMemoryFiles(projectPath: string): MemoryFile[] {
+  const home = os.homedir();
+  const memDir = path.join(home, '.claude', 'projects', projectPath.replace(/[^a-zA-Z0-9]/g, '-'), 'memory');
+  const candidates: MemoryFile[] = [
+    { label: 'Project CLAUDE.md', path: path.join(projectPath, 'CLAUDE.md') },
+    { label: 'Project .claude/CLAUDE.md', path: path.join(projectPath, '.claude', 'CLAUDE.md') },
+    { label: 'Local CLAUDE.local.md', path: path.join(projectPath, 'CLAUDE.local.md') },
+    { label: 'Global ~/.claude/CLAUDE.md', path: path.join(home, '.claude', 'CLAUDE.md') },
+  ];
+  try {
+    for (const f of fs.readdirSync(memDir).filter(f => f.endsWith('.md')).sort((a, b) => a === 'MEMORY.md' ? -1 : b === 'MEMORY.md' ? 1 : a.localeCompare(b))) {
+      candidates.push({ label: `Auto memory · ${f}`, path: path.join(memDir, f) });
+    }
+  } catch {}
+  return candidates.filter(c => fs.existsSync(c.path));
 }

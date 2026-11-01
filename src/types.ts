@@ -49,6 +49,18 @@ export interface ProjectItem {
   terminalOverride?: string;
   metrics?: ClaudeMetrics;
   commandHistory?: string[];
+  customRunCommands?: RunCommand[];
+}
+
+export interface RunCommand {
+  label: string;
+  command: string;
+  source: string;
+}
+
+export interface MemoryFile {
+  label: string;
+  path: string;
 }
 
 export type AppTheme = 'claude' | 'dark' | 'cyber' | 'nord' | 'light';
@@ -60,6 +72,7 @@ export interface AppSettings {
   defaultFlags: ProjectFlags;
   claudePath: string;
   autoDetectOnStartup: boolean;
+  controlApiEnabled?: boolean;
   soundEnabled?: boolean;
   savedTabs?: TabSession[];
   activeTabId?: string;
@@ -88,6 +101,8 @@ export interface TabSession {
   launchedAt?: number;
   lastCommand?: string;
   commandHistory?: string[];
+  // Set for tabs opened to run a repo command (dev server etc.) instead of Claude.
+  initialCommand?: string;
 }
 
 export interface LaunchPayload {

@@ -1,4 +1,4 @@
-import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession } from './types';
+import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile } from './types';
 
 declare module '*.css';
 declare module '*.svg' {
@@ -28,6 +28,9 @@ declare global {
       getSystemHealth: () => Promise<{ claudeInstalled: boolean; claudePath: string; claudeVersion: string; nodeVersion: string }>;
       getSessions: (projectPath: string) => Promise<ClaudeSession[]>;
       validatePath: (targetPath: string) => Promise<{ exists: boolean; isDirectory: boolean }>;
+      getRunCommands: (dirPath: string) => Promise<RunCommand[]>;
+      getMemoryFiles: (projectPath: string) => Promise<MemoryFile[]>;
+      onControlOpenTab: (handler: (req: { projectId: string; command?: string }) => string) => () => void;
       copyToClipboard: (text: string) => Promise<void>;
       getPathForFile: (file: File) => string;
       // Embedded PTY

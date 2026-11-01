@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   FolderPlus,
   Terminal,
@@ -169,10 +169,10 @@ export const App: React.FC = () => {
     showToast(`REMOVED: ${proj?.name || 'project'} (files untouched)`, 'info');
   };
 
-  const handleNewTab = (projectId?: string) => {
+  const handleNewTab = (projectId?: string, initialCommand?: string): string => {
     if (!projectId) {
       setIsPaletteOpen(true);
-      return;
+      return '';
     }
 
     const newTabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -180,13 +180,33 @@ export const App: React.FC = () => {
       id: newTabId,
       projectId,
       customInput: '',
-      isLaunched: true
+      isLaunched: true,
+      ...(initialCommand ? { initialCommand } : {})
     };
 
     setTabs((prev) => [...prev, newTab]);
     setActiveTabId(newTabId);
-    showToast(`OPENED TERMINAL: ${projects.find((p) => p.id === projectId)?.name || 'Project'}`);
+    showToast(initialCommand
+      ? `RUNNING: ${initialCommand}`
+      : `OPENED TERMINAL: ${projects.find((p) => p.id === projectId)?.name || 'Project'}`);
+    return newTabId;
   };
+
+  // Control API (Jarvis): focus the project's Claude tab or open one; with a command, always a new tab.
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const newTabRef = useRef(handleNewTab);
+  newTabRef.current = handleNewTab;
+  useEffect(() => window.electronAPI.onControlOpenTab?.(({ projectId, command }) => {
+    if (!command) {
+      const existing = tabsRef.current.find((t) => t.projectId === projectId && !t.initialCommand);
+      if (existing) {
+        setActiveTabId(existing.id);
+        return existing.id;
+      }
+    }
+    return newTabRef.current(projectId, command);
+  }), []);
 
   const handleBrowseFolder = async () => {
     try {
@@ -361,6 +381,11 @@ export const App: React.FC = () => {
                   themeConfig={themeConfig}
                   isActive={isTabActive}
                   claudePath={settings.claudePath || 'claude'}
+                  onRunCommand={(cmd) => handleNewTab(proj.id, cmd)}
+                  onSaveCustomCommands={async (cmds) => {
+                    const updated = await window.electronAPI.updateProject(proj.id, { customRunCommands: cmds });
+                    if (updated) setProjects((prev) => prev.map((p) => (p.id === proj.id ? { ...p, customRunCommands: cmds } : p)));
+                  }}
                 />
               </div>
             );

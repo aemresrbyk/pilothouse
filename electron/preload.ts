@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession } from '../src/types';
+import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile } from '../src/types';
 
 export const electronAPI = {
   getProjects: (): Promise<ProjectItem[]> => ipcRenderer.invoke('projects:get'),
@@ -39,6 +39,18 @@ export const electronAPI = {
     ipcRenderer.invoke('project:get-sessions', projectPath),
   validatePath: (targetPath: string): Promise<{ exists: boolean; isDirectory: boolean }> =>
     ipcRenderer.invoke('system:validate-path', targetPath),
+  getRunCommands: (dirPath: string): Promise<RunCommand[]> =>
+    ipcRenderer.invoke('project:run-commands', dirPath),
+  getMemoryFiles: (projectPath: string): Promise<MemoryFile[]> =>
+    ipcRenderer.invoke('project:memory-files', projectPath),
+  // Control API (Jarvis etc.) asks the UI to open a tab; the handler returns the tab id.
+  onControlOpenTab: (handler: (req: { projectId: string; command?: string }) => string): (() => void) => {
+    const listener = (_e: any, req: { reqId: string; projectId: string; command?: string }) => {
+      ipcRenderer.send('control:open-tab-reply', req.reqId, handler(req));
+    };
+    ipcRenderer.on('control:open-tab', listener);
+    return () => { ipcRenderer.removeListener('control:open-tab', listener); };
+  },
   copyToClipboard: (text: string): Promise<void> =>
     ipcRenderer.invoke('clipboard:write', text),
   // File.path was removed in Electron 32; this is the supported replacement for drag & drop.

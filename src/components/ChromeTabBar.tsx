@@ -85,7 +85,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
         {/* Brand App Logo */}
         <div
           onClick={onOpenPalette}
-          title="Electron (⌘P)"
+          title="Pilothouse (⌘P)"
           className="flex items-center gap-1.5 mr-2 px-1.5 py-1 rounded-md cursor-pointer hover:bg-black/10 transition-colors flex-shrink-0"
         >
           <AppLogo className="w-4 h-4" />
@@ -104,7 +104,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
             const projectTabs = tabs.filter((t) => t.projectId === tab.projectId);
             const tabIndex = projectTabs.findIndex((t) => t.id === tab.id);
             const baseName = project?.name || 'Terminal';
-            const tabName = projectTabs.length > 1 ? `${baseName} #${tabIndex + 1}` : baseName;
+            const tabName = tab.initialCommand ? `${baseName} · ${tab.initialCommand}` : projectTabs.length > 1 ? `${baseName} #${tabIndex + 1}` : baseName;
 
             return (
               <div

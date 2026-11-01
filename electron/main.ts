@@ -6,7 +6,8 @@ import { exec } from 'child_process';
 import * as pty from 'node-pty';
 import { StorageManager } from './store';
 import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './terminal';
-import { listProjectFiles, readFileContent, getProjectSessions, saveFileContent, getGitStatusDetails, getSystemHealth } from './scanner';
+import { listProjectFiles, readFileContent, getProjectSessions, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
+import { startControlServer, CONTROL_FILE } from './control';
 import { ProjectItem, AppSettings, ClaudeSession } from '../src/types';
 
 // The built directory structure
@@ -18,6 +19,27 @@ process.env.VITE_PUBLIC = app.isPackaged
 let win: BrowserWindow | null = null;
 let storage: StorageManager;
 const ptySessions = new Map<string, pty.IPty>();
+// cwd + recent output per PTY, so the control API can tell which project a terminal belongs to and read it back.
+const ptyMeta = new Map<string, { cwd: string; buf: string }>();
+const OUTPUT_KEEP = 60_000;
+const pendingOpens = new Map<string, (tabId: string) => void>();
+
+function focusWindow() {
+  if (!win) createWindow();
+  if (win?.isMinimized()) win.restore();
+  win?.show();
+  win?.focus();
+}
+
+function openTabViaRenderer(projectId: string, command?: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!win || win.webContents.isDestroyed()) return reject(new Error('window not ready'));
+    const reqId = Math.random().toString(36).slice(2);
+    const timer = setTimeout(() => { pendingOpens.delete(reqId); reject(new Error('renderer did not answer')); }, 10_000);
+    pendingOpens.set(reqId, (tabId) => { clearTimeout(timer); pendingOpens.delete(reqId); resolve(tabId); });
+    win.webContents.send('control:open-tab', { reqId, projectId, command });
+  });
+}
 
 // Vite dev server URL
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
@@ -68,6 +90,19 @@ app.whenReady().then(() => {
   storage = new StorageManager();
   registerIpcHandlers();
   createWindow();
+  // Opt-in: other local tools can drive the app through it (Settings → Local control API).
+  if (storage.getSettings().controlApiEnabled) startControlServer({
+    listProjects: () => storage.listStoredProjects(),
+    listTerminals: () => [...ptyMeta.entries()].map(([id, m]) => ({ id, cwd: m.cwd, alive: ptySessions.has(id) })),
+    openTab: openTabViaRenderer,
+    write: (id, data) => { const p = ptySessions.get(id); if (!p) return false; p.write(data); return true; },
+    output: (id) => ptyMeta.get(id)?.buf || '',
+    commands: (p) => [...(p.customRunCommands || []), ...detectRunCommands(p.path)]
+  }, focusWindow);
+});
+
+app.on('will-quit', () => {
+  try { fs.unlinkSync(CONTROL_FILE); } catch {}
 });
 
 function registerIpcHandlers() {
@@ -173,6 +208,18 @@ function registerIpcHandlers() {
     return true;
   });
 
+  ipcMain.on('control:open-tab-reply', (_e, reqId: string, tabId: string) => {
+    pendingOpens.get(reqId)?.(tabId);
+  });
+
+  ipcMain.handle('project:run-commands', async (_e, dirPath: string) => {
+    return detectRunCommands(dirPath);
+  });
+
+  ipcMain.handle('project:memory-files', async (_e, projectPath: string) => {
+    return listMemoryFiles(projectPath);
+  });
+
   ipcMain.handle('project:list-files', async (_e, dirPath: string) => {
     return listProjectFiles(dirPath);
   });
@@ -265,12 +312,15 @@ function registerIpcHandlers() {
       });
 
       ptySessions.set(id, ptyProcess);
+      const meta = { cwd: targetCwd, buf: '' };
+      ptyMeta.set(id, meta);
 
       // A replaced/killed session must not touch the map entry or UI of its successor (same id).
       const isCurrent = () => ptySessions.get(id) === ptyProcess;
 
       ptyProcess.onData((data: string) => {
         if (!isCurrent()) return;
+        meta.buf = (meta.buf + data).slice(-OUTPUT_KEEP);
         try {
           if (!event.sender.isDestroyed()) {
             event.sender.send(`pty:data:${id}`, data);
@@ -335,6 +385,7 @@ function registerIpcHandlers() {
       } catch {}
       ptySessions.delete(id);
     }
+    ptyMeta.delete(id);
   });
 }
 

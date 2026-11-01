@@ -28,9 +28,12 @@ import {
   Minimize2,
   HelpCircle,
   Coins,
-  History
+  History,
+  Brain,
+  Rocket,
+  Plus
 } from 'lucide-react';
-import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession } from '../types';
+import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile } from '../types';
 import { ThemeConfig } from '../theme';
 import { EmbeddedTerminal } from './EmbeddedTerminal';
 import { playClickSound, playToggleSound, playLaunchSound } from '../utils/audio';
@@ -44,6 +47,8 @@ interface TabWorkspaceProps {
   themeConfig: ThemeConfig;
   isActive: boolean;
   claudePath: string;
+  onRunCommand: (command: string) => void;
+  onSaveCustomCommands: (commands: RunCommand[]) => void;
 }
 
 export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
@@ -54,9 +59,19 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   onOpenEditor,
   themeConfig,
   isActive,
-  claudePath
+  claudePath,
+  onRunCommand,
+  onSaveCustomCommands
 }) => {
-  const [viewMode, setViewMode] = useState<'terminal' | 'claude-md' | 'files' | 'history'>('terminal');
+  const [viewMode, setViewMode] = useState<'terminal' | 'claude-md' | 'files' | 'history' | 'run' | 'memory'>('terminal');
+  // Run view: commands the repo declares (package.json, Makefile, README …) plus the user's own.
+  const [runCommands, setRunCommands] = useState<RunCommand[] | null>(null);
+  const [newCmd, setNewCmd] = useState('');
+  // Memory view: CLAUDE.md files + Claude Code's auto-memory folder for this project.
+  const [memoryFiles, setMemoryFiles] = useState<MemoryFile[] | null>(null);
+  const [memoryPath, setMemoryPath] = useState<string>('');
+  const [memoryText, setMemoryText] = useState('');
+  const [memorySaved, setMemorySaved] = useState<string>('');
   // Command the next terminal (re)mount runs; null = the normal fullCommand.
   const [launchCommand, setLaunchCommand] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ClaudeSession[] | null>(null);
@@ -195,6 +210,19 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
       loadClaudeMd();
     }
 
+    if (viewMode === 'run') {
+      setRunCommands(null);
+      window.electronAPI.getRunCommands(project.path).then(setRunCommands).catch(() => setRunCommands([]));
+    }
+
+    if (viewMode === 'memory') {
+      setMemoryFiles(null);
+      window.electronAPI.getMemoryFiles(project.path).then((list) => {
+        setMemoryFiles(list);
+        if (list.length && !list.some((f) => f.path === memoryPath)) openMemoryFile(list[0].path);
+      }).catch(() => setMemoryFiles([]));
+    }
+
     if (viewMode === 'history') {
       setSessions(null);
       window.electronAPI.getSessions(project.path).then(setSessions).catch(() => setSessions([]));
@@ -217,6 +245,26 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
         .finally(() => setIsLoadingFiles(false));
     }
   }, [viewMode, currentDir]);
+
+  const openMemoryFile = (filePath: string) => {
+    setMemoryPath(filePath);
+    setMemorySaved('');
+    window.electronAPI.readFile(filePath).then((r) => setMemoryText(r.error ? '' : r.content)).catch(() => setMemoryText(''));
+  };
+
+  const saveMemoryFile = async () => {
+    const r = await window.electronAPI.saveFile(memoryPath, memoryText);
+    setMemorySaved(r.success ? 'Saved' : `Save failed: ${r.error}`);
+    setTimeout(() => setMemorySaved(''), 2500);
+  };
+
+  const customCommands = project.customRunCommands || [];
+  const addCustomCommand = () => {
+    const command = newCmd.trim();
+    if (!command || customCommands.some((c) => c.command === command)) return;
+    onSaveCustomCommands([...customCommands, { label: command.split(/\s+/).slice(0, 3).join(' '), command, source: 'custom' }]);
+    setNewCmd('');
+  };
 
   const loadClaudeMd = () => {
     setIsLoadingMd(true);
@@ -527,6 +575,38 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
               <History className="w-3 h-3" />
               <span>History</span>
             </button>
+
+            <button
+              onClick={() => {
+                playClickSound();
+                setViewMode('run');
+              }}
+              title="Startup commands this repo declares (package.json, Makefile, README …)"
+              className="px-2 py-0.5 rounded text-[10px] font-medium transition-colors flex items-center gap-1"
+              style={{
+                backgroundColor: viewMode === 'run' ? themeConfig.bgTabActive : 'transparent',
+                color: viewMode === 'run' ? themeConfig.textPrimary : themeConfig.textMuted
+              }}
+            >
+              <Rocket className="w-3 h-3" />
+              <span>Scripts</span>
+            </button>
+
+            <button
+              onClick={() => {
+                playClickSound();
+                setViewMode('memory');
+              }}
+              title="What Claude remembers about this project (CLAUDE.md + auto memory)"
+              className="px-2 py-0.5 rounded text-[10px] font-medium transition-colors flex items-center gap-1"
+              style={{
+                backgroundColor: viewMode === 'memory' ? themeConfig.bgTabActive : 'transparent',
+                color: viewMode === 'memory' ? themeConfig.textPrimary : themeConfig.textMuted
+              }}
+            >
+              <Brain className="w-3 h-3" />
+              <span>Memory</span>
+            </button>
           </div>
 
           {/* Action: Run / Launch Claude */}
@@ -655,7 +735,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             key={`term-${tabSession.id}-${termSessionKey}`}
             tabId={tabSession.id}
             projectPath={project.path}
-            initialCommand={launchCommand ?? fullCommand}
+            initialCommand={launchCommand ?? tabSession.initialCommand ?? fullCommand}
             theme={themeConfig}
             isActive={isActive && viewMode === 'terminal'}
           />
@@ -901,6 +981,127 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {viewMode === 'run' && (
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="max-w-4xl mx-auto">
+              <div className="text-[11px] mb-3" style={{ color: themeConfig.textMuted }}>
+                Startup commands found in this repo. Click one to run it in a new terminal tab; Claude keeps running here.
+              </div>
+              <div className="flex gap-1.5 mb-3">
+                <input
+                  type="text"
+                  value={newCmd}
+                  onChange={(e) => setNewCmd(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') addCustomCommand(); }}
+                  placeholder="Add your own command, e.g. npm run dev -- --port 3001"
+                  aria-label="Custom command"
+                  className="flex-1 text-xs px-2.5 py-1.5 rounded outline-none border font-mono"
+                  style={{ backgroundColor: themeConfig.bgMain, borderColor: themeConfig.border, color: themeConfig.textPrimary }}
+                />
+                <button
+                  type="button"
+                  onClick={addCustomCommand}
+                  className="px-2.5 rounded text-xs font-bold flex items-center gap-1 text-white"
+                  style={{ backgroundColor: themeConfig.accent }}
+                >
+                  <Plus className="w-3 h-3" /> Add
+                </button>
+              </div>
+              {runCommands === null ? (
+                <div className="text-center py-16 text-xs" style={{ color: themeConfig.textMuted }}>Scanning repo...</div>
+              ) : customCommands.length + runCommands.length === 0 ? (
+                <div className="text-center py-16 text-xs" style={{ color: themeConfig.textMuted }}>No startup commands found. Add one above.</div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {[...customCommands, ...runCommands.filter((c) => !customCommands.some((x) => x.command === c.command))].map((c) => (
+                    <div
+                      key={`${c.source}:${c.command}`}
+                      className="w-full px-3 py-2 rounded-lg border flex items-center gap-3"
+                      style={{ backgroundColor: themeConfig.bgCard, borderColor: themeConfig.border }}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-mono truncate" style={{ color: themeConfig.textPrimary }}>{c.command}</div>
+                        <div className="text-[10px] mt-0.5" style={{ color: themeConfig.textMuted }}>{c.label} · {c.source}</div>
+                      </div>
+                      {c.source === 'custom' && (
+                        <button
+                          type="button"
+                          onClick={() => onSaveCustomCommands(customCommands.filter((x) => x.command !== c.command))}
+                          title="Remove this command"
+                          aria-label={`Remove ${c.command}`}
+                          className="p-1 rounded hover:bg-black/20"
+                          style={{ color: themeConfig.textMuted }}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => { playLaunchSound(); onRunCommand(c.command); }}
+                        className="px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 flex-shrink-0 text-white"
+                        style={{ backgroundColor: themeConfig.accent }}
+                      >
+                        <Play className="w-3 h-3 fill-white" /> Run
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {viewMode === 'memory' && (
+          <div className="flex-1 flex min-h-0">
+            <div className="w-64 border-r overflow-y-auto p-2 flex-shrink-0" style={{ borderColor: themeConfig.border }}>
+              {memoryFiles === null ? (
+                <div className="text-xs p-2" style={{ color: themeConfig.textMuted }}>Loading...</div>
+              ) : memoryFiles.length === 0 ? (
+                <div className="text-xs p-2" style={{ color: themeConfig.textMuted }}>
+                  Claude has no memory for this project yet. Create a CLAUDE.md, or ask Claude to remember something.
+                </div>
+              ) : memoryFiles.map((f) => (
+                <button
+                  key={f.path}
+                  type="button"
+                  onClick={() => openMemoryFile(f.path)}
+                  title={f.path}
+                  className="w-full text-left px-2 py-1.5 rounded text-xs truncate"
+                  style={{
+                    backgroundColor: f.path === memoryPath ? themeConfig.bgTabActive : 'transparent',
+                    color: f.path === memoryPath ? themeConfig.textPrimary : themeConfig.textSecondary
+                  }}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            {memoryPath && (
+              <div className="flex-1 flex flex-col min-w-0 p-3 gap-2">
+                <div className="flex items-center gap-2 text-[10px]" style={{ color: themeConfig.textMuted }}>
+                  <span className="truncate flex-1 font-mono">{memoryPath}</span>
+                  {memorySaved && <span style={{ color: themeConfig.accent }}>{memorySaved}</span>}
+                  <button
+                    type="button"
+                    onClick={saveMemoryFile}
+                    className="px-2 py-0.5 rounded font-bold flex items-center gap-1 text-white"
+                    style={{ backgroundColor: themeConfig.accent }}
+                  >
+                    <Save className="w-3 h-3" /> Save
+                  </button>
+                </div>
+                <textarea
+                  value={memoryText}
+                  onChange={(e) => setMemoryText(e.target.value)}
+                  aria-label="Memory file content"
+                  className="flex-1 w-full p-2.5 rounded-lg text-xs font-mono outline-none resize-none border leading-relaxed"
+                  style={{ backgroundColor: themeConfig.bgMain, borderColor: themeConfig.border, color: themeConfig.textPrimary }}
+                />
+              </div>
+            )}
           </div>
         )}
 
