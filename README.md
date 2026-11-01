@@ -21,6 +21,14 @@ Pilothouse keeps all your Claude Code projects in one window: every project gets
 
 ## Quick install (macOS)
 
+With [Homebrew](https://brew.sh):
+
+```bash
+brew install --cask aemresrbyk/tap/pilothouse
+```
+
+Or with the install script:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/aemresrbyk/electron/main/install.sh | bash
 ```
