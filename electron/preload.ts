@@ -52,7 +52,12 @@ export const electronAPI = {
   voiceStatus: (): Promise<{ binary: boolean; model: boolean; modelBytes: number }> => ipcRenderer.invoke('voice:status'),
   voiceDownloadModel: (): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('voice:download-model'),
   voiceMicAccess: (): Promise<boolean> => ipcRenderer.invoke('voice:mic-access'),
-  voiceTranscribe: (pcm: ArrayBuffer, language: string, prompt?: string): Promise<{ text?: string; error?: string }> =>
+  speak: (text: string, lang: string): Promise<boolean> => ipcRenderer.invoke('tts:speak', text, lang),
+  stopSpeaking: (): void => ipcRenderer.send('tts:stop'),
+  ptyTail: (id: string, chars?: number): Promise<string> => ipcRenderer.invoke('pty:tail', id, chars),
+  agentLastReply: (projectPath: string, agentId: string, since: number): Promise<string | null> =>
+    ipcRenderer.invoke('agent:last-reply', projectPath, agentId, since),
+  voiceTranscribe: (pcm: ArrayBuffer, language: string, prompt?: string): Promise<{ text?: string; language?: string; words?: { text: string; p: number }[]; error?: string }> =>
     ipcRenderer.invoke('voice:transcribe', pcm, language, prompt),
   onVoiceEvent: (handler: (event: 'toggle' | 'progress' | 'error', data?: any) => void): (() => void) => {
     const toggle = () => handler('toggle');

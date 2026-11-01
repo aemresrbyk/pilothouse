@@ -35,7 +35,11 @@ declare global {
       voiceStatus: () => Promise<{ binary: boolean; model: boolean; modelBytes: number }>;
       voiceDownloadModel: () => Promise<{ success: boolean; error?: string }>;
       voiceMicAccess: () => Promise<boolean>;
-      voiceTranscribe: (pcm: ArrayBuffer, language: string, prompt?: string) => Promise<{ text?: string; error?: string }>;
+      speak: (text: string, lang: string) => Promise<boolean>;
+      stopSpeaking: () => void;
+      ptyTail: (id: string, chars?: number) => Promise<string>;
+      agentLastReply: (projectPath: string, agentId: string, since: number) => Promise<string | null>;
+      voiceTranscribe: (pcm: ArrayBuffer, language: string, prompt?: string) => Promise<{ text?: string; language?: string; words?: { text: string; p: number }[]; error?: string }>;
       onVoiceEvent: (handler: (event: 'toggle' | 'progress' | 'error', data?: any) => void) => () => void;
       getRunCommands: (dirPath: string) => Promise<RunCommand[]>;
       getMemoryFiles: (projectPath: string) => Promise<MemoryFile[]>;

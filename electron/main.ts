@@ -10,7 +10,7 @@ import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './t
 import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions, readTranscript, searchHistory, isSessionFile, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
 import { startControlServer, CONTROL_FILE, stripAnsi } from './control';
 import { Activity, newActivity, noteOutput, nextStatus } from './activity';
-import { whisperBinary, hasModel, downloadModel, transcribe, MODEL_BYTES } from './voice';
+import { whisperBinary, hasModel, downloadModel, transcribe, speak, stopSpeaking, MODEL_BYTES } from './voice';
 import { ProjectItem, AppSettings, ClaudeSession, agentById, agentBinary } from '../src/types';
 
 // The built directory structure
@@ -257,6 +257,25 @@ function registerIpcHandlers() {
     }
   });
 
+  ipcMain.handle('tts:speak', async (_e, text: string, lang: string) => speak(String(text).slice(0, 2000), lang));
+  ipcMain.on('tts:stop', () => stopSpeaking());
+
+  // What the agent's screen ends with (approval prompts), as plain text.
+  ipcMain.handle('pty:tail', async (_e, id: string, chars = 2000) => stripAnsi(ptyMeta.get(id)?.buf || '').slice(-chars));
+
+  // The agent's last written answer since a moment, from its session log (clean text, unlike the screen).
+  ipcMain.handle('agent:last-reply', async (_e, projectPath: string, agentId: string, since: number) => {
+    const sessions = listSessions(projectPath, agentId).filter((s) => s.file && s.modifiedAt >= since - 5000);
+    for (const s of sessions) {
+      const msgs = readTranscript(s.file!);
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i];
+        if (m.role === 'assistant' && (!m.time || Date.parse(m.time) >= since - 2000)) return m.text;
+      }
+    }
+    return null;
+  });
+
   ipcMain.handle('voice:status', async () => ({ binary: !!whisper(), model: hasModel(), modelBytes: MODEL_BYTES }));
   ipcMain.handle('voice:download-model', async (e) => {
     try {
@@ -273,7 +292,7 @@ function registerIpcHandlers() {
     if (!bin) return { error: 'Speech engine (whisper-cli) is missing from this build.' };
     if (!hasModel()) return { error: 'Speech model not downloaded yet.' };
     try {
-      return { text: await transcribe(bin, Buffer.from(pcm), language, prompt) };
+      return await transcribe(bin, Buffer.from(pcm), language, prompt);
     } catch (err: any) {
       return { error: err.message };
     }

@@ -35,6 +35,8 @@ export function findProject(projects: ProjectItem[], query: string): ProjectItem
 
 export function stripAnsi(s: string): string {
   return s
+    // TUIs (Claude Code) move the cursor right instead of printing spaces; keep the words apart.
+    .replace(/\x1b\[(\d*)C/g, (_m, n) => ' '.repeat(Math.min(Number(n) || 1, 200)))
     .replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '')
     .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
     .replace(/\x1b[@-_]/g, '')

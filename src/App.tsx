@@ -4,9 +4,12 @@ import {
   Terminal,
   UploadCloud,
   Mic,
-  Loader2
+  Loader2,
+  Volume2
 } from 'lucide-react';
 import { startRecording, Recording } from './utils/voice';
+import { converse, ConvoDeps } from './utils/conversationLoop';
+import { Heard } from './utils/conversation';
 import { WakeWordDetector, startWakeListener, WakeListener } from './utils/wakeword';
 import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme, PtyStatus, agentById, agentBinary, agentFlagPresets } from './types';
 import { THEMES, ThemeConfig } from './theme';
@@ -212,7 +215,11 @@ export const App: React.FC = () => {
   const statusCtx = useRef({ tabs, projects, activeTabId, notify: true });
   statusCtx.current = { tabs, projects, activeTabId, notify: settings.notificationsEnabled !== false };
 
+  // Conversation mode waits on a tab's status changes.
+  const statusListeners = useRef(new Map<string, Set<(s: PtyStatus) => void>>());
+
   useEffect(() => window.electronAPI.onPtyStatus(({ id, status }) => {
+    statusListeners.current.get(id)?.forEach((fn) => fn(status));
     const ctx = statusCtx.current;
     const tab = ctx.tabs.find((t) => t.id === id);
     if (!tab) return;
@@ -247,7 +254,7 @@ export const App: React.FC = () => {
   }, [tabStatus, tabs]);
 
   // Voice prompts: hotkey or mic button -> record until a pause -> local Whisper -> typed into the active tab.
-  type VoicePhase = 'idle' | 'listening' | 'transcribing' | 'needs-model' | 'downloading';
+  type VoicePhase = 'idle' | 'listening' | 'transcribing' | 'needs-model' | 'downloading' | 'speaking' | 'working';
   const [voice, setVoice] = useState<{ phase: VoicePhase; level?: number; progress?: number; note?: string }>({ phase: 'idle' });
   const recRef = useRef<Recording | null>(null);
   const voicePhase = useRef<VoicePhase>('idle');
@@ -260,37 +267,177 @@ export const App: React.FC = () => {
     setTimeout(() => setVoice((v) => (v.phase === 'idle' && v.note === note ? { phase: 'idle' } : v)), 6000);
   };
 
+  const voicePrompt = (ctx = voiceCtx.current) => `Projects: ${ctx.projects.map((p) => p.name).join(', ')}.`;
+
+  // Model downloaded, engine present, mic allowed?
+  const voiceReady = async (): Promise<boolean> => {
+    const st = await window.electronAPI.voiceStatus();
+    if (!st.binary) { flashVoice('The speech engine is missing from this build.'); return false; }
+    if (!st.model) { setVoice({ phase: 'needs-model' }); return false; }
+    if (!(await window.electronAPI.voiceMicAccess())) {
+      flashVoice('Microphone access is off. Allow Pilothouse in System Settings → Privacy & Security → Microphone.');
+      return false;
+    }
+    return true;
+  };
+
+  // One utterance from the mic (null = nobody spoke / aborted).
+  const recordOnce = async (opts: { timeoutMs?: number; signal?: AbortSignal; onSpeechStart?: () => void } = {}): Promise<ArrayBuffer | null> => {
+    if (opts.signal?.aborted) return null;
+    const rec = await startRecording((level) => setVoice((v) => (v.phase === 'listening' ? { ...v, level } : v)), {
+      startTimeoutMs: opts.timeoutMs,
+      onSpeechStart: opts.onSpeechStart
+    });
+    recRef.current = rec;
+    opts.signal?.addEventListener('abort', () => rec.cancel());
+    const pcm = await rec.result;
+    if (recRef.current === rec) recRef.current = null;
+    return pcm;
+  };
+
+  const transcribePcm = async (pcm: ArrayBuffer): Promise<Heard | null> => {
+    const ctx = voiceCtx.current;
+    const res = await window.electronAPI.voiceTranscribe(pcm, ctx.settings.voiceLanguage || 'auto', voicePrompt(ctx));
+    if (res.error) { flashVoice(res.error); return null; }
+    return { text: res.text || '', language: res.language || 'en', words: res.words || [] };
+  };
+
+  // Conversation mode: talk with the agent in the tab that was active when it started.
+  const convoRef = useRef<{ cancel: boolean } | null>(null);
+  const endConversation = () => {
+    if (!convoRef.current) return;
+    convoRef.current.cancel = true;
+    window.electronAPI.stopSpeaking();
+    recRef.current?.cancel();
+  };
+
+  const startConversation = async () => {
+    const ctx = voiceCtx.current;
+    const tab = ctx.tabs.find((t) => t.id === ctx.activeTabId);
+    const project = tab && ctx.projects.find((p) => p.id === tab.projectId);
+    if (!tab || !project) return flashVoice('Open a project tab first.');
+    const agent = agentById(project.agent);
+    const convo = { cancel: false };
+    convoRef.current = convo;
+    let sentAt = Date.now();
+    const write = (seq: string) => { sentAt = Date.now(); window.electronAPI.ptyWrite(tab.id, seq); };
+    const fixed = ctx.settings.voiceLanguage === 'tr' || ctx.settings.voiceLanguage === 'en' ? ctx.settings.voiceLanguage : undefined;
+
+    const deps: ConvoDeps = {
+      listen: async (o = {}) => {
+        const pcm = await recordOnce({ timeoutMs: o.timeoutMs, signal: o.signal });
+        if (!pcm || convo.cancel) return null;
+        setVoice({ phase: 'transcribing' });
+        return transcribePcm(pcm);
+      },
+      speak: async (text, lang) => {
+        // Listen while talking: if the user starts speaking, stop and take what they say as the next turn.
+        const ctl = new AbortController();
+        let barged = false;
+        const ears = recordOnce({
+          timeoutMs: 60_000,
+          signal: ctl.signal,
+          onSpeechStart: () => {
+            barged = true;
+            window.electronAPI.stopSpeaking();
+            setVoice({ phase: 'listening', level: 0 });
+          }
+        });
+        await window.electronAPI.speak(text, lang);
+        if (!barged) {
+          ctl.abort();
+          await ears;
+          return { interrupted: false };
+        }
+        const pcm = await ears;
+        if (!pcm || convo.cancel) return { interrupted: true, heard: null };
+        setVoice({ phase: 'transcribing' });
+        return { interrupted: true, heard: await transcribePcm(pcm) };
+      },
+      send: (text) => {
+        write(text);
+        // Enter separately so the agent's TUI doesn't treat it as part of the paste.
+        setTimeout(() => window.electronAPI.ptyWrite(tab.id, '\r'), 150);
+      },
+      keys: write,
+      waitForAgent: (signal) => new Promise((resolve) => {
+        let sawRunning = false;
+        const set = statusListeners.current.get(tab.id) ?? new Set();
+        statusListeners.current.set(tab.id, set);
+        const done = (r: 'idle' | 'waiting' | 'timeout') => {
+          set.delete(onStatus);
+          clearTimeout(quick);
+          clearTimeout(max);
+          resolve(r);
+        };
+        const onStatus = (s: PtyStatus) => {
+          if (s === 'running') sawRunning = true;
+          else if (sawRunning) done(s);
+        };
+        set.add(onStatus);
+        // Very short answers never look "running"; don't wait forever for them.
+        const quick = setTimeout(() => { if (!sawRunning) done('idle'); }, 8000);
+        const max = setTimeout(() => done('timeout'), 20 * 60_000);
+        signal.addEventListener('abort', () => done('timeout'));
+      }),
+      lastReply: () => window.electronAPI.agentLastReply(project.path, agent.id, sentAt),
+      screen: () => window.electronAPI.ptyTail(tab.id, 1500),
+      agentName: agent.name,
+      approveKey: agent.id === 'codex' ? 'y' : '\r',
+      denyKey: agent.id === 'codex' ? 'n' : '\x1b',
+      interruptKey: '\x1b',
+      vocab: [...ctx.projects.map((p) => p.name), agent.name],
+      fixedLang: fixed,
+      cancelled: () => convo.cancel,
+      onState: (state, text) => setVoice({
+        phase: state === 'thinking' ? 'transcribing' : state,
+        level: 0,
+        note: text
+      })
+    };
+
+    try {
+      await converse(deps);
+    } catch (err: any) {
+      flashVoice(`Conversation stopped: ${err.message}`);
+    } finally {
+      window.electronAPI.stopSpeaking();
+      if (convoRef.current === convo) convoRef.current = null;
+      setVoice((v) => (v.phase === 'idle' && v.note ? v : { phase: 'idle' }));
+    }
+  };
+
   const toggleVoice = async () => {
+    // During a conversation: the hotkey cuts the voice off mid-sentence, otherwise ends the conversation.
+    if (convoRef.current) {
+      if (voicePhase.current === 'speaking') window.electronAPI.stopSpeaking();
+      else endConversation();
+      return;
+    }
     if (recRef.current) return recRef.current.stop();
     if (voicePhase.current === 'transcribing' || voicePhase.current === 'downloading') return;
-    const st = await window.electronAPI.voiceStatus();
-    if (!st.binary) return flashVoice('The speech engine is missing from this build.');
-    if (!st.model) return setVoice({ phase: 'needs-model' });
-    if (!(await window.electronAPI.voiceMicAccess())) {
-      return flashVoice('Microphone access is off. Allow Pilothouse in System Settings → Privacy & Security → Microphone.');
-    }
-    let rec: Recording;
+    if (!(await voiceReady())) return;
+    if (voiceCtx.current.settings.voiceConversation !== false) return startConversation();
+
+    // Dictation: one utterance typed into the active tab.
+    setVoice({ phase: 'listening', level: 0 });
+    let pcm: ArrayBuffer | null;
     try {
-      rec = await startRecording((level) => setVoice((v) => (v.phase === 'listening' ? { ...v, level } : v)));
+      pcm = await recordOnce();
     } catch (err: any) {
       return flashVoice(`Microphone error: ${err.message}`);
     }
-    recRef.current = rec;
-    setVoice({ phase: 'listening', level: 0 });
-    const pcm = await rec.result;
-    recRef.current = null;
     if (!pcm) return flashVoice("Didn't hear anything.");
     setVoice({ phase: 'transcribing' });
+    const heard = await transcribePcm(pcm);
+    if (!heard) return;
+    if (!heard.text) return flashVoice("Didn't catch that, try again.");
     const ctx = voiceCtx.current;
-    const res = await window.electronAPI.voiceTranscribe(pcm, ctx.settings.voiceLanguage || 'auto', `Projects: ${ctx.projects.map((p) => p.name).join(', ')}.`);
-    if (res.error) return flashVoice(res.error);
-    if (!res.text) return flashVoice("Didn't catch that, try again.");
     const tab = ctx.tabs.find((t) => t.id === ctx.activeTabId);
-    if (!tab) return flashVoice(`Heard "${res.text}", but no tab is open.`);
-    window.electronAPI.ptyWrite(tab.id, res.text);
-    // Enter separately so the agent's TUI doesn't treat it as part of the paste.
+    if (!tab) return flashVoice(`Heard "${heard.text}", but no tab is open.`);
+    window.electronAPI.ptyWrite(tab.id, heard.text);
     if (ctx.settings.voiceAutoSend) setTimeout(() => window.electronAPI.ptyWrite(tab.id, '\r'), 150);
-    flashVoice(`${ctx.settings.voiceAutoSend ? 'Sent' : 'Typed (press Enter to send)'}: ${res.text}`);
+    flashVoice(`${ctx.settings.voiceAutoSend ? 'Sent' : 'Typed (press Enter to send)'}: ${heard.text}`);
   };
   const toggleVoiceRef = useRef(toggleVoice);
   toggleVoiceRef.current = toggleVoice;
@@ -342,10 +489,14 @@ export const App: React.FC = () => {
   // The menu bar's "Stop Listening" changes settings from main.
   useEffect(() => window.electronAPI.onSettingsChanged((s) => setSettings(s)), []);
 
-  // Esc while listening throws the recording away.
+  // Esc throws the recording away / ends the conversation.
   useEffect(() => {
-    if (voice.phase !== 'listening') return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { recRef.current?.cancel(); } };
+    if (voice.phase === 'idle' || voice.phase === 'needs-model' || voice.phase === 'downloading') return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (convoRef.current) endConversation();
+      else recRef.current?.cancel();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [voice.phase]);
@@ -643,13 +794,26 @@ export const App: React.FC = () => {
               <div className="w-16 h-1.5 rounded-full overflow-hidden flex-shrink-0" style={{ backgroundColor: themeConfig.border }}>
                 <div className="h-full transition-all duration-75" style={{ width: `${Math.round((voice.level || 0) * 100)}%`, backgroundColor: '#ef4444' }} />
               </div>
-              <span>Listening… I'll stop when you pause. <span style={{ color: themeConfig.textMuted }}>Esc cancels</span></span>
+              <span>Listening… I'll stop when you pause. <span style={{ color: themeConfig.textMuted }}>Esc {convoRef.current ? 'ends' : 'cancels'}</span></span>
             </>
           )}
           {voice.phase === 'transcribing' && (
             <>
               <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" style={{ color: themeConfig.accent }} />
-              <span>Transcribing on this Mac…</span>
+              <span className="truncate">{voice.note ? `“${voice.note}”` : 'Transcribing on this Mac…'}</span>
+            </>
+          )}
+          {voice.phase === 'speaking' && (
+            <>
+              <Volume2 className="w-4 h-4 flex-shrink-0 animate-pulse" style={{ color: themeConfig.accent }} />
+              <span className="line-clamp-2">{voice.note}</span>
+              <span className="flex-shrink-0 text-[10px]" style={{ color: themeConfig.textMuted }}>talk to interrupt · Esc ends</span>
+            </>
+          )}
+          {voice.phase === 'working' && (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" style={{ color: themeConfig.accent }} />
+              <span>Working on it… <span style={{ color: themeConfig.textMuted }}>say “stop” to interrupt · Esc ends</span></span>
             </>
           )}
           {voice.phase === 'needs-model' && (

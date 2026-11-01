@@ -109,9 +109,11 @@ assert.equal(stripAnsi('\x1b[31mhi\x1b[0m\r\x1b]0;t\x07ok'), 'hi\nok');
 const bin = whisperBinary(undefined, path.join(import.meta.dir, '..'));
 if (bin && hasModel()) {
   const pcm = fs.readFileSync(path.join(import.meta.dir, 'fixtures', 'voice-en.wav')).subarray(44);
-  const text = await transcribe(bin, pcm, 'en');
-  assert.match(text.toLowerCase(), /unit tests.*login function.*npm test/, text);
-  console.log('voice ok:', text);
+  const heard = await transcribe(bin, pcm, 'auto');
+  assert.match(heard.text.toLowerCase(), /unit tests.*login function.*npm test/, heard.text);
+  assert.equal(heard.language, 'en');
+  assert.ok(heard.words.length >= 8 && heard.words.every((w) => w.p > 0 && w.p <= 1));
+  console.log('voice ok:', heard.text, '| min word p', Math.min(...heard.words.map((w) => w.p)).toFixed(2));
 }
 
 // Wake word: the bundled "hey pilothouse" model fires on the phrase and not on look-alikes.
@@ -137,6 +139,96 @@ if (bin && hasModel()) {
     assert.deepStrictEqual([t.hit(0.9, 0), t.hit(0.9, 500), t.hit(0.9, 2500), t.hit(0.2, 6000)], [true, false, true, false]);
     console.log('wake word ok');
   }
+}
+
+// Conversation mode: rules + whole dialogues against a fake mic/speaker/agent.
+{
+  const C = await import('../src/utils/conversation');
+  const { converse } = await import('../src/utils/conversationLoop');
+  const { wordsFromWhisperJson } = await import('../electron/voice');
+  const H = (text: string, lang = 'en', lowWords: string[] = []): any => ({
+    text, language: lang, words: text.split(/\s+/).map((w) => ({ text: w, p: lowWords.includes(w) ? 0.2 : 0.95 }))
+  });
+
+  const { pickVoice, parseVoices } = await import('../electron/voice');
+  const voices = parseVoices(['Albert              en_US    # Hello', 'Eddy (English (US)) en_US    # Hi', 'Samantha            en_US    # Hi', 'Daniel              en_GB    # Hi', 'Ava (Premium)       en_US    # Hi', 'Yelda               tr_TR    # Merhaba'].join('\n'));
+  assert.equal(pickVoice('en', voices), 'Ava (Premium)');
+  assert.equal(pickVoice('en', voices.filter((v) => !/Ava/.test(v.name))), 'Samantha');
+  assert.equal(pickVoice('tr', voices), 'Yelda');
+  assert.equal(pickVoice('en', parseVoices('Albert  en_US  # x')), undefined, 'never a novelty voice');
+  const ww = wordsFromWhisperJson({ result: { language: 'tr' }, transcription: [{ tokens: [{ text: '[_BEG_]', p: 1 }, { text: ' in', p: 0.9 }, { text: ' alt', p: 0.29 }, { text: 'v', p: 0.93 }, { text: '.ts', p: 0.9 }] }] });
+  assert.deepStrictEqual(ww, { language: 'tr', words: [{ text: 'in', p: 0.9 }, { text: 'altv.ts', p: 0.29 }] });
+
+  assert.equal(C.judge(H('add tests to auth.ts')).kind, 'ok');
+  assert.deepStrictEqual(C.judge(H('add tests to altv.ts', 'en', ['altv.ts'])), { kind: 'confirm', words: ['altv.ts'] });
+  assert.equal(C.judge(H('run npm test', 'en', ['npm'])).kind, 'ok', 'familiar tech words are not questioned');
+  assert.equal(C.judge(H('kitefold', 'en', ['kitefold']), ['kitefold']).kind, 'ok', 'project names are vocabulary');
+  assert.equal(C.judge(H('a b c d', 'en', ['a', 'b', 'c'])).kind, 'repeat');
+  assert.equal(C.judge(H('')).kind, 'repeat');
+  assert.deepStrictEqual(['Yes.', 'evet', 'Hayır!', 'no thanks', 'maybe'].map(C.yesNo), ['yes', 'yes', 'no', 'no', null]);
+  assert.ok(C.isStop('Dur.') && C.isStop('stop') && !C.isStop('stop the server and restart it'));
+  assert.ok(C.isGoodbye('Teşekkürler.') && C.isGoodbye("that's all") && !C.isGoodbye('thanks, now add tests'));
+  assert.equal(C.applyCorrection('add tests to altv.ts', ['altv.ts'], 'auth.ts'), 'add tests to auth.ts');
+  assert.equal(C.applyCorrection('add tests to altv.ts', ['altv.ts'], 'no I meant write tests for the login function'), 'no I meant write tests for the login function');
+  assert.equal(C.speakable('I added **3 tests**:\n```ts\nx()\n```\nSee [docs](http://x).', 'en'), 'I added 3 tests: The code is on screen. See docs.');
+  assert.ok(C.speakable('A. '.repeat(300), 'tr').endsWith('Devamı ekranda.'));
+  assert.equal(C.approvalQuestion('Edit file\n Do you want to make this edit to auth.ts?\n ❯ 1. Yes\n 2. No'), 'Do you want to make this edit to auth.ts?');
+
+  // Fake world: a scripted user, a speaker that records what was said, an agent that answers.
+  const run = async (user: any[], agent: Array<'idle' | 'waiting'>, opts: { reply?: string; bargeAt?: number } = {}) => {
+    const said: string[] = [], sent: string[] = [], keys: string[] = [];
+    let listens = 0;
+    const result = await converse({
+      listen: async (o) => (o?.signal ? new Promise((r) => o.signal!.addEventListener('abort', () => r(null))) : (user[listens++] ?? null)),
+      speak: async (text) => {
+        said.push(text);
+        if (opts.bargeAt === said.length) return { interrupted: true, heard: user[listens++] ?? null };
+        return { interrupted: false };
+      },
+      send: (t) => sent.push(t),
+      keys: (k) => keys.push(k),
+      waitForAgent: async () => agent.shift() ?? 'idle',
+      lastReply: async () => opts.reply ?? 'All **tests** pass.',
+      screen: async () => ' Do you want to run npm test?\n ❯ 1. Yes',
+      agentName: 'Claude', approveKey: '\r', denyKey: '\x1b', interruptKey: '\x1b',
+      vocab: ['kitefold'], cancelled: () => false, onState: () => {}
+    });
+    return { result, said, sent, keys };
+  };
+
+  // Plain turn, answer read aloud, then goodbye.
+  let r = await run([H('add tests to auth.ts'), H('thanks', 'en')], ['idle']);
+  assert.deepStrictEqual(r.sent, ['add tests to auth.ts']);
+  assert.deepStrictEqual(r.said, ['On it.', 'All tests pass.', 'Okay, talk later.']);
+  assert.equal(r.result, 'goodbye');
+
+  // Unclear word -> asks -> short correction replaces it.
+  r = await run([H('add tests to altv.ts', 'en', ['altv.ts']), H('auth.ts')], ['idle']);
+  assert.equal(r.said[0], 'Did you say "altv.ts"? Say yes, or say it again.');
+  assert.deepStrictEqual(r.sent, ['add tests to auth.ts']);
+  assert.equal(r.result, 'silence');
+
+  // Mumble -> asks to repeat (in Turkish when spoken in Turkish).
+  r = await run([H('', 'tr'), H('testleri çalıştır', 'tr')], ['idle']);
+  assert.equal(r.said[0], 'Kusura bakma, anlayamadım. Tekrar söyler misin?');
+  assert.deepStrictEqual(r.sent, ['testleri çalıştır']);
+  assert.equal(r.said[1], 'Tamam, bakıyorum.');
+
+  // Agent asks approval -> read out -> "evet" presses Enter -> answer after it finishes.
+  r = await run([H('run the tests'), H('evet', 'tr')], ['waiting', 'idle']);
+  assert.equal(r.said[1], 'Claude asks: Do you want to run npm test? Yes or no?');
+  assert.deepStrictEqual(r.keys, ['\r']);
+  assert.ok(r.said.includes('Onaylandı.'));
+
+  // "no" denies with Esc.
+  r = await run([H('delete the build folder'), H('no')], ['waiting']);
+  assert.deepStrictEqual(r.keys, ['\x1b']);
+  assert.equal(r.said[2], 'Okay, cancelled.');
+
+  // Talking over the answer cuts it off and becomes the next request.
+  r = await run([H('explain the router'), H('actually just list the files')], ['idle', 'idle'], { reply: 'The router is long. '.repeat(10), bargeAt: 2 });
+  assert.deepStrictEqual(r.sent, ['explain the router', 'actually just list the files']);
+  console.log('conversation ok');
 }
 
 console.log('selfcheck ok');

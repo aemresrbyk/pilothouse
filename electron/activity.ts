@@ -14,7 +14,7 @@ export interface Activity {
 }
 
 const ECHO_MS = 400; // output this soon after a keystroke is the echo of the user's typing
-const QUIET_MS = 2500; // this long without output ends a run
+const QUIET_MS = 1500; // this long without output ends a run (agent spinners redraw every ~100 ms)
 const BUSY_MS = 1500; // output must flow this long to count as a run (skips redraws)
 const STARTUP_MS = 5000; // the agent's startup screen is not a run
 

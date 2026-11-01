@@ -4,7 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
-import { execFile } from 'child_process';
+import { execFile, execFileSync, spawn, ChildProcess } from 'child_process';
 
 export const MODEL_URL = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin';
 export const MODEL_SHA256 = '394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2';
@@ -78,16 +78,90 @@ export function cleanTranscript(text: string): string {
   return junk.includes(bare) || bare.includes('subtitles by') || bare.includes('altyazı') ? '' : t;
 }
 
-export function transcribe(binary: string, pcm: Buffer, language: string, prompt?: string): Promise<string> {
-  const wav = path.join(os.tmpdir(), `pilothouse-voice-${process.pid}-${Date.now()}.wav`);
+export interface Heard {
+  text: string;
+  language: string;
+  words: { text: string; p: number }[];
+}
+
+// Whisper's full JSON gives a probability per token; a word's confidence is its least certain token.
+export function wordsFromWhisperJson(json: any): { language: string; words: { text: string; p: number }[] } {
+  const words: { text: string; p: number }[] = [];
+  for (const seg of json?.transcription || []) {
+    for (const tok of seg.tokens || []) {
+      const t: string = tok.text || '';
+      if (/^\[_.*\]$/.test(t.trim()) || !t) continue;
+      if (t.startsWith(' ') || !words.length) words.push({ text: t.trim(), p: tok.p });
+      else {
+        const last = words[words.length - 1];
+        last.text += t;
+        last.p = Math.min(last.p, tok.p);
+      }
+    }
+  }
+  return { language: json?.result?.language || 'en', words };
+}
+
+export function transcribe(binary: string, pcm: Buffer, language: string, prompt?: string): Promise<Heard> {
+  const base = path.join(os.tmpdir(), `pilothouse-voice-${process.pid}-${Date.now()}`);
+  const wav = base + '.wav';
   fs.writeFileSync(wav, pcmToWav(pcm));
-  const args = ['-m', MODEL_FILE, '-f', wav, '-l', language || 'auto', '-nt', '-np'];
+  const args = ['-m', MODEL_FILE, '-f', wav, '-l', language || 'auto', '-nt', '-np', '-ojf', '-of', base];
   if (prompt) args.push('--prompt', prompt);
   return new Promise((resolve, reject) => {
     execFile(binary, args, { timeout: 60_000, maxBuffer: 1024 * 1024 }, (err, stdout) => {
+      let json: any = null;
+      try { json = JSON.parse(fs.readFileSync(base + '.json', 'utf-8')); } catch {}
       fs.rmSync(wav, { force: true });
+      fs.rmSync(base + '.json', { force: true });
       if (err) return reject(new Error(`speech recognition failed: ${err.message}`));
-      resolve(cleanTranscript(stdout));
+      const text = cleanTranscript(stdout);
+      const { language: lang, words } = wordsFromWhisperJson(json);
+      resolve({ text, language: lang, words: text ? words : [] });
     });
   });
+}
+
+// --- Speech output: macOS's own voices through \`say\`, killable for barge-in. ---
+
+// Best installed voice per language: Premium > Enhanced > natural voices > Eloquence voices; novelty voices never.
+const NOVELTY = /^(albert|bad news|bahh|bells|boing|bubbles|cellos|wobble|fred|good news|jester|junior|kathy|organ|superstar|ralph|trinoids|whisper|zarvox|deranged|hysterical|pipe organ)\b/i;
+const NATURAL = /^(samantha|ava|allison|alex|tom|susan|zoe|evan|nathan|daniel|karen|moira|tessa|rishi|serena|kate|oliver|yelda|cem)\b/i;
+let voiceList: { name: string; locale: string }[] | null = null;
+export function pickVoice(lang: string, list = listVoices()): string | undefined {
+  const mine = list.filter((v) => v.locale.toLowerCase().startsWith(lang.toLowerCase()) && !NOVELTY.test(v.name));
+  const rank = (v: { name: string; locale: string }) =>
+    (/premium/i.test(v.name) ? 0 : /enhanced|gelişmiş|geliştirilmiş/i.test(v.name) ? 10 : NATURAL.test(v.name) ? 20 : 30) +
+    (lang === 'en' && v.locale !== 'en_US' ? 1 : 0);
+  return [...mine].sort((a, b) => rank(a) - rank(b))[0]?.name;
+}
+export function parseVoices(out: string): { name: string; locale: string }[] {
+  return out.split('\n').map((l) => l.match(/^(.+?)\s+([a-z]{2,3}_[A-Z0-9]{2,})\s+#/)).filter(Boolean).map((m) => ({ name: m![1].trim(), locale: m![2] }));
+}
+function listVoices() {
+  if (!voiceList) {
+    try { voiceList = parseVoices(execFileSync('say', ['-v', '?'], { encoding: 'utf-8' })); } catch { voiceList = []; }
+  }
+  return voiceList;
+}
+
+let speaking: ChildProcess | null = null;
+// Resolves true if it was cut off (stopSpeaking), false when it finished.
+export function speak(text: string, lang: string): Promise<boolean> {
+  stopSpeaking();
+  const voice = pickVoice(lang);
+  // Text goes in on stdin, so nothing in it can be read as a \`say\` option.
+  const proc = spawn('say', voice ? ['-v', voice] : [], { stdio: ['pipe', 'ignore', 'ignore'] });
+  speaking = proc;
+  proc.stdin!.end(text);
+  return new Promise((resolve) => {
+    proc.on('close', (code, signal) => {
+      if (speaking === proc) speaking = null;
+      resolve(signal !== null);
+    });
+    proc.on('error', () => resolve(false));
+  });
+}
+export function stopSpeaking() {
+  if (speaking) { speaking.kill('SIGTERM'); speaking = null; }
 }

@@ -43,7 +43,12 @@ export interface Recording {
   result: Promise<ArrayBuffer | null>; // null = nothing said / cancelled
 }
 
-export async function startRecording(onLevel: (level: number) => void): Promise<Recording> {
+export interface RecordingOptions {
+  startTimeoutMs?: number; // give up if nobody speaks for this long (default 8 s)
+  onSpeechStart?: () => void; // fired once speech has lasted ~0.75 s (barge-in: stop talking, the user is speaking)
+}
+
+export async function startRecording(onLevel: (level: number) => void, opts: RecordingOptions = {}): Promise<Recording> {
   const RATE = 16000;
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
@@ -53,7 +58,8 @@ export async function startRecording(onLevel: (level: number) => void): Promise<
   // shortcut: ScriptProcessorNode is deprecated but needs no worklet file; move to AudioWorklet if Chromium drops it.
   const proc = ctx.createScriptProcessor(4096, 1, 1);
   const chunks: Float32Array[] = [];
-  const endpointer = new Endpointer();
+  const endpointer = new Endpointer(undefined, undefined, opts.startTimeoutMs);
+  let loud = 0;
   let finish!: (keep: boolean) => void;
 
   const result = new Promise<ArrayBuffer | null>((resolve) => {
@@ -76,6 +82,9 @@ export async function startRecording(onLevel: (level: number) => void): Promise<
     for (const v of data) sum += v * v;
     const rms = Math.sqrt(sum / data.length);
     onLevel(Math.min(1, rms * 12));
+    // Three loud chunks in a row (~0.75 s) count as talking over it; shorter bursts are clicks, coughs or echo.
+    loud = rms >= 0.015 ? loud + 1 : 0;
+    if (loud === 3) opts.onSpeechStart?.();
     const verdict = endpointer.feed(rms, (data.length / RATE) * 1000);
     if (verdict) finish(verdict === 'done');
   };

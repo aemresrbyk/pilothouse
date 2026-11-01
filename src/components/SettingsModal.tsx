@@ -292,7 +292,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <option value="fr">Français</option>
                 </select>
               </div>
-              <label className="flex items-center gap-2 cursor-pointer select-none">
+              <label className="flex items-start gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={formData.voiceConversation !== false}
+                  onChange={(e) => setFormData({ ...formData, voiceConversation: e.target.checked })}
+                  className="mt-0.5 w-3.5 h-3.5 accent-amber-500 cursor-pointer"
+                />
+                <span>
+                  <span className="text-xs text-zinc-300 block">Conversation mode</span>
+                  <span className="text-[10px] text-zinc-600">
+                    Reads the agent's answers aloud, asks you to repeat what it didn't catch, takes approvals by voice and keeps listening. You can talk over it. Off: plain dictation.
+                  </span>
+                </span>
+              </label>
+              {formData.voiceConversation === false && <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
                   checked={!!formData.voiceAutoSend}
@@ -301,7 +315,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 />
                 <span className="text-xs text-zinc-300">Send right away</span>
                 <span className="text-[10px] text-zinc-600">(off: the text is typed and you press Enter)</span>
-              </label>
+              </label>}
               <label className="flex items-start gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
