@@ -36,7 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/aemresrbyk/electron/main/install.sh
 The installer:
 - picks the right build for Apple Silicon (`arm64`) or Intel (`x64`),
 - installs `Pilothouse.app` into `/Applications`,
-- clears the Gatekeeper quarantine flag (the app is not code-signed),
+- installs a build that is signed with a Developer ID and notarized by Apple, so it opens without Gatekeeper warnings,
 - puts a `Pilothouse` alias on your Desktop.
 
 If you run `./install.sh` inside a clone, it builds from source instead of downloading.
