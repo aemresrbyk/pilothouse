@@ -309,7 +309,10 @@ function registerIpcHandlers() {
       // On POSIX the command is handed to the shell directly (typing it in after a fixed delay lost
       // characters while slow rc files were still loading); an interactive shell takes over when it exits.
       const cmd = initialCommand?.trim();
-      const args = isWin ? [] : cmd ? ['-l', '-i', '-c', `${cmd}; exec "${shell}" -l`] : ['-l'];
+      // Exit code 127 = command not found; usually means Claude Code isn't installed (fish has no $?, so it gets no hint).
+      const hint = path.basename(shell) === 'fish' ? '' :
+        `; [ $? -eq 127 ] && printf '\\n\\033[33mCommand not found. To install Claude Code run:\\n  npm install -g @anthropic-ai/claude-code\\nor set its path in Pilothouse Settings.\\033[0m\\n\\n'`;
+      const args = isWin ? [] : cmd ? ['-l', '-i', '-c', `${cmd}${hint}; exec "${shell}" -l`] : ['-l'];
       const ptyProcess = pty.spawn(shell, args, {
         name: 'xterm-256color',
         cols: safeCols,
