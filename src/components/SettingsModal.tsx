@@ -221,6 +221,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
+          {/* Notifications */}
+          <label className="flex items-start gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={formData.notificationsEnabled !== false}
+              onChange={(e) => setFormData({ ...formData, notificationsEnabled: e.target.checked })}
+              className="mt-0.5 w-3.5 h-3.5 rounded bg-zinc-900 border-[#2a344a] accent-amber-500 cursor-pointer"
+            />
+            <span>
+              <span className="text-xs text-zinc-300 block">Notifications</span>
+              <span className="text-[10px] text-zinc-600">
+                Notify when an agent in a background tab finishes or asks for approval.
+              </span>
+            </span>
+          </label>
+
           {/* Local control API */}
           <label className="flex items-start gap-2 cursor-pointer select-none">
             <input

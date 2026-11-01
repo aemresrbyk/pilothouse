@@ -11,7 +11,7 @@ import {
   Search,
   FolderPlus
 } from 'lucide-react';
-import { ProjectItem, TabSession, AppTheme } from '../types';
+import { ProjectItem, TabSession, AppTheme, PtyStatus } from '../types';
 import { THEMES, ThemeConfig } from '../theme';
 import { playClickSound } from '../utils/audio';
 import { AppLogo } from './AppLogo';
@@ -19,6 +19,7 @@ import { AppLogo } from './AppLogo';
 interface ChromeTabBarProps {
   tabs: TabSession[];
   activeTabId: string;
+  tabStatus: Record<string, { status: PtyStatus; unseen: boolean }>;
   projects: ProjectItem[];
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
@@ -39,6 +40,7 @@ interface ChromeTabBarProps {
 export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
   tabs,
   activeTabId,
+  tabStatus,
   projects,
   onSelectTab,
   onCloseTab,
@@ -129,15 +131,25 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
                   />
                 )}
 
-                {/* Status Dot */}
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <span
-                    className={`w-2 h-2 rounded-full transition-opacity ${
-                      isActive ? 'opacity-100' : 'opacity-40'
-                    }`}
-                    style={{ backgroundColor: isActive ? themeConfig.accent : themeConfig.textMuted }}
-                  />
-                </div>
+                {/* Status dot: pulsing = working, amber = needs approval, green = finished while you were away */}
+                {(() => {
+                  const st = tabStatus[tab.id];
+                  const waiting = st?.status === 'waiting';
+                  const running = st?.status === 'running';
+                  const done = !!st?.unseen && !waiting;
+                  const color = waiting ? '#f59e0b' : done ? '#22c55e' : running || isActive ? themeConfig.accent : themeConfig.textMuted;
+                  const label = waiting ? 'Needs your approval' : done ? 'Finished' : running ? 'Working…' : 'Idle';
+                  return (
+                    <div className="flex items-center gap-1 flex-shrink-0" title={label} aria-label={label}>
+                      <span
+                        className={`w-2 h-2 rounded-full transition-opacity ${running ? 'animate-pulse' : ''} ${
+                          isActive || waiting || done || running ? 'opacity-100' : 'opacity-40'
+                        }`}
+                        style={{ backgroundColor: color }}
+                      />
+                    </div>
+                  );
+                })()}
 
                 {/* Tab Title */}
                 <span className="truncate flex-1 font-medium text-[11px]">

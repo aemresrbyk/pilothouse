@@ -4,7 +4,7 @@ import {
   Terminal,
   UploadCloud
 } from 'lucide-react';
-import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme, DEFAULT_FLAG_PRESETS } from './types';
+import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme, DEFAULT_FLAG_PRESETS, PtyStatus } from './types';
 import { THEMES, ThemeConfig } from './theme';
 import { ChromeTabBar } from './components/ChromeTabBar';
 import { TabWorkspace } from './components/TabWorkspace';
@@ -202,6 +202,45 @@ export const App: React.FC = () => {
     return newTabRef.current(projectId, command);
   }), []);
 
+  // Agent status per tab (guessed from PTY output in main). unseen = it finished or asked for approval while you looked elsewhere.
+  const [tabStatus, setTabStatus] = useState<Record<string, { status: PtyStatus; unseen: boolean }>>({});
+  const statusCtx = useRef({ tabs, projects, activeTabId, notify: true });
+  statusCtx.current = { tabs, projects, activeTabId, notify: settings.notificationsEnabled !== false };
+
+  useEffect(() => window.electronAPI.onPtyStatus(({ id, status }) => {
+    const ctx = statusCtx.current;
+    const tab = ctx.tabs.find((t) => t.id === id);
+    if (!tab) return;
+    const looking = id === ctx.activeTabId && document.hasFocus();
+    // Run-command tabs (dev servers …) get a dot but never nag.
+    const attention = status !== 'running' && !looking && !tab.initialCommand;
+    setTabStatus((prev) => ({ ...prev, [id]: { status, unseen: attention } }));
+    if (attention && ctx.notify) {
+      const name = ctx.projects.find((p) => p.id === tab.projectId)?.name || 'Project';
+      const n = new Notification(name, { body: status === 'waiting' ? 'Needs your approval' : 'Finished, your turn' });
+      n.onclick = () => {
+        window.electronAPI.focusApp();
+        setActiveTabId(id);
+      };
+    }
+  }), []);
+
+  // Looking at a tab clears its "unseen" mark.
+  useEffect(() => {
+    const clear = () => {
+      if (!document.hasFocus()) return;
+      setTabStatus((prev) => (prev[activeTabId]?.unseen ? { ...prev, [activeTabId]: { ...prev[activeTabId], unseen: false } } : prev));
+    };
+    clear();
+    window.addEventListener('focus', clear);
+    return () => window.removeEventListener('focus', clear);
+  }, [activeTabId]);
+
+  // Dock badge: tabs that need you (unseen result or pending approval).
+  useEffect(() => {
+    window.electronAPI.setBadge(tabs.filter((t) => tabStatus[t.id]?.unseen || tabStatus[t.id]?.status === 'waiting').length);
+  }, [tabStatus, tabs]);
+
   const handleBrowseFolder = async () => {
     try {
       const dir = await window.electronAPI.pickDirectory();
@@ -335,6 +374,7 @@ export const App: React.FC = () => {
       <ChromeTabBar
         tabs={tabs}
         activeTabId={activeTabId}
+        tabStatus={tabStatus}
         projects={projects}
         onSelectTab={handleSelectTab}
         onCloseTab={handleCloseTab}

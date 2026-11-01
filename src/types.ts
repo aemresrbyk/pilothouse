@@ -79,6 +79,8 @@ export interface MemoryFile {
   path: string;
 }
 
+export type PtyStatus = 'running' | 'waiting' | 'idle';
+
 export type AppTheme = 'claude' | 'dark' | 'cyber' | 'nord' | 'light';
 
 export interface AppSettings {
@@ -90,6 +92,7 @@ export interface AppSettings {
   claudePath: string;
   autoDetectOnStartup: boolean;
   controlApiEnabled?: boolean;
+  notificationsEnabled?: boolean;
   soundEnabled?: boolean;
   savedTabs?: TabSession[];
   activeTabId?: string;

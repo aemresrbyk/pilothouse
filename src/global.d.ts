@@ -1,4 +1,4 @@
-import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile } from './types';
+import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile, PtyStatus } from './types';
 
 declare module '*.css';
 declare module '*.svg' {
@@ -38,6 +38,9 @@ declare global {
       ptyWrite: (id: string, data: string) => void;
       ptyResize: (id: string, cols: number, rows: number) => void;
       ptyKill: (id: string) => Promise<void>;
+      onPtyStatus: (callback: (info: { id: string; status: PtyStatus }) => void) => () => void;
+      setBadge: (count: number) => void;
+      focusApp: () => void;
       onPtyData: (id: string, callback: (data: string) => void) => () => void;
       onPtyExit: (id: string, callback: (info: { exitCode: number; signal?: number }) => void) => () => void;
     };

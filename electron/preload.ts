@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile } from '../src/types';
+import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile, PtyStatus } from '../src/types';
 
 export const electronAPI = {
   getProjects: (): Promise<ProjectItem[]> => ipcRenderer.invoke('projects:get'),
@@ -67,6 +67,13 @@ export const electronAPI = {
   },
   ptyKill: (id: string): Promise<void> =>
     ipcRenderer.invoke('pty:kill', { id }),
+  onPtyStatus: (callback: (info: { id: string; status: PtyStatus }) => void): (() => void) => {
+    const listener = (_e: any, info: { id: string; status: PtyStatus }) => callback(info);
+    ipcRenderer.on('pty:status', listener);
+    return () => { ipcRenderer.removeListener('pty:status', listener); };
+  },
+  setBadge: (count: number): void => ipcRenderer.send('app:badge', count),
+  focusApp: (): void => ipcRenderer.send('app:focus'),
   onPtyData: (id: string, callback: (data: string) => void): (() => void) => {
     const channel = `pty:data:${id}`;
     const listener = (_e: any, data: string) => callback(data);

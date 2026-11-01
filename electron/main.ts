@@ -8,7 +8,8 @@ import { autoUpdater } from 'electron-updater';
 import { StorageManager } from './store';
 import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './terminal';
 import { listProjectFiles, readFileContent, getProjectSessions, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
-import { startControlServer, CONTROL_FILE } from './control';
+import { startControlServer, CONTROL_FILE, stripAnsi } from './control';
+import { Activity, newActivity, noteOutput, nextStatus } from './activity';
 import { ProjectItem, AppSettings, ClaudeSession } from '../src/types';
 
 // The built directory structure
@@ -21,7 +22,7 @@ let win: BrowserWindow | null = null;
 let storage: StorageManager;
 const ptySessions = new Map<string, pty.IPty>();
 // cwd + recent output per PTY, so the control API can tell which project a terminal belongs to and read it back.
-const ptyMeta = new Map<string, { cwd: string; buf: string }>();
+const ptyMeta = new Map<string, { cwd: string; buf: string; act: Activity; sender: Electron.WebContents }>();
 const OUTPUT_KEEP = 60_000;
 const pendingOpens = new Map<string, (tabId: string) => void>();
 
@@ -91,6 +92,17 @@ app.whenReady().then(() => {
   storage = new StorageManager();
   registerIpcHandlers();
   createWindow();
+  // Tab status dots + "Claude finished / needs approval" notifications.
+  setInterval(() => {
+    const now = Date.now();
+    for (const [id, m] of ptyMeta) {
+      if (!ptySessions.has(id)) continue;
+      const status = nextStatus(m.act, now, stripAnsi(m.buf.slice(-2000)).slice(-600));
+      if (status === m.act.status) continue;
+      m.act.status = status;
+      if (!m.sender.isDestroyed()) m.sender.send('pty:status', { id, status });
+    }
+  }, 1000);
   if (app.isPackaged) {
     // Downloads from GitHub Releases, notifies, installs on quit. macOS only applies signed updates.
     const check = () => autoUpdater.checkForUpdatesAndNotify().catch((err) => console.error('Update check failed:', err.message));
@@ -219,6 +231,9 @@ function registerIpcHandlers() {
     pendingOpens.get(reqId)?.(tabId);
   });
 
+  ipcMain.on('app:badge', (_e, count: number) => app.setBadgeCount(Math.max(0, count | 0)));
+  ipcMain.on('app:focus', () => focusWindow());
+
   ipcMain.handle('project:run-commands', async (_e, dirPath: string) => {
     return detectRunCommands(dirPath);
   });
@@ -322,7 +337,7 @@ function registerIpcHandlers() {
       });
 
       ptySessions.set(id, ptyProcess);
-      const meta = { cwd: targetCwd, buf: '' };
+      const meta = { cwd: targetCwd, buf: '', act: newActivity(Date.now()), sender: event.sender };
       ptyMeta.set(id, meta);
 
       // A replaced/killed session must not touch the map entry or UI of its successor (same id).
@@ -331,6 +346,7 @@ function registerIpcHandlers() {
       ptyProcess.onData((data: string) => {
         if (!isCurrent()) return;
         meta.buf = (meta.buf + data).slice(-OUTPUT_KEEP);
+        noteOutput(meta.act, Date.now());
         try {
           if (!event.sender.isDestroyed()) {
             event.sender.send(`pty:data:${id}`, data);
@@ -367,6 +383,8 @@ function registerIpcHandlers() {
 
   const handlePtyWrite = (_e: any, { id, data }: { id: string; data: string }) => {
     const ptyProc = ptySessions.get(id);
+    const meta = ptyMeta.get(id);
+    if (meta) meta.act.lastInput = Date.now();
     if (ptyProc) {
       try {
         ptyProc.write(data);
