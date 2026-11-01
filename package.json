@@ -1,6 +1,6 @@
 {
   "name": "pilothouse",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "Pilothouse: a desktop cockpit with tabbed embedded terminals for Claude Code",
   "main": "dist-electron/main.js",
   "scripts": {
