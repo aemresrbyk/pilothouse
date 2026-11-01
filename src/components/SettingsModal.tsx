@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Settings, Terminal, Code2, Sliders, Check, Palette } from 'lucide-react';
-import { AppSettings, TerminalOption, AppTheme, DEFAULT_FLAG_PRESETS, SKIP_PERMS_FLAG } from '../types';
+import { AppSettings, TerminalOption, AppTheme, isDangerFlag, AGENTS, agentFlagPresets } from '../types';
 import { THEMES } from '../theme';
 import { playClickSound } from '../utils/audio';
 
@@ -20,12 +20,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [formData, setFormData] = useState<AppSettings>(settings);
   const [terminals, setTerminals] = useState<TerminalOption[]>([]);
   const [isSaved, setIsSaved] = useState(false);
-  const [presetsText, setPresetsText] = useState('');
-  const presetList = [...new Set(presetsText.split('\n').map((l) => l.trim()).filter(Boolean))];
+  // Toolbar flags are edited per agent; presetsText holds the one currently shown.
+  const [editAgent, setEditAgent] = useState('claude');
+  const [presetsByAgent, setPresetsByAgent] = useState<Record<string, string>>({});
+  const presetsText = presetsByAgent[editAgent] ?? '';
+  const setPresetsText = (text: string) => setPresetsByAgent((prev) => ({ ...prev, [editAgent]: text }));
+  const toList = (text: string) => [...new Set(text.split('\n').map((l) => l.trim()).filter(Boolean))];
+  const presetList = toList(presetsText);
+  const defaultAgent = formData.defaultAgent || 'claude';
 
   useEffect(() => {
     setFormData(settings);
-    setPresetsText((settings.flagPresets ?? DEFAULT_FLAG_PRESETS).join('\n'));
+    setPresetsByAgent(Object.fromEntries(AGENTS.map((a) => [a.id, agentFlagPresets(settings, a.id).join('\n')])));
+    setEditAgent(settings.defaultAgent || 'claude');
     if (isOpen) {
       window.electronAPI.getTerminals().then(setTerminals);
     }
@@ -36,7 +43,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const handleSave = () => {
     playClickSound();
     // Drop defaults whose toolbar toggle was removed.
-    onSaveSettings({ ...formData, flagPresets: presetList, defaultFlags: formData.defaultFlags.filter((f) => presetList.includes(f)) });
+    const agentPresets = Object.fromEntries(AGENTS.map((a) => [a.id, toList(presetsByAgent[a.id] ?? '')]));
+    onSaveSettings({
+      ...formData,
+      agentFlagPresets: agentPresets,
+      defaultFlags: formData.defaultFlags.filter((f) => agentPresets[defaultAgent].includes(f))
+    });
     setIsSaved(true);
     setTimeout(() => {
       setIsSaved(false);
@@ -185,8 +197,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           <div>
             <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
               <Sliders className="w-3.5 h-3.5 text-purple-400" />
-              <span>TOOLBAR FLAGS</span>
+              <span>AGENTS &amp; TOOLBAR FLAGS</span>
             </label>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] text-zinc-500">New projects use</span>
+              <select
+                value={defaultAgent}
+                onChange={(e) => setFormData({ ...formData, defaultAgent: e.target.value, defaultFlags: [] })}
+                className="bg-[#10131c] border border-[#1b2233] text-xs text-zinc-200 rounded px-1.5 py-1 outline-none"
+              >
+                {AGENTS.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+            <div className="flex gap-1 mb-1.5">
+              {AGENTS.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => setEditAgent(a.id)}
+                  className={`px-2 py-0.5 rounded text-[10px] border ${editAgent === a.id ? 'border-amber-500/80 bg-amber-500/15 text-white' : 'border-[#1b2233] text-zinc-400'}`}
+                >
+                  {a.name}
+                </button>
+              ))}
+            </div>
             <textarea
               value={presetsText}
               onChange={(e) => setPresetsText(e.target.value)}
@@ -196,9 +230,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               className="w-full bg-[#10131c] border border-[#1b2233] focus:border-amber-500 text-xs text-zinc-200 rounded px-2.5 py-1.5 outline-none font-mono resize-y"
             />
             <p className="text-[10px] text-zinc-600 mt-1 mb-2">
-              One flag per line. Each becomes an on/off toggle in the project toolbar. Tick the ones new projects should start with:
+              One flag per line. Each becomes an on/off toggle in the toolbar when a project runs this agent.
+              {editAgent === defaultAgent && ' Tick the ones new projects should start with:'}
             </p>
-            <div className="bg-[#10131c] border border-[#1b2233] rounded p-2.5 space-y-2">
+            {editAgent === defaultAgent && presetList.length > 0 && <div className="bg-[#10131c] border border-[#1b2233] rounded p-2.5 space-y-2">
               {presetList.map((flag) => (
                 <label key={flag} className="flex items-center gap-2 cursor-pointer select-none">
                   <input
@@ -215,10 +250,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     }}
                     className="w-3.5 h-3.5 rounded bg-zinc-900 border-[#2a344a] text-amber-500 accent-amber-500 cursor-pointer"
                   />
-                  <span className={`text-xs font-mono ${flag === SKIP_PERMS_FLAG ? 'text-red-400' : 'text-zinc-300'}`}>{flag}</span>
+                  <span className={`text-xs font-mono ${isDangerFlag(flag) ? 'text-red-400' : 'text-zinc-300'}`}>{flag}</span>
                 </label>
               ))}
-            </div>
+            </div>}
           </div>
 
           {/* Notifications */}

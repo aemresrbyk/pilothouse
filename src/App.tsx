@@ -4,7 +4,7 @@ import {
   Terminal,
   UploadCloud
 } from 'lucide-react';
-import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme, DEFAULT_FLAG_PRESETS, PtyStatus } from './types';
+import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme, PtyStatus, agentById, agentBinary, agentFlagPresets } from './types';
 import { THEMES, ThemeConfig } from './theme';
 import { ChromeTabBar } from './components/ChromeTabBar';
 import { TabWorkspace } from './components/TabWorkspace';
@@ -259,6 +259,16 @@ export const App: React.FC = () => {
     await window.electronAPI.updateProject(projectId, { flags });
   };
 
+  // Each agent keeps its own flags per project, so switching back restores them.
+  const handleSwitchAgent = (projectId: string, agentId: string) => {
+    const p = projects.find((x) => x.id === projectId);
+    if (!p || (p.agent || 'claude') === agentId) return;
+    const agentFlags = { ...(p.agentFlags || {}), [p.agent || 'claude']: p.flags };
+    const updates = { agent: agentId, flags: agentFlags[agentId] || [], agentFlags };
+    setProjects((prev) => prev.map((x) => (x.id === projectId ? { ...x, ...updates } : x)));
+    window.electronAPI.updateProject(projectId, updates);
+  };
+
   const handleAddProject = async (folderPath: string) => {
     try {
       const newProj = await window.electronAPI.addProject(folderPath);
@@ -414,8 +424,10 @@ export const App: React.FC = () => {
                   onOpenEditor={handleOpenEditor}
                   themeConfig={themeConfig}
                   isActive={isTabActive}
-                  claudePath={settings.claudePath || 'claude'}
-                  flagPresets={settings.flagPresets ?? DEFAULT_FLAG_PRESETS}
+                  agent={agentById(proj.agent)}
+                  agentBinary={agentBinary(agentById(proj.agent), settings.claudePath)}
+                  flagPresets={agentFlagPresets(settings, proj.agent)}
+                  onSwitchAgent={handleSwitchAgent}
                   onRunCommand={(cmd) => handleNewTab(proj.id, cmd)}
                   onSaveCustomCommands={async (cmds) => {
                     const updated = await window.electronAPI.updateProject(proj.id, { customRunCommands: cmds });

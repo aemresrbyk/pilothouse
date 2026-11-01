@@ -2,8 +2,49 @@
 export type ProjectFlags = string[];
 
 export const SKIP_PERMS_FLAG = '--dangerously-skip-permissions';
+// Flags that let an agent act without asking (Claude's skip-permissions, Codex/Gemini --yolo, bypass-approvals …).
+export const isDangerFlag = (flag: string) => /dangerous|yolo|bypass/i.test(flag);
 // Toggle pills shown in the toolbar until the user edits the list in Settings.
 export const DEFAULT_FLAG_PRESETS = ['--continue', SKIP_PERMS_FLAG, '--verbose', '--chrome'];
+
+// Terminal AI agents Pilothouse can drive. Only the command, flags and instructions file differ;
+// conversation history is read for the agents that have hasHistory.
+export interface AgentProfile {
+  id: string;
+  name: string;
+  command: string;
+  instructionsFile: string;
+  flagPresets: string[];
+  resumeArgs?: string; // {id} is replaced with the session id
+  hasHistory?: boolean;
+}
+
+export const AGENTS: AgentProfile[] = [
+  { id: 'claude', name: 'Claude Code', command: 'claude', instructionsFile: 'CLAUDE.md', flagPresets: DEFAULT_FLAG_PRESETS, resumeArgs: '--resume {id}', hasHistory: true },
+  { id: 'codex', name: 'Codex', command: 'codex', instructionsFile: 'AGENTS.md', flagPresets: ['--full-auto', '--search'], resumeArgs: 'resume {id}', hasHistory: true },
+  { id: 'gemini', name: 'Gemini CLI', command: 'gemini', instructionsFile: 'GEMINI.md', flagPresets: ['--yolo'] },
+  { id: 'opencode', name: 'opencode', command: 'opencode', instructionsFile: 'AGENTS.md', flagPresets: [] }
+];
+
+export const agentById = (id?: string): AgentProfile => AGENTS.find((a) => a.id === id) || AGENTS[0];
+
+export function agentFlagPresets(settings: Pick<AppSettings, 'agentFlagPresets'>, agentId?: string): string[] {
+  const agent = agentById(agentId);
+  return settings.agentFlagPresets?.[agent.id] ?? agent.flagPresets;
+}
+
+// Claude's binary path is configurable in Settings; the others are looked up on the login shell's PATH.
+export const agentBinary = (agent: AgentProfile, claudePath?: string): string =>
+  agent.id === 'claude' ? claudePath || 'claude' : agent.command;
+
+// Shell command line for an agent. resumeId reopens a past session (and drops --continue, which conflicts).
+export function buildAgentCommand(agent: AgentProfile, binary: string, flags: string[], extra?: string, resumeId?: string): string {
+  const parts = [/\s/.test(binary) ? `"${binary}"` : binary];
+  if (resumeId && agent.resumeArgs) parts.push(agent.resumeArgs.replace('{id}', resumeId));
+  parts.push(...flags.filter((f) => !(resumeId && (f === '--continue' || f === '-c'))));
+  if (!resumeId && extra?.trim()) parts.push(extra.trim());
+  return parts.join(' ');
+}
 
 const LEGACY_FLAG_KEYS: Record<string, string> = {
   dangerouslySkipPermissions: SKIP_PERMS_FLAG,
@@ -66,6 +107,8 @@ export interface ProjectItem {
   metrics?: ClaudeMetrics;
   commandHistory?: string[];
   customRunCommands?: RunCommand[];
+  agent?: string; // AgentProfile id, default 'claude'
+  agentFlags?: Record<string, ProjectFlags>; // flags remembered for the agents this project switched away from
 }
 
 export interface RunCommand {
@@ -88,7 +131,8 @@ export interface AppSettings {
   defaultTerminal: string;
   defaultEditor: string;
   defaultFlags: ProjectFlags;
-  flagPresets?: string[];
+  agentFlagPresets?: Record<string, string[]>; // per agent id; missing = the agent's built-in presets
+  defaultAgent?: string;
   claudePath: string;
   autoDetectOnStartup: boolean;
   controlApiEnabled?: boolean;

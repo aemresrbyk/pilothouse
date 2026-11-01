@@ -58,6 +58,59 @@ export function getProjectSessions(projectPath: string, withTitles = false): Cla
 }
 
 // First real user prompt of a session transcript, used as its title in the History view.
+// Codex keeps sessions in ~/.codex/sessions/YYYY/MM/DD/rollout-<time>-<uuid>.jsonl; the first line (session_meta)
+// holds the cwd, and ~/.codex/session_index.jsonl maps ids to thread names.
+export function getCodexSessions(projectPath: string, codexHome = path.join(os.homedir(), '.codex')): ClaudeSession[] {
+  const root = path.join(codexHome, 'sessions');
+  const files: string[] = [];
+  const walk = (dir: string, depth: number) => {
+    let names: string[];
+    try { names = fs.readdirSync(dir).sort().reverse(); } catch { return; }
+    for (const n of names) {
+      if (files.length >= 500) return; // shortcut: newest 500 sessions only; page further if users need older ones
+      const full = path.join(dir, n);
+      if (depth < 3) walk(full, depth + 1);
+      else if (n.endsWith('.jsonl')) files.push(full);
+    }
+  };
+  walk(root, 0);
+
+  const titles = new Map<string, string>();
+  try {
+    for (const line of fs.readFileSync(path.join(codexHome, 'session_index.jsonl'), 'utf-8').split('\n')) {
+      try { const e = JSON.parse(line); if (e.id && e.thread_name) titles.set(e.id, e.thread_name); } catch {}
+    }
+  } catch {}
+
+  const real = (p: string) => { try { return fs.realpathSync(p); } catch { return p; } };
+  const target = real(projectPath);
+  const sessions: ClaudeSession[] = [];
+  for (const f of files) {
+    try {
+      const fd = fs.openSync(f, 'r');
+      const buf = Buffer.alloc(64 * 1024);
+      const n = fs.readSync(fd, buf, 0, buf.length, 0);
+      fs.closeSync(fd);
+      const head = buf.subarray(0, n).toString('utf-8');
+      const cwd = head.match(/"cwd":"((?:[^"\\]|\\.)*)"/)?.[1];
+      if (!cwd || real(JSON.parse(`"${cwd}"`)) !== target) continue;
+      const id = path.basename(f, '.jsonl').slice(-36);
+      const firstPrompt = head.match(/"type":"user_message","message":"((?:[^"\\]|\\.){1,200})/)?.[1];
+      const stat = fs.statSync(f);
+      const sizeKb = Math.round(stat.size / 1024);
+      sessions.push({
+        id,
+        modifiedAt: stat.mtimeMs,
+        sizeBytes: stat.size,
+        formattedSize: sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${sizeKb} KB`,
+        dateStr: new Date(stat.mtimeMs).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+        title: titles.get(id) || (firstPrompt ? firstPrompt.replace(/\\n/g, ' ').trim() : undefined)
+      });
+    } catch {}
+  }
+  return sessions.sort((a, b) => b.modifiedAt - a.modifiedAt);
+}
+
 export function getSessionTitle(filePath: string, maxBytes = 256 * 1024): string | undefined {
   try {
     const fd = fs.openSync(filePath, 'r');
@@ -218,7 +271,11 @@ export function buildProjectItem(
     gitInfo: existing?.gitInfo, // refreshed asynchronously by StorageManager.getProjects()
     hasClaudeMd,
     hasPackageJson,
-    metrics: resolvedMetrics
+    metrics: resolvedMetrics,
+    agent: existing?.agent,
+    agentFlags: existing?.agentFlags,
+    customRunCommands: existing?.customRunCommands,
+    commandHistory: existing?.commandHistory
   };
 }
 

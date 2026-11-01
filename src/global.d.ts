@@ -26,7 +26,7 @@ declare global {
       saveFile: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>;
       getGitStatus: (dirPath: string) => Promise<{ isGit: boolean; branch: string; modifiedCount: number; statusText: string }>;
       getSystemHealth: () => Promise<{ claudeInstalled: boolean; claudePath: string; claudeVersion: string; nodeVersion: string }>;
-      getSessions: (projectPath: string) => Promise<ClaudeSession[]>;
+      getSessions: (projectPath: string, agentId?: string) => Promise<ClaudeSession[]>;
       validatePath: (targetPath: string) => Promise<{ exists: boolean; isDirectory: boolean }>;
       getRunCommands: (dirPath: string) => Promise<RunCommand[]>;
       getMemoryFiles: (projectPath: string) => Promise<MemoryFile[]>;

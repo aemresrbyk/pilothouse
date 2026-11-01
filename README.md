@@ -3,7 +3,7 @@
   <img src="public/logo.svg" alt="Pilothouse logo" width="108" height="108" />
 
   # Pilothouse
-  ### Desktop cockpit with tabbed, embedded terminals for Claude Code
+  ### Desktop cockpit with tabbed, embedded terminals for Claude Code, Codex and other terminal AI agents
 
   [![License: MIT](https://img.shields.io/badge/License-MIT-amber.svg)](LICENSE)
   [![Author](https://img.shields.io/badge/Author-aemresrbyk-181717?logo=github&logoColor=white)](https://github.com/aemresrbyk)
@@ -38,6 +38,8 @@ If you run `./install.sh` inside a clone, it builds from source instead of downl
 ## Features
 
 - **Tabbed embedded terminals.** Each tab runs a login shell in the project folder and starts Claude automatically. You can open several tabs for the same project (e.g. one for Claude, one for `npm run dev`). Open tabs come back when you restart the app.
+- **Any terminal agent.** Pick Claude Code, Codex, Gemini CLI or opencode per project. Each agent keeps its own flags, and the instructions tab edits its file (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`). History works for Claude Code and Codex.
+- **Knows when you're needed.** A tab's dot pulses while the agent works, turns amber when it asks for approval and green when it finished while you were in another tab. You also get a macOS notification and a Dock badge.
 - **Per-project flags.** The toolbar has on/off toggles for the flags you use (`--continue`, `--verbose`, `--model opus`…). You choose the list, and which ones new projects start with, in Settings. Add any extra flags/prompt in the input bar. **Run** restarts the session with the current command.
 - **Quick actions.** One-click `/doctor`, `/compact`, `/init`, `/cost`, plus "Review Git Diff", "Find Bugs" and "Write Tests" prompts sent to the running Claude session.
 - **Conversation history.** Claude Code saves every conversation. The **History** view lists a project's previous sessions by their first prompt, and one click reopens a session in the tab with `claude --resume`.

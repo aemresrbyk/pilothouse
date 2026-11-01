@@ -140,7 +140,8 @@ export class StorageManager {
     }
 
     const item = buildProjectItem(projectPath, {
-      flags: flags || this.data.settings.defaultFlags
+      flags: flags || this.data.settings.defaultFlags,
+      agent: this.data.settings.defaultAgent
     });
 
     this.data.projects.unshift(item);
@@ -187,7 +188,8 @@ export class StorageManager {
       const exists = this.data.projects.some(p => samePath(p.path, d.path));
       if (!exists && fs.existsSync(d.path)) {
         const item = buildProjectItem(d.path, {
-          flags: this.data.settings.defaultFlags
+          flags: this.data.settings.defaultFlags,
+          agent: this.data.settings.defaultAgent
         }, d.lastStartTime, d.metrics);
         this.data.projects.push(item);
         addedCount++;

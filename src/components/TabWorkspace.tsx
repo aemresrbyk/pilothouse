@@ -33,7 +33,7 @@ import {
   Rocket,
   Plus
 } from 'lucide-react';
-import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile, SKIP_PERMS_FLAG } from '../types';
+import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile, SKIP_PERMS_FLAG, isDangerFlag, AGENTS, AgentProfile, buildAgentCommand } from '../types';
 import { ThemeConfig } from '../theme';
 import { EmbeddedTerminal } from './EmbeddedTerminal';
 import { playClickSound, playToggleSound, playLaunchSound } from '../utils/audio';
@@ -46,8 +46,10 @@ interface TabWorkspaceProps {
   onOpenEditor: (path: string, editor?: string) => void;
   themeConfig: ThemeConfig;
   isActive: boolean;
-  claudePath: string;
+  agent: AgentProfile;
+  agentBinary: string;
   flagPresets: string[];
+  onSwitchAgent: (projectId: string, agentId: string) => void;
   onRunCommand: (command: string) => void;
   onSaveCustomCommands: (commands: RunCommand[]) => void;
 }
@@ -60,8 +62,10 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   onOpenEditor,
   themeConfig,
   isActive,
-  claudePath,
+  agent,
+  agentBinary,
   flagPresets,
+  onSwitchAgent,
   onRunCommand,
   onSaveCustomCommands
 }) => {
@@ -132,19 +136,22 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
     loadGitStatus();
   }, [loadGitStatus, viewMode]);
 
-  // Compile full command for Claude; with resumeId it reopens that session instead of --continue / the input bar.
-  const buildCommand = (resumeId?: string) => {
-    const parts = [/\s/.test(claudePath) ? `"${claudePath}"` : claudePath];
-    // --resume replaces --continue
-    parts.push(...flags.filter((f) => !(resumeId && (f === '--continue' || f === '-c'))));
-    if (resumeId) {
-      parts.push('--resume', resumeId);
-    } else if (customInput.trim()) {
-      parts.push(customInput.trim());
-    }
-    return parts.join(' ');
+  // With resumeId it reopens that session instead of --continue / the input bar.
+  const buildCommand = (resumeId?: string) => buildAgentCommand(agent, agentBinary, flags, customInput, resumeId);
+  const fullCommand = useMemo(() => buildCommand(), [flags, customInput, agentBinary, agent]);
+  const isClaude = agent.id === 'claude';
+  const mdFile = agent.instructionsFile;
+
+  // Switching agent restarts the terminal with the new agent's command.
+  const handleSwitchAgent = (agentId: string) => {
+    playLaunchSound();
+    onSwitchAgent(project.id, agentId);
+    setClaudeMdContent('');
+    setSessions(null);
+    if (viewMode === 'memory' || viewMode === 'history') setViewMode('terminal');
+    setLaunchCommand(null);
+    setTermSessionKey((k) => k + 1);
   };
-  const fullCommand = useMemo(() => buildCommand(), [flags, customInput, claudePath]);
 
   const toggleFlag = (flag: string) => {
     const on = !flags.includes(flag);
@@ -217,7 +224,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
 
     if (viewMode === 'history') {
       setSessions(null);
-      window.electronAPI.getSessions(project.path).then(setSessions).catch(() => setSessions([]));
+      window.electronAPI.getSessions(project.path, agent.id).then(setSessions).catch(() => setSessions([]));
     }
 
     if (viewMode === 'files') {
@@ -260,7 +267,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
 
   const loadClaudeMd = () => {
     setIsLoadingMd(true);
-    window.electronAPI.readFile(`${project.path}/CLAUDE.md`)
+    window.electronAPI.readFile(`${project.path}/${mdFile}`)
       .then((res) => {
         // Missing file → empty state (shows the generator), not an error string.
         const content = res.error ? '' : res.content;
@@ -280,7 +287,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
     setMdSaveError(null);
     playClickSound();
     try {
-      const res = await window.electronAPI.saveFile(`${project.path}/CLAUDE.md`, editedMdContent);
+      const res = await window.electronAPI.saveFile(`${project.path}/${mdFile}`, editedMdContent);
       if (!res.success) {
         setMdSaveError(res.error || 'Save failed');
       } else {
@@ -298,7 +305,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
 
   const handleGenerateSmartClaudeMd = () => {
     playClickSound();
-    const template = `# CLAUDE.md - ${project.name} Guidelines
+    const template = `# ${mdFile} - ${project.name} Guidelines
 
 ## Project Overview
 This repository contains ${project.name}.
@@ -355,7 +362,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
   };
 
   // Quick Action Presets
-  const quickActions = [
+  const allQuickActions = [
     { label: '/doctor', cmd: '/doctor', icon: <Stethoscope className="w-3 h-3" />, desc: 'Check health & setup' },
     { label: '/compact', cmd: '/compact', icon: <Minimize2 className="w-3 h-3" />, desc: 'Compact conversation' },
     { label: '/init', cmd: '/init', icon: <Sparkles className="w-3 h-3" />, desc: 'Init CLAUDE.md' },
@@ -379,6 +386,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
       desc: 'Generate test suite'
     }
   ];
+  // Slash commands differ per agent; the prompt actions work with any of them.
+  const quickActions = isClaude ? allQuickActions : allQuickActions.filter((qa) => !qa.cmd.startsWith('/'));
 
   return (
     <div
@@ -439,18 +448,32 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
 
         {/* Center: Essential Flags & Quick Omnibar */}
         <div className="flex items-center gap-1.5 flex-1 max-w-xl min-w-0 justify-start">
+          {/* Agent picker */}
+          <select
+            value={agent.id}
+            onChange={(e) => handleSwitchAgent(e.target.value)}
+            title="Which terminal AI agent this project runs"
+            aria-label="Agent"
+            className="text-[11px] font-medium px-1.5 py-1 rounded border outline-none cursor-pointer flex-shrink-0"
+            style={{ backgroundColor: themeConfig.bgMain, borderColor: themeConfig.border, color: themeConfig.textPrimary }}
+          >
+            {AGENTS.map((a) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+
           {/* Flag toggles: the list is set in Settings → Toolbar flags */}
           <div className="flex items-center gap-1.5 min-w-0 overflow-x-auto flex-shrink [scrollbar-width:none]">
             {flagPills.map((flag) => {
               const on = flags.includes(flag);
-              const danger = flag === SKIP_PERMS_FLAG;
+              const danger = isDangerFlag(flag);
               const color = danger ? '#ef4444' : themeConfig.accent;
               return (
                 <button
                   key={flag}
                   type="button"
                   onClick={() => toggleFlag(flag)}
-                  title={danger ? 'Claude runs every tool without asking first. Use only in projects you trust.' : `Toggle ${flag}`}
+                  title={danger ? 'The agent runs every tool without asking first. Use only in projects you trust.' : `Toggle ${flag}`}
                   className="px-2 py-1 rounded text-[11px] font-medium transition-all flex items-center gap-1.5 border flex-shrink-0 whitespace-nowrap"
                   style={{
                     backgroundColor: on ? (danger ? 'rgba(239,68,68,0.12)' : themeConfig.accentBg) : 'transparent',
@@ -461,7 +484,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                   {danger && (
                     <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: on ? color : themeConfig.textMuted }} />
                   )}
-                  {danger ? '--skip-permissions' : flag}
+                  {flag === SKIP_PERMS_FLAG ? '--skip-permissions' : flag}
                 </button>
               );
             })}
@@ -527,7 +550,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
               }}
             >
               <FileText className="w-3 h-3" />
-              <span>CLAUDE.md</span>
+              <span>{mdFile}</span>
             </button>
 
             <button
@@ -545,12 +568,12 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
               <span>Files</span>
             </button>
 
-            <button
+            {agent.hasHistory && <button
               onClick={() => {
                 playClickSound();
                 setViewMode('history');
               }}
-              title="Previous Claude sessions in this project"
+              title={`Previous ${agent.name} sessions in this project`}
               className="px-2 py-0.5 rounded text-[10px] font-medium transition-colors flex items-center gap-1"
               style={{
                 backgroundColor: viewMode === 'history' ? themeConfig.bgTabActive : 'transparent',
@@ -559,7 +582,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             >
               <History className="w-3 h-3" />
               <span>History</span>
-            </button>
+            </button>}
 
             <button
               onClick={() => {
@@ -577,7 +600,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
               <span>Scripts</span>
             </button>
 
-            <button
+            {isClaude && <button
               onClick={() => {
                 playClickSound();
                 setViewMode('memory');
@@ -591,7 +614,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             >
               <Brain className="w-3 h-3" />
               <span>Memory</span>
-            </button>
+            </button>}
           </div>
 
           {/* Action: Run / Launch Claude */}
@@ -828,7 +851,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             >
               <div className="flex items-center gap-2 font-bold" style={{ color: themeConfig.textPrimary }}>
                 <FileText className="w-4 h-4" style={{ color: themeConfig.accent }} />
-                <span>CLAUDE.md (Project Context &amp; Instructions)</span>
+                <span>{mdFile} (Project Context &amp; Instructions)</span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -918,7 +941,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             >
               {isLoadingMd ? (
                 <div className="text-center py-16" style={{ color: themeConfig.textMuted }}>
-                  Loading CLAUDE.md...
+                  Loading {mdFile}...
                 </div>
               ) : isEditingMd ? (
                 <textarea
@@ -937,10 +960,10 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                 <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
                   <Sparkles className="w-10 h-10 mb-3" style={{ color: themeConfig.accent }} />
                   <h3 className="text-sm font-bold" style={{ color: themeConfig.textPrimary }}>
-                    No CLAUDE.md Found in Project Root
+                    No {mdFile} Found in Project Root
                   </h3>
                   <p className="text-xs mt-1 max-w-md leading-relaxed" style={{ color: themeConfig.textMuted }}>
-                    A CLAUDE.md file helps Claude Code understand your architecture, build commands, test patterns, and style guide automatically.
+                    A {mdFile} file helps {agent.name} understand your architecture, build commands, test patterns, and style guide automatically.
                   </p>
                   <div className="mt-4 flex items-center gap-2">
                     <button
@@ -949,7 +972,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                       style={{ backgroundColor: themeConfig.accent }}
                     >
                       <Sparkles className="w-3.5 h-3.5" />
-                      <span>✦ Generate Smart CLAUDE.md Template</span>
+                      <span>✦ Generate Smart {mdFile} Template</span>
                     </button>
                     <button
                       onClick={() => handleExecuteCommand('/init')}

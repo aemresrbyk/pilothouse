@@ -35,8 +35,8 @@ export const electronAPI = {
     ipcRenderer.invoke('project:git-status', dirPath),
   getSystemHealth: (): Promise<{ claudeInstalled: boolean; claudePath: string; claudeVersion: string; nodeVersion: string }> =>
     ipcRenderer.invoke('system:health'),
-  getSessions: (projectPath: string): Promise<ClaudeSession[]> =>
-    ipcRenderer.invoke('project:get-sessions', projectPath),
+  getSessions: (projectPath: string, agentId?: string): Promise<ClaudeSession[]> =>
+    ipcRenderer.invoke('project:get-sessions', projectPath, agentId),
   validatePath: (targetPath: string): Promise<{ exists: boolean; isDirectory: boolean }> =>
     ipcRenderer.invoke('system:validate-path', targetPath),
   getRunCommands: (dirPath: string): Promise<RunCommand[]> =>

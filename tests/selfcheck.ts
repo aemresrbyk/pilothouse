@@ -3,9 +3,9 @@ import assert from 'assert';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { detectRunCommands } from '../electron/scanner';
+import { detectRunCommands, getCodexSessions } from '../electron/scanner';
 import { findProject, stripAnsi } from '../electron/control';
-import { toFlagList } from '../src/types';
+import { toFlagList, buildAgentCommand, agentById } from '../src/types';
 import { newActivity, noteOutput, nextStatus } from '../electron/activity';
 
 const d = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-'));
@@ -32,6 +32,25 @@ assert.deepStrictEqual(toFlagList(undefined), []);
   const b = newActivity(0);
   for (let t = 6000; t <= 9000; t += 100) { b.lastInput = t - 50; noteOutput(b, t); }
   assert.equal(nextStatus(b, 9100, ''), 'idle', 'typing echo is not a run');
+}
+
+// Agent commands: resume goes right after the binary (Codex uses a subcommand), --continue is dropped on resume.
+assert.equal(buildAgentCommand(agentById('codex'), 'codex', ['--full-auto', '--continue'], '', 'abc'), 'codex resume abc --full-auto');
+assert.equal(buildAgentCommand(agentById('claude'), '/my bin/claude', ['--verbose'], 'fix it'), '"/my bin/claude" --verbose fix it');
+assert.equal(agentById('nope').id, 'claude');
+
+{
+  // Codex sessions are matched to the project by the cwd in session_meta; titles come from session_index.jsonl.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-'));
+  const day = path.join(home, 'sessions', '2026', '10', '31');
+  fs.mkdirSync(day, { recursive: true });
+  const id1 = '019d798b-93f5-7eb2-9f62-17b532d52f45', id2 = '019d798b-0000-7eb2-9f62-17b532d52f46';
+  const meta = (id: string, cwd: string) => JSON.stringify({ type: 'session_meta', payload: { id, cwd } }) + '\n';
+  fs.writeFileSync(path.join(day, `rollout-2026-10-31T10-00-00-${id1}.jsonl`), meta(id1, d) + JSON.stringify({ type: 'event_msg', payload: { type: 'user_message', message: 'add tests' } }) + '\n');
+  fs.writeFileSync(path.join(day, `rollout-2026-10-31T11-00-00-${id2}.jsonl`), meta(id2, '/somewhere/else'));
+  fs.writeFileSync(path.join(home, 'session_index.jsonl'), JSON.stringify({ id: 'other', thread_name: 'x' }) + '\n');
+  const s = getCodexSessions(d, home);
+  assert.deepStrictEqual(s.map((x) => [x.id, x.title]), [[id1, 'add tests']]);
 }
 
 const ps: any[] = [{ id: 'a', name: 'kitefold', path: '/x/kitefold' }, { id: 'b', name: 'claudecodeproject', path: '/x/ccp' }];

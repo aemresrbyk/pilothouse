@@ -7,10 +7,10 @@ import * as pty from 'node-pty';
 import { autoUpdater } from 'electron-updater';
 import { StorageManager } from './store';
 import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './terminal';
-import { listProjectFiles, readFileContent, getProjectSessions, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
+import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
 import { startControlServer, CONTROL_FILE, stripAnsi } from './control';
 import { Activity, newActivity, noteOutput, nextStatus } from './activity';
-import { ProjectItem, AppSettings, ClaudeSession } from '../src/types';
+import { ProjectItem, AppSettings, ClaudeSession, agentById, agentBinary } from '../src/types';
 
 // The built directory structure
 process.env.DIST = path.join(__dirname, '../dist');
@@ -183,7 +183,7 @@ function registerIpcHandlers() {
     const settings = storage.getSettings();
     const command = (customCommand && customCommand.trim().length > 0)
       ? customCommand
-      : buildClaudeCommand(project.flags, project.customFlags, settings.claudePath || 'claude');
+      : buildClaudeCommand(project.flags, project.customFlags, agentBinary(agentById(project.agent), settings.claudePath));
 
     const terminal = (project.terminalOverride && project.terminalOverride !== 'default')
       ? project.terminalOverride
@@ -262,9 +262,10 @@ function registerIpcHandlers() {
     return getSystemHealth();
   });
 
-  ipcMain.handle('project:get-sessions', async (_e, projectPath: string) => {
+  ipcMain.handle('project:get-sessions', async (_e, projectPath: string, agentId?: string) => {
     // Sessions without a user prompt (opened and closed) have nothing to resume.
-    return getProjectSessions(projectPath, true).filter((s) => s.title);
+    const all = agentId === 'codex' ? getCodexSessions(projectPath) : getProjectSessions(projectPath, true);
+    return all.filter((s) => s.title);
   });
 
   ipcMain.handle('system:validate-path', async (_e, targetPath: string) => {
@@ -326,7 +327,7 @@ function registerIpcHandlers() {
       const cmd = initialCommand?.trim();
       // Exit code 127 = command not found; usually means Claude Code isn't installed (fish has no $?, so it gets no hint).
       const hint = path.basename(shell) === 'fish' ? '' :
-        `; [ $? -eq 127 ] && printf '\\n\\033[33mCommand not found. To install Claude Code run:\\n  npm install -g @anthropic-ai/claude-code\\nor set its path in Pilothouse Settings.\\033[0m\\n\\n'`;
+        `; [ $? -eq 127 ] && printf '\\n\\033[33mCommand not found. Install the agent CLI, e.g.\\n  Claude Code: npm install -g @anthropic-ai/claude-code\\n  Codex:       npm install -g @openai/codex\\n  Gemini CLI:  npm install -g @google/gemini-cli\\nor set its path in Pilothouse Settings.\\033[0m\\n\\n'`;
       const args = isWin ? [] : cmd ? ['-l', '-i', '-c', `${cmd}${hint}; exec "${shell}" -l`] : ['-l'];
       const ptyProcess = pty.spawn(shell, args, {
         name: 'xterm-256color',
