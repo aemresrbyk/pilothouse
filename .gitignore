@@ -40,3 +40,6 @@ Thumbs.db
 
 # keep iCloud from evicting deps
 node_modules.nosync
+
+# built by scripts/build-whisper.sh
+vendor/

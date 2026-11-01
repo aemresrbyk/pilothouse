@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, clipboard } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, clipboard, globalShortcut, systemPreferences } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -10,6 +10,7 @@ import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './t
 import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions, readTranscript, searchHistory, isSessionFile, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
 import { startControlServer, CONTROL_FILE, stripAnsi } from './control';
 import { Activity, newActivity, noteOutput, nextStatus } from './activity';
+import { whisperBinary, hasModel, downloadModel, transcribe, MODEL_BYTES } from './voice';
 import { ProjectItem, AppSettings, ClaudeSession, agentById, agentBinary } from '../src/types';
 
 // The built directory structure
@@ -92,6 +93,7 @@ app.whenReady().then(() => {
   storage = new StorageManager();
   registerIpcHandlers();
   createWindow();
+  applyVoiceHotkey(storage.getSettings());
   // Tab status dots + "Claude finished / needs approval" notifications.
   setInterval(() => {
     const now = Date.now();
@@ -120,7 +122,22 @@ app.whenReady().then(() => {
   }, focusWindow);
 });
 
+// Voice hotkey works system-wide, so you can talk to the agent while another app is in front.
+const DEFAULT_VOICE_HOTKEY = 'CommandOrControl+Shift+Space';
+let voiceHotkey: string | null = null;
+function applyVoiceHotkey(settings: AppSettings): string | null {
+  if (voiceHotkey) globalShortcut.unregister(voiceHotkey);
+  voiceHotkey = null;
+  if (settings.voiceEnabled === false) return null; // on unless turned off
+  const key = settings.voiceHotkey || DEFAULT_VOICE_HOTKEY;
+  try {
+    if (globalShortcut.register(key, () => win?.webContents.send('voice:toggle'))) voiceHotkey = key;
+  } catch {}
+  return voiceHotkey ? null : `Could not register ${key}; another app may be using it.`;
+}
+
 app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
   try { fs.unlinkSync(CONTROL_FILE); } catch {}
 });
 
@@ -167,7 +184,35 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('settings:update', async (_e, newSettings: Partial<AppSettings>) => {
-    return storage.updateSettings(newSettings);
+    const s = storage.updateSettings(newSettings);
+    if ('voiceEnabled' in newSettings || 'voiceHotkey' in newSettings) {
+      const err = applyVoiceHotkey(s);
+      if (err) win?.webContents.send('voice:error', err);
+    }
+    return s;
+  });
+
+  const whisper = () => whisperBinary(app.isPackaged ? process.resourcesPath : undefined, app.getAppPath());
+  ipcMain.handle('voice:status', async () => ({ binary: !!whisper(), model: hasModel(), modelBytes: MODEL_BYTES }));
+  ipcMain.handle('voice:download-model', async (e) => {
+    try {
+      await downloadModel((received, total) => { if (!e.sender.isDestroyed()) e.sender.send('voice:download-progress', { received, total }); });
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  });
+  ipcMain.handle('voice:mic-access', async () =>
+    process.platform !== 'darwin' || systemPreferences.getMediaAccessStatus('microphone') === 'granted' || systemPreferences.askForMediaAccess('microphone'));
+  ipcMain.handle('voice:transcribe', async (_e, pcm: ArrayBuffer, language: string, prompt?: string) => {
+    const bin = whisper();
+    if (!bin) return { error: 'Speech engine (whisper-cli) is missing from this build.' };
+    if (!hasModel()) return { error: 'Speech model not downloaded yet.' };
+    try {
+      return { text: await transcribe(bin, Buffer.from(pcm), language, prompt) };
+    } catch (err: any) {
+      return { error: err.message };
+    }
   });
 
   ipcMain.handle('system:get-terminals', async () => {

@@ -9,7 +9,8 @@ import {
   VolumeX,
   Palette,
   Search,
-  FolderPlus
+  FolderPlus,
+  Mic
 } from 'lucide-react';
 import { ProjectItem, TabSession, AppTheme, PtyStatus } from '../types';
 import { THEMES, ThemeConfig } from '../theme';
@@ -28,6 +29,9 @@ interface ChromeTabBarProps {
   onOpenAddModal: () => void;
   onOpenSettings: () => void;
   onOpenPalette: () => void;
+  voiceActive: boolean;
+  voiceHotkey: string;
+  onToggleVoice: () => void;
   onSyncClaude: () => void;
   isSyncing: boolean;
   soundEnabled: boolean;
@@ -49,6 +53,9 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
   onOpenAddModal,
   onOpenSettings,
   onOpenPalette,
+  voiceActive,
+  voiceHotkey,
+  onToggleVoice,
   onSyncClaude,
   isSyncing,
   soundEnabled,
@@ -219,6 +226,18 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
 
       {/* Right: Actions & Theme Picker */}
       <div className="flex items-center gap-1 titlebar-no-drag pl-2 flex-shrink-0">
+        {/* Voice prompt */}
+        <button
+          onClick={onToggleVoice}
+          title={`Speak a prompt to the active tab (${voiceHotkey.replace('CommandOrControl', '⌘').replace('Shift', '⇧').replace(/\+/g, '')})`}
+          aria-label="Voice prompt"
+          aria-pressed={voiceActive}
+          className={`p-1.5 rounded-md hover:bg-black/20 transition-colors ${voiceActive ? 'animate-pulse' : ''}`}
+          style={{ color: voiceActive ? '#ef4444' : themeConfig.textMuted }}
+        >
+          <Mic className="w-3.5 h-3.5" />
+        </button>
+
         {/* Quick Find */}
         <button
           onClick={() => {

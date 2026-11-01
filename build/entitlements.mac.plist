@@ -10,5 +10,8 @@
   <!-- Login shells in the embedded terminal load user tools that are signed by other teams. -->
   <key>com.apple.security.cs.disable-library-validation</key>
   <true/>
+  <!-- Voice prompts. -->
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
 </dict>
 </plist>

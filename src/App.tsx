@@ -2,8 +2,11 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   FolderPlus,
   Terminal,
-  UploadCloud
+  UploadCloud,
+  Mic,
+  Loader2
 } from 'lucide-react';
+import { startRecording, Recording } from './utils/voice';
 import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme, PtyStatus, agentById, agentBinary, agentFlagPresets } from './types';
 import { THEMES, ThemeConfig } from './theme';
 import { ChromeTabBar } from './components/ChromeTabBar';
@@ -241,6 +244,77 @@ export const App: React.FC = () => {
     window.electronAPI.setBadge(tabs.filter((t) => tabStatus[t.id]?.unseen || tabStatus[t.id]?.status === 'waiting').length);
   }, [tabStatus, tabs]);
 
+  // Voice prompts: hotkey or mic button -> record until a pause -> local Whisper -> typed into the active tab.
+  type VoicePhase = 'idle' | 'listening' | 'transcribing' | 'needs-model' | 'downloading';
+  const [voice, setVoice] = useState<{ phase: VoicePhase; level?: number; progress?: number; note?: string }>({ phase: 'idle' });
+  const recRef = useRef<Recording | null>(null);
+  const voicePhase = useRef<VoicePhase>('idle');
+  voicePhase.current = voice.phase;
+  const voiceCtx = useRef({ activeTabId, projects, settings, tabs });
+  voiceCtx.current = { activeTabId, projects, settings, tabs };
+
+  const flashVoice = (note: string) => {
+    setVoice({ phase: 'idle', note });
+    setTimeout(() => setVoice((v) => (v.phase === 'idle' && v.note === note ? { phase: 'idle' } : v)), 6000);
+  };
+
+  const toggleVoice = async () => {
+    if (recRef.current) return recRef.current.stop();
+    if (voicePhase.current === 'transcribing' || voicePhase.current === 'downloading') return;
+    const st = await window.electronAPI.voiceStatus();
+    if (!st.binary) return flashVoice('The speech engine is missing from this build.');
+    if (!st.model) return setVoice({ phase: 'needs-model' });
+    if (!(await window.electronAPI.voiceMicAccess())) {
+      return flashVoice('Microphone access is off. Allow Pilothouse in System Settings → Privacy & Security → Microphone.');
+    }
+    let rec: Recording;
+    try {
+      rec = await startRecording((level) => setVoice((v) => (v.phase === 'listening' ? { ...v, level } : v)));
+    } catch (err: any) {
+      return flashVoice(`Microphone error: ${err.message}`);
+    }
+    recRef.current = rec;
+    setVoice({ phase: 'listening', level: 0 });
+    const pcm = await rec.result;
+    recRef.current = null;
+    if (!pcm) return flashVoice("Didn't hear anything.");
+    setVoice({ phase: 'transcribing' });
+    const ctx = voiceCtx.current;
+    const res = await window.electronAPI.voiceTranscribe(pcm, ctx.settings.voiceLanguage || 'auto', `Projects: ${ctx.projects.map((p) => p.name).join(', ')}.`);
+    if (res.error) return flashVoice(res.error);
+    if (!res.text) return flashVoice("Didn't catch that, try again.");
+    const tab = ctx.tabs.find((t) => t.id === ctx.activeTabId);
+    if (!tab) return flashVoice(`Heard "${res.text}", but no tab is open.`);
+    window.electronAPI.ptyWrite(tab.id, res.text);
+    // Enter separately so the agent's TUI doesn't treat it as part of the paste.
+    if (ctx.settings.voiceAutoSend) setTimeout(() => window.electronAPI.ptyWrite(tab.id, '\r'), 150);
+    flashVoice(`${ctx.settings.voiceAutoSend ? 'Sent' : 'Typed (press Enter to send)'}: ${res.text}`);
+  };
+  const toggleVoiceRef = useRef(toggleVoice);
+  toggleVoiceRef.current = toggleVoice;
+
+  const downloadVoiceModel = async () => {
+    setVoice({ phase: 'downloading', progress: 0 });
+    const r = await window.electronAPI.voiceDownloadModel();
+    if (!r.success) return flashVoice(`Download failed: ${r.error}`);
+    setVoice({ phase: 'idle' });
+    toggleVoiceRef.current();
+  };
+
+  useEffect(() => window.electronAPI.onVoiceEvent((event, data) => {
+    if (event === 'toggle') toggleVoiceRef.current();
+    else if (event === 'progress') setVoice((v) => (v.phase === 'downloading' ? { ...v, progress: data.received / data.total } : v));
+    else if (event === 'error') flashVoice(String(data));
+  }), []);
+
+  // Esc while listening throws the recording away.
+  useEffect(() => {
+    if (voice.phase !== 'listening') return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { recRef.current?.cancel(); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [voice.phase]);
+
   const handleBrowseFolder = async () => {
     try {
       const dir = await window.electronAPI.pickDirectory();
@@ -393,6 +467,9 @@ export const App: React.FC = () => {
         onOpenAddModal={() => setIsAddProjectOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenPalette={() => setIsPaletteOpen(true)}
+        voiceActive={voice.phase === 'listening'}
+        voiceHotkey={settings.voiceHotkey || 'CommandOrControl+Shift+Space'}
+        onToggleVoice={() => toggleVoiceRef.current()}
         onSyncClaude={handleSyncClaude}
         isSyncing={isSyncing}
         soundEnabled={soundOn}
@@ -514,6 +591,51 @@ export const App: React.FC = () => {
           <p className="text-xs mt-1" style={{ color: themeConfig.textMuted }}>
             Will register repository and open in a new tab.
           </p>
+        </div>
+      )}
+
+      {/* Voice panel */}
+      {(voice.phase !== 'idle' || voice.note) && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 max-w-[min(560px,90vw)] px-4 py-2.5 rounded-xl border shadow-2xl flex items-center gap-3 text-xs"
+          style={{ backgroundColor: themeConfig.bgCard, borderColor: voice.phase === 'listening' ? '#ef4444' : themeConfig.border, color: themeConfig.textPrimary }}
+        >
+          {voice.phase === 'listening' && (
+            <>
+              <Mic className="w-4 h-4 flex-shrink-0 animate-pulse" style={{ color: '#ef4444' }} />
+              <div className="w-16 h-1.5 rounded-full overflow-hidden flex-shrink-0" style={{ backgroundColor: themeConfig.border }}>
+                <div className="h-full transition-all duration-75" style={{ width: `${Math.round((voice.level || 0) * 100)}%`, backgroundColor: '#ef4444' }} />
+              </div>
+              <span>Listening… I'll stop when you pause. <span style={{ color: themeConfig.textMuted }}>Esc cancels</span></span>
+            </>
+          )}
+          {voice.phase === 'transcribing' && (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" style={{ color: themeConfig.accent }} />
+              <span>Transcribing on this Mac…</span>
+            </>
+          )}
+          {voice.phase === 'needs-model' && (
+            <>
+              <Mic className="w-4 h-4 flex-shrink-0" style={{ color: themeConfig.accent }} />
+              <span>Voice prompts need a one-time 574 MB speech model. It runs fully offline.</span>
+              <button className="px-2 py-1 rounded font-bold text-white flex-shrink-0" style={{ backgroundColor: themeConfig.accent }} onClick={downloadVoiceModel}>
+                Download
+              </button>
+              <button className="px-2 py-1 rounded flex-shrink-0" style={{ color: themeConfig.textMuted }} onClick={() => setVoice({ phase: 'idle' })}>
+                Not now
+              </button>
+            </>
+          )}
+          {voice.phase === 'downloading' && (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" style={{ color: themeConfig.accent }} />
+              <span>Downloading speech model… {Math.round((voice.progress || 0) * 100)}%</span>
+            </>
+          )}
+          {voice.phase === 'idle' && voice.note && <span className="truncate">{voice.note}</span>}
         </div>
       )}
 

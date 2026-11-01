@@ -154,6 +154,10 @@ export interface AppSettings {
   autoDetectOnStartup: boolean;
   controlApiEnabled?: boolean;
   notificationsEnabled?: boolean;
+  voiceEnabled?: boolean;
+  voiceHotkey?: string; // Electron accelerator, default CommandOrControl+Shift+Space
+  voiceLanguage?: string; // 'auto' | 'en' | 'tr' …
+  voiceAutoSend?: boolean; // press Enter after typing the transcript
   soundEnabled?: boolean;
   savedTabs?: TabSession[];
   activeTabId?: string;

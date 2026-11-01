@@ -256,6 +256,56 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>}
           </div>
 
+          {/* Voice */}
+          <div>
+            <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block mb-1.5">VOICE PROMPTS</label>
+            <div className="bg-[#10131c] border border-[#1b2233] rounded p-2.5 space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={formData.voiceEnabled !== false}
+                  onChange={(e) => setFormData({ ...formData, voiceEnabled: e.target.checked })}
+                  className="w-3.5 h-3.5 accent-amber-500 cursor-pointer"
+                />
+                <span className="text-xs text-zinc-300">Global hotkey</span>
+                <input
+                  type="text"
+                  value={formData.voiceHotkey || 'CommandOrControl+Shift+Space'}
+                  onChange={(e) => setFormData({ ...formData, voiceHotkey: e.target.value })}
+                  spellCheck={false}
+                  aria-label="Voice hotkey"
+                  className="flex-1 bg-[#0c0e14] border border-[#1b2233] focus:border-amber-500 text-[11px] text-zinc-200 rounded px-2 py-0.5 outline-none font-mono"
+                />
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-300">Language</span>
+                <select
+                  value={formData.voiceLanguage || 'auto'}
+                  onChange={(e) => setFormData({ ...formData, voiceLanguage: e.target.value })}
+                  className="bg-[#0c0e14] border border-[#1b2233] text-xs text-zinc-200 rounded px-1.5 py-0.5 outline-none"
+                >
+                  <option value="auto">Auto-detect (slower)</option>
+                  <option value="en">English</option>
+                  <option value="tr">Türkçe</option>
+                  <option value="de">Deutsch</option>
+                  <option value="es">Español</option>
+                  <option value="fr">Français</option>
+                </select>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!formData.voiceAutoSend}
+                  onChange={(e) => setFormData({ ...formData, voiceAutoSend: e.target.checked })}
+                  className="w-3.5 h-3.5 accent-amber-500 cursor-pointer"
+                />
+                <span className="text-xs text-zinc-300">Send right away</span>
+                <span className="text-[10px] text-zinc-600">(off: the text is typed and you press Enter)</span>
+              </label>
+              <p className="text-[10px] text-zinc-600">Speech is recognised on this Mac with Whisper; audio never leaves your computer.</p>
+            </div>
+          </div>
+
           {/* Notifications */}
           <label className="flex items-start gap-2 cursor-pointer select-none">
             <input

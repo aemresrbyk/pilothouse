@@ -42,6 +42,24 @@ export const electronAPI = {
   getTranscript: (file: string): Promise<TranscriptMessage[]> => ipcRenderer.invoke('history:transcript', file),
   searchHistory: (projectPath: string, agentId: string, query: string): Promise<HistoryHit[]> =>
     ipcRenderer.invoke('history:search', projectPath, agentId, query),
+  voiceStatus: (): Promise<{ binary: boolean; model: boolean; modelBytes: number }> => ipcRenderer.invoke('voice:status'),
+  voiceDownloadModel: (): Promise<{ success: boolean; error?: string }> => ipcRenderer.invoke('voice:download-model'),
+  voiceMicAccess: (): Promise<boolean> => ipcRenderer.invoke('voice:mic-access'),
+  voiceTranscribe: (pcm: ArrayBuffer, language: string, prompt?: string): Promise<{ text?: string; error?: string }> =>
+    ipcRenderer.invoke('voice:transcribe', pcm, language, prompt),
+  onVoiceEvent: (handler: (event: 'toggle' | 'progress' | 'error', data?: any) => void): (() => void) => {
+    const toggle = () => handler('toggle');
+    const progress = (_e: any, d: any) => handler('progress', d);
+    const error = (_e: any, d: any) => handler('error', d);
+    ipcRenderer.on('voice:toggle', toggle);
+    ipcRenderer.on('voice:download-progress', progress);
+    ipcRenderer.on('voice:error', error);
+    return () => {
+      ipcRenderer.removeListener('voice:toggle', toggle);
+      ipcRenderer.removeListener('voice:download-progress', progress);
+      ipcRenderer.removeListener('voice:error', error);
+    };
+  },
   getRunCommands: (dirPath: string): Promise<RunCommand[]> =>
     ipcRenderer.invoke('project:run-commands', dirPath),
   getMemoryFiles: (projectPath: string): Promise<MemoryFile[]> =>

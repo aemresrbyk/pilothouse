@@ -14,7 +14,8 @@
     "dist:win": "electron-builder --win",
     "dist:linux": "electron-builder --linux",
     "postinstall": "node -e \"const fs=require('fs'),p=require('path'),d='node_modules/node-pty/prebuilds';if(process.platform!=='win32'&&fs.existsSync(d))for(const x of fs.readdirSync(d)){const f=p.join(d,x,'spawn-helper');if(fs.existsSync(f))fs.chmodSync(f,0o755)}\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:whisper": "bash scripts/build-whisper.sh"
   },
   "build": {
     "appId": "com.aemresrbyk.pilothouse",
@@ -45,7 +46,8 @@
       "extendInfo": {
         "NSDesktopFolderUsageDescription": "Pilothouse opens terminals and reads git status for projects stored in your Desktop folder.",
         "NSDocumentsFolderUsageDescription": "Pilothouse opens terminals and reads git status for projects stored in your Documents folder.",
-        "NSDownloadsFolderUsageDescription": "Pilothouse opens terminals and reads git status for projects stored in your Downloads folder."
+        "NSDownloadsFolderUsageDescription": "Pilothouse opens terminals and reads git status for projects stored in your Downloads folder.",
+        "NSMicrophoneUsageDescription": "Pilothouse listens only while you speak a prompt (hotkey or mic button). Speech is recognised on this Mac and never uploaded."
       }
     },
     "win": {
@@ -65,6 +67,12 @@
     },
     "asarUnpack": [
       "node_modules/node-pty/**"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/whisper/whisper-cli",
+        "to": "whisper-cli"
+      }
     ]
   },
   "keywords": [

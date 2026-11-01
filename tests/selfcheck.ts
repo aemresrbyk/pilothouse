@@ -5,6 +5,8 @@ import os from 'os';
 import path from 'path';
 import { detectRunCommands, getCodexSessions, readTranscript, searchHistory } from '../electron/scanner';
 import { findProject, stripAnsi } from '../electron/control';
+import { Endpointer } from '../src/utils/voice';
+import { pcmToWav, cleanTranscript, transcribe, whisperBinary, hasModel } from '../electron/voice';
 import { toFlagList, buildAgentCommand, agentById } from '../src/types';
 import { newActivity, noteOutput, nextStatus } from '../electron/activity';
 
@@ -81,4 +83,35 @@ assert.equal(findProject(ps, '/x/ccp')?.id, 'b');
 assert.equal(findProject(ps, 'claude code project')?.id, 'b');
 assert.equal(findProject(ps, 'nope'), undefined);
 assert.equal(stripAnsi('\x1b[31mhi\x1b[0m\r\x1b]0;t\x07ok'), 'hi\nok');
+
+{
+  // Voice endpointing: speech then a 1.5 s pause ends it; silence alone gives up after 8 s.
+  const e = new Endpointer();
+  assert.equal(e.feed(0.2, 256), null);
+  for (let i = 0; i < 5; i++) assert.equal(e.feed(0.001, 256), null);
+  assert.equal(e.feed(0.001, 256), 'done');
+  const quiet = new Endpointer();
+  let v: string | null = null;
+  for (let t = 0; t < 8000 && !v; t += 256) v = quiet.feed(0.001, 256);
+  assert.equal(v, 'empty');
+
+  assert.equal(cleanTranscript(' Thank you. '), '');
+  assert.equal(cleanTranscript('[BLANK_AUDIO]'), '');
+  assert.equal(cleanTranscript(' *Piano* '), '');
+  assert.equal(cleanTranscript('♪ ♪'), '');
+  assert.equal(cleanTranscript(' Run the tests. '), 'Run the tests.');
+  const wav = pcmToWav(Buffer.alloc(32000));
+  assert.equal(wav.length, 44 + 32000);
+  assert.equal(wav.toString('ascii', 8, 12), 'WAVE');
+}
+
+// End-to-end speech recognition, only where the engine and model are installed (skipped in CI).
+const bin = whisperBinary(undefined, path.join(import.meta.dir, '..'));
+if (bin && hasModel()) {
+  const pcm = fs.readFileSync(path.join(import.meta.dir, 'fixtures', 'voice-en.wav')).subarray(44);
+  const text = await transcribe(bin, pcm, 'en');
+  assert.match(text.toLowerCase(), /unit tests.*login function.*npm test/, text);
+  console.log('voice ok:', text);
+}
+
 console.log('selfcheck ok');

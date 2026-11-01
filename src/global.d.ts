@@ -30,6 +30,11 @@ declare global {
       validatePath: (targetPath: string) => Promise<{ exists: boolean; isDirectory: boolean }>;
       getTranscript: (file: string) => Promise<TranscriptMessage[]>;
       searchHistory: (projectPath: string, agentId: string, query: string) => Promise<HistoryHit[]>;
+      voiceStatus: () => Promise<{ binary: boolean; model: boolean; modelBytes: number }>;
+      voiceDownloadModel: () => Promise<{ success: boolean; error?: string }>;
+      voiceMicAccess: () => Promise<boolean>;
+      voiceTranscribe: (pcm: ArrayBuffer, language: string, prompt?: string) => Promise<{ text?: string; error?: string }>;
+      onVoiceEvent: (handler: (event: 'toggle' | 'progress' | 'error', data?: any) => void) => () => void;
       getRunCommands: (dirPath: string) => Promise<RunCommand[]>;
       getMemoryFiles: (projectPath: string) => Promise<MemoryFile[]>;
       onControlOpenTab: (handler: (req: { projectId: string; command?: string }) => string) => () => void;
