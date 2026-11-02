@@ -1,14 +1,11 @@
 name: Build & Release Pilothouse
 
+# macOS runners cost 10x Linux minutes, so only release tags (and a manual
+# run from the Actions tab) build. Pushes and PRs to main no longer do.
 on:
   push:
     tags:
       - 'v*'
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
