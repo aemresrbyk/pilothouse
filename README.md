@@ -15,6 +15,8 @@
 
 > Built with the [Electron framework](https://www.electronjs.org/); not affiliated with the OpenJS Foundation or the Electron project.
 
+**Website:** [kitefoldgames.com/pilothouse-site](https://kitefoldgames.com/pilothouse-site/)
+
 Pilothouse keeps all your AI coding projects in one window: every project gets its own real terminal tab (`node-pty` + `xterm.js`) that starts your agent (`claude`, `codex`, `gemini` or `opencode`) with the flags you choose. You can switch between projects with `⌘1-9`, edit `CLAUDE.md`, browse files and send prompts without leaving the app.
 
 ---
@@ -98,7 +100,7 @@ Settings and the project list are stored in `~/.pilothouse/config.json`. Configs
 
 ## Releases
 
-`.github/workflows/build-and-release.yml` builds macOS `arm64` and `x64` packages on every push to `main`. When you push a `v*` tag, it attaches `Pilothouse-<arch>-mac.zip` / `.dmg` to a GitHub Release.
+`.github/workflows/build-and-release.yml` builds macOS `arm64` and `x64` packages when you push a `v*` tag (or run it manually from the Actions tab), and attaches `Pilothouse-<arch>-mac.zip` / `.dmg` to a GitHub Release.
 
 ### Code signing & notarization
 
