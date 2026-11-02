@@ -15,7 +15,7 @@
 
 > Built with the [Electron framework](https://www.electronjs.org/); not affiliated with the OpenJS Foundation or the Electron project.
 
-Pilothouse keeps all your Claude Code projects in one window: every project gets its own real terminal tab (`node-pty` + `xterm.js`) that starts `claude` with the flags you choose. You can switch between projects with `⌘1-9`, edit `CLAUDE.md`, browse files and send prompts without leaving the app.
+Pilothouse keeps all your AI coding projects in one window: every project gets its own real terminal tab (`node-pty` + `xterm.js`) that starts your agent (`claude`, `codex`, `gemini` or `opencode`) with the flags you choose. You can switch between projects with `⌘1-9`, edit `CLAUDE.md`, browse files and send prompts without leaving the app.
 
 ---
 
@@ -30,7 +30,7 @@ brew install --cask aemresrbyk/tap/pilothouse
 Or with the install script:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/aemresrbyk/electron/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/aemresrbyk/pilothouse/main/install.sh | bash
 ```
 
 The installer:
@@ -75,17 +75,17 @@ If you run `./install.sh` inside a clone, it builds from source instead of downl
 | `⌘C` / `⌘V` | Copy selection / paste (bracketed paste, so multi-line pastes don't submit early) |
 | `Enter` in the input bar | Restart Claude with the current flags + input |
 
-On Windows/Linux, use `Ctrl` instead of `⌘`.
+Windows and Linux builds are planned. The code already has Windows/Linux paths and builds from source with `npm run dist:win` / `dist:linux`, but they are not tested or released yet. There, use `Ctrl` instead of `⌘`.
 
 ---
 
 ## Build from source
 
-Requirements: Node.js 18+ (or [Bun](https://bun.sh)) and the Claude Code CLI (`npm install -g @anthropic-ai/claude-code`).
+Requirements: Node.js 18+ (or [Bun](https://bun.sh)) and at least one supported agent CLI: Claude Code (`npm install -g @anthropic-ai/claude-code`), Codex, Gemini CLI or opencode.
 
 ```bash
-git clone https://github.com/aemresrbyk/electron.git
-cd electron
+git clone https://github.com/aemresrbyk/pilothouse.git
+cd pilothouse
 npm install          # or: bun install
 npm run dev          # development mode with live reload
 npm run build        # type-check + production bundle
