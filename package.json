@@ -1,7 +1,7 @@
 {
   "name": "pilothouse",
   "version": "1.2.0",
-  "description": "Pilothouse: a desktop cockpit with tabbed embedded terminals for Claude Code",
+  "description": "Pilothouse: a desktop cockpit with tabbed embedded terminals for Claude Code, Codex and other terminal AI agents",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -90,7 +90,10 @@
   "keywords": [
     "claude",
     "claude-code",
-    "launcher",
+    "codex",
+    "gemini-cli",
+    "ai-agents",
+    "terminal",
     "desktop",
     "anthropic",
     "electron"

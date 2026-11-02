@@ -255,8 +255,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
                     </span>
                     <button
                       type="button"
-                      title="Remove from launcher (does not delete files)"
-                      aria-label={`Remove ${item.name} from launcher`}
+                      title="Remove from Pilothouse (does not delete files)"
+                      aria-label={`Remove ${item.name} from Pilothouse`}
                       onClick={(e) => {
                         e.stopPropagation();
                         playClickSound();
