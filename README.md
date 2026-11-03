@@ -50,6 +50,10 @@ If you run `./install.sh` inside a clone, it builds from source instead of downl
 - **Tabbed embedded terminals.** Each tab runs a login shell in the project folder and starts Claude automatically. You can open several tabs for the same project (e.g. one for Claude, one for `npm run dev`). Open tabs come back when you restart the app.
 - **Any terminal agent.** Pick Claude Code, Codex, Gemini CLI or opencode per project. Each agent keeps its own flags, and the instructions tab edits its file (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`). History works for Claude Code and Codex.
 - **Knows when you're needed.** A tab's dot pulses while the agent works, turns amber when it asks for approval and green when it finished while you were in another tab. You also get a macOS notification and a Dock badge.
+- **Inbox (`⌘I`).** Everything your agents ask you, in one column: each approval prompt shows the agent's own options as buttons (or press 1–9). Commands that failed are listed apart from questions, with their exit code, and finished tabs get a reply box. Nothing is approved for you. Come back after 5+ minutes away and the Inbox opens on what happened meanwhile.
+- **Resources.** The Inbox's second page shows the CPU and memory of every tab (agent, dev server and their child processes), with a button to stop one.
+- **Grid view.** Show all open tabs side by side instead of one at a time.
+- **Worktree tabs.** The fork button next to the git badge opens a new tab in its own `git worktree` and branch (`pilothouse/<time>`), so two agents on the same repo don't overwrite each other's files.
 - **Voice prompts.** Press `⌘⇧Space` anywhere (or the mic button), speak, and your words are typed into the active agent tab. Speech is recognised on your Mac with Whisper large-v3-turbo (one-time 574 MB download) and never leaves it. Works with English in any accent, Turkish and ~100 other languages. Optionally say **"Hey Pilothouse"** instead of pressing the hotkey: a small on-device wake-word model (openWakeWord, trained for this phrase) listens while the app sits in the menu bar.
 - **Talk with your agent.** Conversation mode turns voice prompts into a back-and-forth: Pilothouse reads the agent's answer aloud (code stays on screen), asks you to repeat words it wasn't sure it heard, reads approval questions out so you can answer "yes" or "no", and keeps listening. Talk over it to interrupt; say "stop" while the agent works to cancel. Replies in the language you speak (English, Turkish …) with macOS's own voices.
 - **Per-project flags.** The toolbar has on/off toggles for the flags you use (`--continue`, `--verbose`, `--model opus`…). You choose the list, and which ones new projects start with, in Settings. Add any extra flags/prompt in the input bar. **Run** restarts the session with the current command.
@@ -72,6 +76,7 @@ If you run `./install.sh` inside a clone, it builds from source instead of downl
 |---|---|
 | `⌘T` | Open the project picker in a new tab |
 | `⌘P` / `⌘K` | Command palette: search, open, or remove projects |
+| `⌘I` | Inbox: answer agents, see failures and resource use |
 | `⌘W` | Close the active tab |
 | `⌘1` – `⌘9` | Switch tabs |
 | `⌘C` / `⌘V` | Copy selection / paste (bracketed paste, so multi-line pastes don't submit early) |

@@ -9,6 +9,25 @@ import { Endpointer } from '../src/utils/voice';
 import { pcmToWav, cleanTranscript, transcribe, whisperBinary, hasModel } from '../electron/voice';
 import { toFlagList, buildAgentCommand, agentById } from '../src/types';
 import { newActivity, noteOutput, nextStatus } from '../electron/activity';
+import { parseChoices } from '../src/utils/inbox';
+import { treeUsage } from '../electron/resources';
+
+{
+  // Inbox: the last redraw of a numbered prompt wins; y/n prompts fall back to y/n; plain output has no choices.
+  const claude = ' Do you want to proceed?\n ❯ 1. Yes\n   2. No\n' +
+    '│ Do you want to proceed?            │\n│ ❯ 1. Yes                           │\n│   2. Yes, and don\'t ask again      │\n│   3. No (esc)                      │\n';
+  assert.deepStrictEqual(parseChoices(claude).map((c) => [c.key, c.label]), [['1', 'Yes'], ['2', "Yes, and don't ask again"], ['3', 'No (esc)']]);
+  assert.deepStrictEqual(parseChoices('Overwrite file? (y/n) ').map((c) => c.key), ['y\r', 'n\r']);
+  assert.deepStrictEqual(parseChoices('Step 2. build the app\nall done'), []);
+
+  // Resources: a tab's usage is its shell plus every descendant, not other trees.
+  const ps = '  1 0 0.0 1024\n 10 1 1.0 2048\n 11 10 50.5 102400\n 12 11 10.0 1024\n 20 1 99.0 1024\n';
+  const u = treeUsage(ps, [10, 99]).get(10)!;
+  assert.equal(u.cpu, 61.5);
+  assert.equal(u.memMB, 103);
+  assert.deepStrictEqual(treeUsage(ps, [99]).get(99), { cpu: 0, memMB: 0 });
+  console.log('inbox + resources ok');
+}
 
 const d = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-'));
 fs.writeFileSync(path.join(d, 'package.json'), JSON.stringify({ scripts: { dev: 'vite', predev: 'x', build: 'tsc' } }));
@@ -77,10 +96,10 @@ assert.equal(agentById('nope').id, 'claude');
   assert.deepStrictEqual(hits.map((h) => [h.index, h.role]), [[0, 'user'], [1, 'assistant']]);
 }
 
-const ps: any[] = [{ id: 'a', name: 'kitefold', path: '/x/kitefold' }, { id: 'b', name: 'claudecodeproject', path: '/x/ccp' }];
+const ps: any[] = [{ id: 'a', name: 'kitefold', path: '/x/kitefold' }, { id: 'b', name: 'pilothouse', path: '/x/pilothouse' }];
 assert.equal(findProject(ps, 'Kitefold')?.id, 'a');
-assert.equal(findProject(ps, '/x/ccp')?.id, 'b');
-assert.equal(findProject(ps, 'claude code project')?.id, 'b');
+assert.equal(findProject(ps, '/x/pilothouse')?.id, 'b');
+assert.equal(findProject(ps, 'pilot house')?.id, 'b');
 assert.equal(findProject(ps, 'nope'), undefined);
 assert.equal(stripAnsi('\x1b[31mhi\x1b[0m\r\x1b]0;t\x07ok'), 'hi\nok');
 

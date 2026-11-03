@@ -105,6 +105,13 @@ export const electronAPI = {
     ipcRenderer.on('pty:status', listener);
     return () => { ipcRenderer.removeListener('pty:status', listener); };
   },
+  onPtyFailed: (callback: (info: { id: string; code: number }) => void): (() => void) => {
+    const listener = (_e: any, info: { id: string; code: number }) => callback(info);
+    ipcRenderer.on('pty:failed', listener);
+    return () => { ipcRenderer.removeListener('pty:failed', listener); };
+  },
+  ptyResources: (): Promise<{ id: string; cpu: number; memMB: number }[]> => ipcRenderer.invoke('pty:resources'),
+  addWorktree: (repoPath: string): Promise<{ path?: string; error?: string }> => ipcRenderer.invoke('git:worktree-add', repoPath),
   setBadge: (count: number): void => ipcRenderer.send('app:badge', count),
   focusApp: (): void => ipcRenderer.send('app:focus'),
   onPtyData: (id: string, callback: (data: string) => void): (() => void) => {

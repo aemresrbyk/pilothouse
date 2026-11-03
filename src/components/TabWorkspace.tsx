@@ -32,7 +32,8 @@ import {
   Brain,
   Rocket,
   Plus,
-  SlidersHorizontal
+  SlidersHorizontal,
+  GitFork
 } from 'lucide-react';
 import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile, TranscriptMessage, HistoryHit, isDangerFlag, AGENTS, AgentProfile, buildAgentCommand } from '../types';
 import { ThemeConfig } from '../theme';
@@ -52,6 +53,7 @@ interface TabWorkspaceProps {
   flagPresets: string[];
   onSwitchAgent: (projectId: string, agentId: string) => void;
   onRunCommand: (command: string) => void;
+  onOpenWorktree: () => void;
   onSaveCustomCommands: (commands: RunCommand[]) => void;
 }
 
@@ -68,6 +70,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   flagPresets,
   onSwitchAgent,
   onRunCommand,
+  onOpenWorktree,
   onSaveCustomCommands
 }) => {
   const [viewMode, setViewMode] = useState<'terminal' | 'claude-md' | 'files' | 'history' | 'run' | 'memory'>('terminal');
@@ -492,6 +495,17 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                 <span className="font-bold">• {gitStatus.modifiedCount} modified</span>
               )}
             </div>
+          )}
+          {gitStatus?.isGit && (
+            <button
+              onClick={() => { playClickSound(); onOpenWorktree(); }}
+              title="New tab in its own git worktree and branch, so two agents don't edit the same files"
+              aria-label="New tab in a git worktree"
+              className="flex items-center px-1 py-0.5 rounded border hover:opacity-80"
+              style={{ color: themeConfig.textMuted, borderColor: themeConfig.border }}
+            >
+              <GitFork className="w-3 h-3" />
+            </button>
           )}
         </div>
 
