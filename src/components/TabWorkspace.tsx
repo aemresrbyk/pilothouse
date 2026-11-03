@@ -211,6 +211,8 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   }, [pendingLaunch]);
   const [isHandoffOpen, setIsHandoffOpen] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  // Toolbar scrolls sideways, so its menus are fixed-positioned under their button instead of clipped.
+  const [menuAt, setMenuAt] = useState<DOMRect | null>(null);
 
   const openTranscript = (sess: ClaudeSession, msgIndex: number | null = null) => {
     setOpenSession(sess);
@@ -495,7 +497,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
     >
       {/* 1. Slim Modern Control Bar */}
       <div
-        className="h-10 px-3 flex items-center justify-between text-xs border-b gap-2 flex-shrink-0"
+        className="h-10 px-3 flex items-center justify-between text-xs border-b gap-2 flex-shrink-0 overflow-x-auto overflow-y-hidden"
+        onWheel={(e) => { if (!e.deltaX) e.currentTarget.scrollLeft += e.deltaY; }}
         style={{
           backgroundColor: themeConfig.bgHeader,
           borderColor: themeConfig.border
@@ -554,7 +557,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
         </div>
 
         {/* Center: Essential Flags & Quick Omnibar */}
-        <div className="flex items-center gap-1.5 flex-1 max-w-xl min-w-0 justify-start">
+        <div className="flex items-center gap-1.5 flex-1 max-w-xl justify-start">
           {/* Agent picker */}
           <select
             value={agent.id}
@@ -607,7 +610,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
           <div className="relative flex-shrink-0">
             <button
               type="button"
-              onClick={() => setIsHandoffOpen((o) => !o)}
+              onClick={(e) => { setMenuAt(e.currentTarget.getBoundingClientRect()); setIsHandoffOpen((o) => !o); }}
               title="Continue this work with another agent (it gets the conversation, changes and memory)"
               aria-label="Hand off to another agent"
               aria-expanded={isHandoffOpen}
@@ -619,8 +622,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             {isHandoffOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setIsHandoffOpen(false)} />
-                <div className="absolute left-0 top-full mt-1 z-50 min-w-[200px] rounded-lg border shadow-2xl p-1"
-                  style={{ backgroundColor: themeConfig.bgCard, borderColor: themeConfig.border }}>
+                <div className="fixed z-50 min-w-[200px] rounded-lg border shadow-2xl p-1"
+                  style={{ top: (menuAt?.bottom ?? 0) + 4, left: menuAt?.left, backgroundColor: themeConfig.bgCard, borderColor: themeConfig.border }}>
                   <div className="px-2 py-1 text-[10px]" style={{ color: themeConfig.textMuted }}>Continue with</div>
                   {AGENTS.filter((a) => a.id !== agent.id).map((a) => (
                     <button key={a.id} type="button"
@@ -642,7 +645,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
               <div className="relative flex-shrink-0">
                 <button
                   type="button"
-                  onClick={() => setIsFlagsOpen((o) => !o)}
+                  onClick={(e) => { setMenuAt(e.currentTarget.getBoundingClientRect()); setIsFlagsOpen((o) => !o); }}
                   title={flags.length ? `Active: ${flags.join(' ')}` : 'No flags on'}
                   aria-expanded={isFlagsOpen}
                   className="px-2 py-1 rounded text-[11px] font-medium transition-all flex items-center gap-1.5 border whitespace-nowrap"
@@ -659,8 +662,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsFlagsOpen(false)} />
                     <div
-                      className="absolute left-0 top-full mt-1 z-50 min-w-[240px] rounded-lg border shadow-2xl p-1.5"
-                      style={{ backgroundColor: themeConfig.bgCard, borderColor: themeConfig.border }}
+                      className="fixed z-50 min-w-[240px] rounded-lg border shadow-2xl p-1.5"
+                      style={{ top: (menuAt?.bottom ?? 0) + 4, left: menuAt?.left, backgroundColor: themeConfig.bgCard, borderColor: themeConfig.border }}
                     >
                       {flagPills.length === 0 && (
                         <div className="px-2 py-1.5 text-[11px]" style={{ color: themeConfig.textMuted }}>
@@ -697,7 +700,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
           })()}
 
           {/* Omnibar Input Field for Extra Flags / Prompt */}
-          <div className="flex-1 relative min-w-0 flex items-center">
+          <div className="flex-1 relative min-w-[140px] flex items-center">
             <input
               type="text"
               placeholder="Prompt or flags (e.g. -p 'fix bug'). Press ↵ to run..."
@@ -855,7 +858,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
           <div className="relative flex-shrink-0">
             <button
               type="button"
-              onClick={() => setIsMoreOpen((o) => !o)}
+              onClick={(e) => { setMenuAt(e.currentTarget.getBoundingClientRect()); setIsMoreOpen((o) => !o); }}
               title="More actions"
               aria-label="More actions"
               aria-expanded={isMoreOpen}
@@ -867,8 +870,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             {isMoreOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setIsMoreOpen(false)} />
-                <div className="absolute right-0 top-full mt-1 z-50 min-w-[220px] max-h-[70vh] overflow-y-auto rounded-lg border shadow-2xl p-1 text-[11px]"
-                  style={{ backgroundColor: themeConfig.bgCard, borderColor: themeConfig.border }}>
+                <div className="fixed z-50 min-w-[220px] max-h-[70vh] overflow-y-auto rounded-lg border shadow-2xl p-1 text-[11px]"
+                  style={{ top: (menuAt?.bottom ?? 0) + 4, right: window.innerWidth - (menuAt?.right ?? 0), backgroundColor: themeConfig.bgCard, borderColor: themeConfig.border }}>
                   {[
                     { label: 'Stop (Ctrl+C)', icon: <Square className="w-3 h-3" />, run: handleSendInterrupt },
                     { label: 'Clear screen', icon: <Trash2 className="w-3 h-3" />, run: handleClearTerminal },
