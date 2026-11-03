@@ -122,6 +122,8 @@ export const electronAPI = {
     ipcRenderer.invoke('handoff:write', projectPath, fromAgent, sessionFile),
   pickFile: (title: string): Promise<string | null> => ipcRenderer.invoke('dialog:pick-file', title),
   agentOptions: (agentId: string): Promise<AgentOptions> => ipcRenderer.invoke('agent:options', agentId),
+  geminiKeyStatus: (): Promise<{ hasKey: boolean; last4?: string }> => ipcRenderer.invoke('gemini:key-status'),
+  setGeminiKey: (key: string): Promise<{ ok?: true; error?: string }> => ipcRenderer.invoke('gemini:set-key', key),
   setupScan: (): Promise<{ agents: { id: string; path: string | null }[]; projects: SetupProject[] }> => ipcRenderer.invoke('setup:scan'),
   addWorktree: (repoPath: string): Promise<{ path?: string; error?: string }> => ipcRenderer.invoke('git:worktree-add', repoPath),
   setBadge: (count: number): void => ipcRenderer.send('app:badge', count),

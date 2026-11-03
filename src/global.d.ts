@@ -60,6 +60,8 @@ declare global {
       writeHandoff: (projectPath: string, fromAgent: string, sessionFile?: string) => Promise<{ path?: string; error?: string }>;
       pickFile: (title: string) => Promise<string | null>;
       agentOptions: (agentId: string) => Promise<AgentOptions>;
+      geminiKeyStatus: () => Promise<{ hasKey: boolean; last4?: string }>;
+      setGeminiKey: (key: string) => Promise<{ ok?: true; error?: string }>;
       setupScan: () => Promise<{ agents: { id: string; path: string | null }[]; projects: SetupProject[] }>;
       addWorktree: (repoPath: string) => Promise<{ path?: string; error?: string }>;
       setBadge: (count: number) => void;

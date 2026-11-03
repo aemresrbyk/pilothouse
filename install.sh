@@ -9,23 +9,15 @@ set -e
 
 # Colors for terminal styling
 BOLD='\033[1m'
-ACCENT='\033[38;2;204;107;73m' # Terracotta
+ACCENT='\033[38;2;200;255;46m' # Signal lime (logo colour)
 AMBER='\033[38;2;245;158;11m'  # Amber
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-echo -e "${ACCENT}${BOLD}"
-cat << "EOF"
-   ___ _              _
-  / __| |___ __| |_ _ _ ___ _ _
- | _|| / -_) _|  _| '_/ _ \ ' \
- |___|_\___\__|\__|_| \___/_||_|
-
-     >_  desktop cockpit for Claude Code
-EOF
-echo -e "${NC}"
+echo -e "${ACCENT}${BOLD}PILOTHOUSE${NC}"
+echo "one cockpit for every terminal AI agent"
 echo -e "${AMBER}Automated Setup & Installer for macOS and Linux${NC}"
 echo -e "Repository: ${BLUE}https://github.com/aemresrbyk/pilothouse${NC}"
 echo "--------------------------------------------------------"

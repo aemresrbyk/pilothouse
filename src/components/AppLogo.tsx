@@ -5,7 +5,7 @@ interface AppLogoProps {
   size?: number;
 }
 
-// Inline copy of public/logo.svg (kept in sync by hand).
+// Inline copy of public/logo.svg (kept in sync by hand): a heading marker leaving a bearing ring through north.
 export const AppLogo: React.FC<AppLogoProps> = ({ className = 'w-5 h-5', size }) => (
   <svg
     viewBox="100 100 824 824"
@@ -15,30 +15,9 @@ export const AppLogo: React.FC<AppLogoProps> = ({ className = 'w-5 h-5', size })
     role="img"
     aria-label="Pilothouse"
   >
-  <defs>
-    <linearGradient id="phBg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stopColor="#1B1F2A"/>
-      <stop offset="1" stopColor="#0A0C11"/>
-    </linearGradient>
-    <linearGradient id="phAccent" gradientUnits="userSpaceOnUse" x1="200" y1="200" x2="824" y2="824">
-      <stop offset="0" stopColor="#FFA270"/>
-      <stop offset="1" stopColor="#D9572B"/>
-    </linearGradient>
-  </defs>
-  {/* macOS-style squircle tile with standard 100px safe margin */}
-  <rect x="100" y="100" width="824" height="824" rx="190" fill="url(#phBg)"/>
-  <rect x="101.5" y="101.5" width="821" height="821" rx="188.5" fill="none" stroke="#FFFFFF" strokeOpacity="0.08" strokeWidth="3"/>
-  {/* ship's helm: rim + eight handles */}
-  <g stroke="url(#phAccent)" strokeLinecap="round" fill="none">
-    <circle cx="512" cy="512" r="232" strokeWidth="30"/>
-    <g strokeWidth="34">
-      <path d="M512 262 V212"/><path d="M512 762 V812"/><path d="M262 512 H212"/><path d="M762 512 H812"/>
-      <path d="M335 335 L300 300"/><path d="M689 335 L724 300"/><path d="M335 689 L300 724"/><path d="M689 689 L724 724"/>
-    </g>
-  </g>
-  <g fill="url(#phAccent)"><circle cx="812" cy="512" r="30"/><circle cx="724" cy="724" r="30"/><circle cx="512" cy="812" r="30"/><circle cx="300" cy="724" r="30"/><circle cx="212" cy="512" r="30"/><circle cx="300" cy="300" r="30"/><circle cx="512" cy="212" r="30"/><circle cx="724" cy="300" r="30"/></g>
-  {/* terminal prompt >_ as the hub */}
-  <path d="M420 440 L492 512 L420 584" fill="none" stroke="#F4F1EA" strokeWidth="40" strokeLinecap="round" strokeLinejoin="round"/>
-  <rect x="520" y="556" width="88" height="36" rx="18" fill="#F4F1EA"/>
-</svg>
+    <rect x="100" y="100" width="824" height="824" rx="200" fill="#0B0D10" />
+    <rect x="102" y="102" width="820" height="820" rx="198" fill="none" stroke="#FFFFFF" strokeOpacity="0.07" strokeWidth="4" />
+    <path d="M575.9 289 A232 232 0 1 1 448.1 289" fill="none" stroke="#E8EDF0" strokeWidth="26" strokeLinecap="round" />
+    <path d="M512 296 L616 640 L512 584 L408 640 Z" fill="#C8FF2E" stroke="#C8FF2E" strokeWidth="12" strokeLinejoin="round" />
+  </svg>
 );

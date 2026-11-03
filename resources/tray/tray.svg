@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="250 250 524 524" width="524" height="524">
+  <!-- Menu bar template: the logo's mark only, black on transparent (macOS tints it). -->
+  <path d="M575.9 289 A232 232 0 1 1 448.1 289" fill="none" stroke="#000" stroke-width="40" stroke-linecap="round"/>
+  <path d="M512 296 L616 640 L512 584 L408 640 Z" fill="#000" stroke="#000" stroke-width="16" stroke-linejoin="round"/>
+</svg>

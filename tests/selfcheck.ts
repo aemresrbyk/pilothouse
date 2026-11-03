@@ -17,6 +17,28 @@ import { hitLimit } from '../electron/activity';
 import { promptArgs, handoffPrompt, AGENTS } from '../src/types';
 import { execFileSync } from 'child_process';
 import { mergeProjects } from '../electron/setup';
+import { setGeminiApiKey, geminiKeyStatus } from '../electron/geminiKey';
+
+{
+  // Gemini API key: owner-only .env, other lines kept, auth type switched, broken settings never overwritten.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-gem-'));
+  fs.mkdirSync(path.join(home, '.gemini'));
+  fs.writeFileSync(path.join(home, '.gemini', '.env'), 'OTHER=1\nGEMINI_API_KEY=old\n');
+  fs.writeFileSync(path.join(home, '.gemini', 'settings.json'), JSON.stringify({ ui: { theme: 'x' } }));
+  assert.ok(setGeminiApiKey('AIzaSyTESTKEY_0123456789abcd', home).ok);
+  assert.equal(fs.readFileSync(path.join(home, '.gemini', '.env'), 'utf-8'), 'OTHER=1\nGEMINI_API_KEY=AIzaSyTESTKEY_0123456789abcd\n');
+  assert.equal(fs.statSync(path.join(home, '.gemini', '.env')).mode & 0o777, 0o600);
+  const st = JSON.parse(fs.readFileSync(path.join(home, '.gemini', 'settings.json'), 'utf-8'));
+  assert.deepStrictEqual(st, { ui: { theme: 'x' }, security: { auth: { selectedType: 'gemini-api-key' } } });
+  assert.deepStrictEqual(geminiKeyStatus(home), { hasKey: true, last4: 'abcd' });
+  assert.ok(setGeminiApiKey('', home).ok);
+  assert.deepStrictEqual(geminiKeyStatus(home), { hasKey: false });
+  assert.ok(setGeminiApiKey('bad key; rm', home).error);
+  fs.writeFileSync(path.join(home, '.gemini', 'settings.json'), '{ broken');
+  assert.ok(setGeminiApiKey('AIzaSyTESTKEY_0123456789abcd', home).error);
+  assert.equal(fs.readFileSync(path.join(home, '.gemini', 'settings.json'), 'utf-8'), '{ broken');
+  console.log('gemini key ok');
+}
 import { parseClaudeEfforts, parseCodexModels, parseOpencodeModels, parseAgyModels, parseAgyEfforts } from '../electron/agentOptions';
 
 {

@@ -146,8 +146,8 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onFinish, onSk
           {step === 2 && <button onClick={() => setStep(1)} className={btn} style={{ borderColor: t.border, color: t.textSecondary }}>Back</button>}
           <span className="flex-1 text-[11px]" style={muted}>{step === 2 ? `${selected} selected` : ''}</span>
           {step === 1
-            ? <button disabled={!paths} onClick={() => setStep(2)} className={`${btn} text-white`} style={{ backgroundColor: t.accent, borderColor: t.accent }}>Next</button>
-            : <button onClick={finish} className={`${btn} text-white`} style={{ backgroundColor: t.accent, borderColor: t.accent }}>Start</button>}
+            ? <button disabled={!paths} onClick={() => setStep(2)} className={`${btn}`} style={{ backgroundColor: t.accent, color: t.accentText, borderColor: t.accent }}>Next</button>
+            : <button onClick={finish} className={`${btn}`} style={{ backgroundColor: t.accent, color: t.accentText, borderColor: t.accent }}>Start</button>}
         </div>
       </div>
     </div>

@@ -5,9 +5,9 @@
   # Pilothouse
   ### Desktop cockpit with tabbed, embedded terminals for Claude Code, Codex and other terminal AI agents
 
-  [![License: MIT](https://img.shields.io/badge/License-MIT-amber.svg)](LICENSE)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-C8FF2E.svg?labelColor=0B0D10)](LICENSE)
   [![Author](https://img.shields.io/badge/Author-aemresrbyk-181717?logo=github&logoColor=white)](https://github.com/aemresrbyk)
-  [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-black)](#quick-install)
+  [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-0B0D10)](#quick-install)
   [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
   [![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
@@ -81,7 +81,7 @@ This puts the AppImage in `~/.local/bin` and adds Pilothouse to your app menu (U
 - **Prompt drafter.** A per-project scratchpad for multi-line prompts, sent to the terminal with one click.
 - **Git badge.** Shows the current branch and the number of modified files.
 - **Project discovery.** On first run, imports the projects Claude Code already knows about (`~/.claude.json`). Use the sync button to pick up new ones later. You can add folders with the picker, by typing a path, or by drag & drop.
-- **5 themes.** Anthropic Warm, OLED Black, Cyber Slate, Nord Frost, Paper Minimal.
+- **4 themes.** Pilothouse (default: near-black with one signal-lime accent, the logo's colours), OLED Black, Nord Frost and Paper.
 
 > All flags start **off**, including `--dangerously-skip-permissions` (shown in red when on: Claude then runs tools without asking first).
 

@@ -192,7 +192,8 @@ export interface InboxEvent {
   code?: number;
 }
 
-export type AppTheme = 'claude' | 'dark' | 'cyber' | 'nord' | 'light';
+import type { AppTheme } from './theme';
+export type { AppTheme };
 
 export interface AppSettings {
   theme?: AppTheme;

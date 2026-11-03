@@ -525,7 +525,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
           {gitStatus?.isGit && (
             <div
               onClick={() => handleExecuteCommand('Review the recent git diff and summarize changes')}
-              title={`Git Branch: ${gitStatus.branch} (${gitStatus.statusText}). Click to review with Claude!`}
+              title={`Git Branch: ${gitStatus.branch} (${gitStatus.statusText}). Click to have the agent review the diff.`}
               className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] cursor-pointer hover:opacity-90 border transition-all"
               style={{
                 backgroundColor: gitStatus.modifiedCount > 0 ? themeConfig.accentBg : themeConfig.bgTabActive,
@@ -823,14 +823,14 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             </button>}
           </div>
 
-          {/* Action: Run / Launch Claude */}
+          {/* Action: Run / restart the agent */}
           <button
             onClick={handleRestartClaude}
             title={`Run: ${fullCommand}`}
-            className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-bold text-white shadow-sm transition-all active:scale-95"
-            style={{ backgroundColor: themeConfig.accent }}
+            className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-bold shadow-sm transition-all active:scale-95"
+            style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
           >
-            <Play className="w-3 h-3 fill-white" />
+            <Play className="w-3 h-3 fill-current" />
             <span>Run</span>
           </button>
 
@@ -990,8 +990,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                 <button
                   onClick={handleSendScratchpadToTerminal}
                   disabled={!scratchpadText.trim()}
-                  className="px-2.5 py-1 rounded text-xs font-bold text-white flex items-center gap-1 disabled:opacity-40"
-                  style={{ backgroundColor: themeConfig.accent }}
+                  className="px-2.5 py-1 rounded text-xs font-bold flex items-center gap-1 disabled:opacity-40"
+                  style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
                 >
                   <Send className="w-3 h-3" />
                   <span>Send ↵</span>
@@ -1052,8 +1052,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                   <button
                     onClick={handleSaveClaudeMd}
                     disabled={isSavingMd}
-                    className="px-2.5 py-1 rounded flex items-center gap-1 text-[11px] font-bold text-white shadow-sm"
-                    style={{ backgroundColor: themeConfig.accent }}
+                    className="px-2.5 py-1 rounded flex items-center gap-1 text-[11px] font-bold shadow-sm"
+                    style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
                   >
                     <Save className="w-3 h-3" />
                     <span>{isSavingMd ? 'Saving...' : 'Save Changes'}</span>
@@ -1131,8 +1131,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                   <div className="mt-4 flex items-center gap-2">
                     <button
                       onClick={handleGenerateSmartClaudeMd}
-                      className="px-4 py-2 rounded-lg text-xs font-bold text-white shadow-md flex items-center gap-1.5 transition-all active:scale-95"
-                      style={{ backgroundColor: themeConfig.accent }}
+                      className="px-4 py-2 rounded-lg text-xs font-bold shadow-md flex items-center gap-1.5 transition-all active:scale-95"
+                      style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
                     >
                       <Sparkles className="w-3.5 h-3.5" />
                       <span>✦ Generate Smart {mdFile} Template</span>
@@ -1175,8 +1175,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                 <button
                   type="button"
                   onClick={addCustomCommand}
-                  className="px-2.5 rounded text-xs font-bold flex items-center gap-1 text-white"
-                  style={{ backgroundColor: themeConfig.accent }}
+                  className="px-2.5 rounded text-xs font-bold flex items-center gap-1"
+                  style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
                 >
                   <Plus className="w-3 h-3" /> Add
                 </button>
@@ -1212,10 +1212,10 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                       <button
                         type="button"
                         onClick={() => { playLaunchSound(); onRunCommand(c.command); }}
-                        className="px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 flex-shrink-0 text-white"
-                        style={{ backgroundColor: themeConfig.accent }}
+                        className="px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 flex-shrink-0"
+                        style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
                       >
-                        <Play className="w-3 h-3 fill-white" /> Run
+                        <Play className="w-3 h-3 fill-current" /> Run
                       </button>
                     </div>
                   ))}
@@ -1258,8 +1258,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                   <button
                     type="button"
                     onClick={saveMemoryFile}
-                    className="px-2 py-0.5 rounded font-bold flex items-center gap-1 text-white"
-                    style={{ backgroundColor: themeConfig.accent }}
+                    className="px-2 py-0.5 rounded font-bold flex items-center gap-1"
+                    style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
                   >
                     <Save className="w-3 h-3" /> Save
                   </button>
@@ -1384,8 +1384,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                         ? onResumeAs(openSession.agent, openSession.id)
                         : handleResumeSession(openSession.id))}
                       title={`Reopen this conversation in ${agentById(openSession.agent || agent.id).name}`}
-                      className="px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 flex-shrink-0 text-white"
-                      style={{ backgroundColor: themeConfig.accent }}
+                      className="px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 flex-shrink-0"
+                      style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
                     >
                       <RotateCcw className="w-3 h-3" />
                       Resume{openSession.agent && openSession.agent !== agent.id ? ` in ${agentById(openSession.agent).name}` : ''}
@@ -1466,7 +1466,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                     className="px-2 py-1.5 rounded flex items-center gap-2 cursor-pointer text-[11px]"
                     style={{ color: themeConfig.textSecondary }}
                   >
-                    <Folder className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                    <Folder className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
                     <span>..</span>
                   </div>
                 ))}
@@ -1488,9 +1488,9 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                         }}
                       >
                         {file.isDirectory ? (
-                          <Folder className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                          <Folder className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
                         ) : file.name.endsWith('.ts') || file.name.endsWith('.tsx') || file.name.endsWith('.js') ? (
-                          <FileCode className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+                          <FileCode className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
                         ) : file.name.endsWith('.json') ? (
                           <FileJson className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
                         ) : (

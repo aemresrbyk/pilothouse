@@ -4,18 +4,16 @@
 
 @layer base {
   :root {
-    --bg-deep: #08090d;
-    --bg-surface: #0e1017;
-    --bg-panel: #131722;
-    --border-dim: #1e2433;
-    --border-bright: #2d364d;
-    --claude-amber: #e07a5f;
-    --claude-orange: #d97706;
+    --bg-deep: #0b0d10;
+    --bg-surface: #0f1215;
+    --bg-panel: #111418;
+    --border-dim: #1f252c;
+    --border-bright: #2c343c;
   }
 
   body {
     background-color: var(--bg-deep);
-    color: #e5e7eb;
+    color: #e8edf0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
     user-select: none;
     overflow: hidden;
@@ -79,12 +77,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #232a3d;
+  background: rgba(128, 138, 148, 0.25);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #374260;
+  background: rgba(128, 138, 148, 0.45);
 }
 
 /* Titlebar drag region for macOS hiddenInset */
