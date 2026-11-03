@@ -33,12 +33,14 @@ import {
   Rocket,
   Plus,
   SlidersHorizontal,
-  GitFork
+  GitFork,
+  ArrowRightLeft,
+  MoreHorizontal
 } from 'lucide-react';
-import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile, TranscriptMessage, HistoryHit, isDangerFlag, AGENTS, AgentProfile, buildAgentCommand } from '../types';
+import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile, TranscriptMessage, HistoryHit, isDangerFlag, AGENTS, AgentProfile, buildAgentCommand, promptArgs } from '../types';
 import { ThemeConfig } from '../theme';
 import { EmbeddedTerminal } from './EmbeddedTerminal';
-import { isAppShortcut, keyLabel } from '../utils/platform';
+import { isAppShortcut, keyLabel, isMac } from '../utils/platform';
 import { playClickSound, playToggleSound, playLaunchSound } from '../utils/audio';
 
 interface TabWorkspaceProps {
@@ -55,6 +57,9 @@ interface TabWorkspaceProps {
   onSwitchAgent: (projectId: string, agentId: string) => void;
   onRunCommand: (command: string) => void;
   onOpenWorktree: () => void;
+  onHandoff: (agentId: string) => void;
+  pendingPrompt?: string; // set by a hand-off: restart once with this first prompt
+  onPromptUsed: () => void;
   onSaveCustomCommands: (commands: RunCommand[]) => void;
 }
 
@@ -72,6 +77,9 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   onSwitchAgent,
   onRunCommand,
   onOpenWorktree,
+  onHandoff,
+  pendingPrompt,
+  onPromptUsed,
   onSaveCustomCommands
 }) => {
   const [viewMode, setViewMode] = useState<'terminal' | 'claude-md' | 'files' | 'history' | 'run' | 'memory'>('terminal');
@@ -168,6 +176,20 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
     setLaunchCommand(null);
     setTermSessionKey((k) => k + 1);
   };
+
+  // A hand-off switched the agent (via props): start the new one once with the hand-off prompt.
+  useEffect(() => {
+    if (!pendingPrompt) return;
+    setSessions(null);
+    setOpenSession(null);
+    setClaudeMdContent('');
+    setViewMode('terminal');
+    setLaunchCommand(buildAgentCommand(agent, agentBinary, flags, promptArgs(agent, pendingPrompt)));
+    setTermSessionKey((k) => k + 1);
+    onPromptUsed();
+  }, [pendingPrompt]);
+  const [isHandoffOpen, setIsHandoffOpen] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
 
   const openTranscript = (sess: ClaudeSession, msgIndex: number | null = null) => {
     setOpenSession(sess);
@@ -526,6 +548,38 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             ))}
           </select>
 
+          {/* Hand off: the next agent starts with what this one did (conversation, changes, memory). */}
+          <div className="relative flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsHandoffOpen((o) => !o)}
+              title="Continue this work with another agent (it gets the conversation, changes and memory)"
+              aria-label="Hand off to another agent"
+              aria-expanded={isHandoffOpen}
+              className="p-1 rounded border hover:opacity-80"
+              style={{ borderColor: themeConfig.border, color: themeConfig.textMuted }}
+            >
+              <ArrowRightLeft className="w-3 h-3" />
+            </button>
+            {isHandoffOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsHandoffOpen(false)} />
+                <div className="absolute left-0 top-full mt-1 z-50 min-w-[200px] rounded-lg border shadow-2xl p-1"
+                  style={{ backgroundColor: themeConfig.bgCard, borderColor: themeConfig.border }}>
+                  <div className="px-2 py-1 text-[10px]" style={{ color: themeConfig.textMuted }}>Continue with</div>
+                  {AGENTS.filter((a) => a.id !== agent.id).map((a) => (
+                    <button key={a.id} type="button"
+                      onClick={() => { setIsHandoffOpen(false); playLaunchSound(); onHandoff(a.id); }}
+                      className="w-full text-left px-2 py-1.5 rounded text-[11px] hover:opacity-80"
+                      style={{ color: themeConfig.textPrimary }}>
+                      {a.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
           {/* Flags menu: one button keeps the toolbar from overflowing however many flags there are. List is set in Settings. */}
           {(() => {
             const dangerOn = flags.some(isDangerFlag);
@@ -725,32 +779,6 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             <span>Run</span>
           </button>
 
-          {/* Action: Interrupt ^C */}
-          <button
-            onClick={handleSendInterrupt}
-            title="Send SIGINT (^C) to Terminal"
-            className="p-1 rounded hover:bg-black/20 transition-colors border"
-            style={{
-              borderColor: themeConfig.border,
-              color: themeConfig.textMuted
-            }}
-          >
-            <Square className="w-3 h-3" />
-          </button>
-
-          {/* Action: Clear */}
-          <button
-            onClick={handleClearTerminal}
-            title="Clear terminal screen"
-            className="p-1 rounded hover:bg-black/20 transition-colors border"
-            style={{
-              borderColor: themeConfig.border,
-              color: themeConfig.textMuted
-            }}
-          >
-            <Trash2 className="w-3 h-3" />
-          </button>
-
           {/* Action: Toggle Scratchpad Drawer */}
           <button
             onClick={() => {
@@ -768,66 +796,49 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             <FileEdit className="w-3 h-3" />
           </button>
 
-          {/* Action: Open in VS Code */}
-          <button
-            onClick={() => onOpenEditor(project.path)}
-            title="Open in VS Code"
-            className="p-1 rounded hover:bg-black/20 transition-colors border"
-            style={{
-              borderColor: themeConfig.border,
-              color: themeConfig.textMuted
-            }}
-          >
-            <Code2 className="w-3 h-3" />
-          </button>
-
-          {/* Action: Reveal in Finder */}
-          <button
-            onClick={() => onOpenFolder(project.path)}
-            title="Reveal in Finder"
-            className="p-1 rounded hover:bg-black/20 transition-colors border"
-            style={{
-              borderColor: themeConfig.border,
-              color: themeConfig.textMuted
-            }}
-          >
-            <FolderOpen className="w-3 h-3" />
-          </button>
+          {/* More: rarely used actions and the agent's quick commands, so the toolbar stays one short row. */}
+          <div className="relative flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsMoreOpen((o) => !o)}
+              title="More actions"
+              aria-label="More actions"
+              aria-expanded={isMoreOpen}
+              className="p-1 rounded hover:bg-black/20 transition-colors border"
+              style={{ borderColor: themeConfig.border, color: themeConfig.textMuted }}
+            >
+              <MoreHorizontal className="w-3 h-3" />
+            </button>
+            {isMoreOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsMoreOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 z-50 min-w-[220px] max-h-[70vh] overflow-y-auto rounded-lg border shadow-2xl p-1 text-[11px]"
+                  style={{ backgroundColor: themeConfig.bgCard, borderColor: themeConfig.border }}>
+                  {[
+                    { label: 'Stop (Ctrl+C)', icon: <Square className="w-3 h-3" />, run: handleSendInterrupt },
+                    { label: 'Clear screen', icon: <Trash2 className="w-3 h-3" />, run: handleClearTerminal },
+                    { label: 'Open in editor', icon: <Code2 className="w-3 h-3" />, run: () => onOpenEditor(project.path) },
+                    { label: isMac ? 'Show in Finder' : 'Show in folder', icon: <FolderOpen className="w-3 h-3" />, run: () => onOpenFolder(project.path) }
+                  ].map((item) => (
+                    <button key={item.label} type="button" onClick={() => { setIsMoreOpen(false); item.run(); }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left hover:bg-black/20" style={{ color: themeConfig.textPrimary }}>
+                      <span style={{ color: themeConfig.textMuted }}>{item.icon}</span>{item.label}
+                    </button>
+                  ))}
+                  <div className="my-1 border-t" style={{ borderColor: themeConfig.border }} />
+                  <div className="px-2 py-1 text-[10px]" style={{ color: themeConfig.textMuted }}>Send to {agent.name}</div>
+                  {quickActions.map((qa) => (
+                    <button key={qa.label} type="button" title={qa.desc} onClick={() => { setIsMoreOpen(false); handleExecuteCommand(qa.cmd); }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left hover:bg-black/20" style={{ color: themeConfig.textPrimary }}>
+                      <span style={{ color: themeConfig.accent }}>{qa.icon}</span>{qa.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
-
-      {/* 2. Quick Actions & Slash Commands Strip (Visible in Terminal mode) */}
-      {viewMode === 'terminal' && (
-        <div
-          className="h-7 px-3 flex items-center gap-1.5 overflow-x-auto no-scrollbar border-b text-[10px] flex-shrink-0"
-          style={{
-            backgroundColor: themeConfig.bgMain,
-            borderColor: themeConfig.border
-          }}
-        >
-          <span className="text-[9px] uppercase font-bold tracking-wider mr-1" style={{ color: themeConfig.textMuted }}>
-            QUICK ACTIONS:
-          </span>
-
-          {quickActions.map((qa) => (
-            <button
-              key={qa.label}
-              type="button"
-              onClick={() => handleExecuteCommand(qa.cmd)}
-              title={`${qa.desc} (Click to execute in Claude)`}
-              className="px-2 py-0.5 rounded flex items-center gap-1 transition-all border flex-shrink-0 hover:opacity-100 opacity-80"
-              style={{
-                backgroundColor: themeConfig.bgTabActive,
-                borderColor: themeConfig.border,
-                color: themeConfig.textSecondary
-              }}
-            >
-              <span style={{ color: themeConfig.accent }}>{qa.icon}</span>
-              <span className="font-medium">{qa.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* 3. Workspace Body */}
       <div className="relative flex-1 w-full h-full min-h-0 min-w-0 overflow-hidden flex">

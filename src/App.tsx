@@ -11,7 +11,7 @@ import { startRecording, Recording } from './utils/voice';
 import { converse, ConvoDeps } from './utils/conversationLoop';
 import { Heard } from './utils/conversation';
 import { WakeWordDetector, startWakeListener, WakeListener } from './utils/wakeword';
-import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme, PtyStatus, TabState, InboxEvent, agentById, agentBinary, agentFlagPresets } from './types';
+import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme, PtyStatus, TabState, InboxEvent, handoffPrompt, agentById, agentBinary, agentFlagPresets } from './types';
 import { InboxPanel } from './components/InboxPanel';
 import { isMac, isAppShortcut, keyLabel, tabKeyLabel } from './utils/platform';
 import { THEMES, ThemeConfig } from './theme';
@@ -235,7 +235,12 @@ export const App: React.FC = () => {
     // Run-command tabs (dev servers …) get a dot but never nag.
     const attention = status !== 'running' && !looking && !tab.initialCommand;
     // A new run clears an earlier failure.
-    setTabStatus((prev) => ({ ...prev, [id]: { status, unseen: attention, failed: status === 'running' ? undefined : prev[id]?.failed } }));
+    setTabStatus((prev) => ({ ...prev, [id]: {
+      status,
+      unseen: attention,
+      failed: status === 'running' ? undefined : prev[id]?.failed,
+      limit: status === 'running' ? undefined : prev[id]?.limit
+    } }));
     if (attention) logEvent({ tabId: id, kind: status === 'waiting' ? 'waiting' : 'finished', at: Date.now() });
     if (attention && ctx.notify) {
       const name = ctx.projects.find((p) => p.id === tab.projectId)?.name || 'Project';
@@ -257,6 +262,21 @@ export const App: React.FC = () => {
     if (ctx.notify) {
       const n = new Notification(ctx.projects.find((p) => p.id === tab.projectId)?.name || 'Project', { body: `Failed (exit code ${code})` });
       n.onclick = () => { window.electronAPI.focusApp(); setActiveTabId(id); };
+    }
+  }), []);
+
+  // The agent ran out of its plan's usage: offer to continue with another agent (Inbox + notification).
+  useEffect(() => window.electronAPI.onPtyLimit(({ id }) => {
+    const ctx = statusCtx.current;
+    const tab = ctx.tabs.find((t) => t.id === id);
+    if (!tab) return;
+    setTabStatus((prev) => ({ ...prev, [id]: { status: prev[id]?.status || 'idle', unseen: true, failed: prev[id]?.failed, limit: true } }));
+    logEvent({ tabId: id, kind: 'limit', at: Date.now() });
+    setAwaySince(null);
+    setIsInboxOpen(true);
+    if (ctx.notify) {
+      const n = new Notification(ctx.projects.find((p) => p.id === tab.projectId)?.name || 'Project', { body: 'Usage limit reached. Continue with another agent from the Inbox.' });
+      n.onclick = () => { window.electronAPI.focusApp(); setIsInboxOpen(true); };
     }
   }), []);
 
@@ -292,7 +312,7 @@ export const App: React.FC = () => {
   }, []);
 
   // Tabs that need you: unseen result, pending approval or a failure. Dock badge + Inbox count.
-  const needsYou = tabs.filter((t) => tabStatus[t.id]?.unseen || tabStatus[t.id]?.status === 'waiting').length;
+  const needsYou = tabs.filter((t) => tabStatus[t.id]?.unseen || tabStatus[t.id]?.limit || tabStatus[t.id]?.status === 'waiting').length;
   useEffect(() => {
     window.electronAPI.setBadge(needsYou);
   }, [needsYou]);
@@ -584,6 +604,24 @@ export const App: React.FC = () => {
     }
   };
 
+  // Hand-off: write .pilothouse/handoff.md from the current agent's work, switch the project to the next agent and
+  // restart the tab with a first prompt telling it to read that file.
+  const [pendingPrompts, setPendingPrompts] = useState<Record<string, string>>({});
+  const handleHandoff = async (tabId: string, toAgentId: string) => {
+    const tab = tabs.find((t) => t.id === tabId);
+    const proj = projects.find((p) => p.id === tab?.projectId);
+    if (!tab || !proj) return;
+    const from = agentById(proj.agent);
+    const r = await window.electronAPI.writeHandoff(proj.path, from.id);
+    if (!r.path) return showToast(`HAND-OFF FAILED: ${r.error || 'unknown error'}`, 'error');
+    handleSwitchAgent(proj.id, toAgentId);
+    setPendingPrompts((p) => ({ ...p, [tabId]: handoffPrompt(from.name) }));
+    setTabStatus((prev) => ({ ...prev, [tabId]: { status: 'idle', unseen: false } }));
+    setActiveTabId(tabId);
+    setIsInboxOpen(false);
+    showToast(`HANDED OFF: ${from.name} → ${agentById(toAgentId).name}`, 'success');
+  };
+
   // A new tab in its own git worktree + branch, registered as a project so it gets history, CLAUDE.md etc.
   const handleOpenWorktree = async (projectPath: string) => {
     const r = await window.electronAPI.addWorktree(projectPath);
@@ -771,6 +809,9 @@ export const App: React.FC = () => {
                   onSwitchAgent={handleSwitchAgent}
                   onRunCommand={(cmd) => handleNewTab(proj.id, cmd)}
                   onOpenWorktree={() => handleOpenWorktree(proj.path)}
+                  onHandoff={(agentId) => handleHandoff(tab.id, agentId)}
+                  pendingPrompt={pendingPrompts[tab.id]}
+                  onPromptUsed={() => setPendingPrompts(({ [tab.id]: _, ...rest }) => rest)}
                   onSaveCustomCommands={async (cmds) => {
                     const updated = await window.electronAPI.updateProject(proj.id, { customRunCommands: cmds });
                     if (updated) setProjects((prev) => prev.map((p) => (p.id === proj.id ? { ...p, customRunCommands: cmds } : p)));
@@ -963,6 +1004,7 @@ export const App: React.FC = () => {
         awaySince={awaySince}
         onGoToTab={setActiveTabId}
         onStopTab={handleCloseTab}
+        onHandoff={handleHandoff}
         themeConfig={themeConfig}
       />
 

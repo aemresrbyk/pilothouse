@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Inbox, X, Cpu, ArrowRight, Square, CornerDownLeft } from 'lucide-react';
-import { ProjectItem, TabSession, TabState, InboxEvent } from '../types';
+import { ProjectItem, TabSession, TabState, InboxEvent, AGENTS } from '../types';
 import { ThemeConfig } from '../theme';
 import { parseChoices, Choice } from '../utils/inbox';
 
@@ -14,6 +14,7 @@ interface InboxPanelProps {
   awaySince: number | null; // set when the panel opened by itself after you were away
   onGoToTab: (tabId: string) => void;
   onStopTab: (tabId: string) => void;
+  onHandoff: (tabId: string, agentId: string) => void;
   themeConfig: ThemeConfig;
 }
 
@@ -21,6 +22,7 @@ const RED = '#ef4444';
 const AMBER = '#f59e0b';
 const GREEN = '#22c55e';
 const KIND = {
+  limit: { color: '#a855f7', label: 'Limit reached' },
   waiting: { color: AMBER, label: 'Needs you' },
   failed: { color: RED, label: 'Failed' },
   finished: { color: GREEN, label: 'Finished' }
@@ -30,7 +32,7 @@ const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit
 
 // One column for everything the agents ask you, what failed, and what each tab is using.
 export const InboxPanel: React.FC<InboxPanelProps> = ({
-  isOpen, onClose, tabs, projects, tabStatus, events, awaySince, onGoToTab, onStopTab, themeConfig: t
+  isOpen, onClose, tabs, projects, tabStatus, events, awaySince, onGoToTab, onStopTab, onHandoff, themeConfig: t
 }) => {
   const [view, setView] = useState<'inbox' | 'resources'>('inbox');
   const [choices, setChoices] = useState<Record<string, Choice[]>>({});
@@ -46,7 +48,9 @@ export const InboxPanel: React.FC<InboxPanelProps> = ({
   };
   const waiting = tabs.filter((x) => tabStatus[x.id]?.status === 'waiting');
   const failed = tabs.filter((x) => tabStatus[x.id]?.failed !== undefined && tabStatus[x.id]?.status !== 'waiting');
-  const finished = tabs.filter((x) => tabStatus[x.id]?.unseen && tabStatus[x.id]?.status === 'idle' && tabStatus[x.id]?.failed === undefined);
+  const limited = tabs.filter((x) => tabStatus[x.id]?.limit);
+  const finished = tabs.filter((x) => tabStatus[x.id]?.unseen && tabStatus[x.id]?.status === 'idle' && tabStatus[x.id]?.failed === undefined && !tabStatus[x.id]?.limit);
+  const agentOf = (tab: TabSession) => projects.find((p) => p.id === tab.projectId)?.agent || 'claude';
 
   // Read each waiting prompt's options from the terminal.
   const waitingKey = waiting.map((x) => x.id).join(',');
@@ -120,6 +124,21 @@ export const InboxPanel: React.FC<InboxPanelProps> = ({
           While you were away (since {clock(awaySince)}): {events.filter((e) => e.at >= awaySince).length} event(s).
         </p>
       )}
+      {limited.map((tab) => card(tab, 'limit', (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs" style={{ color: t.textSecondary }}>
+            Continue with another agent. It gets the conversation, the changed files and the project memory.
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {AGENTS.filter((a) => a.id !== agentOf(tab)).map((a) => (
+              <button key={a.id} onClick={() => onHandoff(tab.id, a.id)} className="px-2 py-1 rounded border text-xs hover:opacity-80"
+                style={{ borderColor: t.border, color: t.textPrimary, backgroundColor: t.bgCard }}>
+                Continue with {a.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )))}
       {waiting.map((tab) => card(tab, 'waiting', (
         <div className="flex flex-wrap gap-1.5">
           {(choices[tab.id] || []).map((c) => (
@@ -145,7 +164,7 @@ export const InboxPanel: React.FC<InboxPanelProps> = ({
           </button>
         </form>
       )))}
-      {!waiting.length && !failed.length && !finished.length && (
+      {!limited.length && !waiting.length && !failed.length && !finished.length && (
         <p className="text-xs py-6 text-center" style={{ color: t.textMuted }}>Nothing needs you right now.</p>
       )}
       {events.length > 0 && (

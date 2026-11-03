@@ -22,6 +22,11 @@ const STARTUP_MS = 5000; // the agent's startup screen is not a run
 // removed, because TUIs often position words with cursor moves instead of spaces.
 const APPROVAL_RE = /doyouwantto|wouldyouliketo|allow(this|command|once)|approve|proceed\?|\(y\/n\)|\[y\/n\]|❯1\.yes|entertoconfirm/i;
 
+// "You've hit your usage limit" (Claude Code, Codex), quota errors (Gemini), provider rate limits (opencode).
+// shortcut: can also match when the conversation itself is about limits; it only suggests a hand-off, never acts.
+const LIMIT_RE = /usagelimit|limitreached|hityour(usage)?limit|quotaexceeded|exhaustedyour(daily)?quota|resource_exhausted|ratelimitexceeded/i;
+export const hitLimit = (tail: string) => LIMIT_RE.test(tail.replace(/\s+/g, ''));
+
 export const newActivity = (now: number): Activity => ({ status: 'idle', busySince: now, lastData: 0, lastInput: 0, created: now });
 
 export function noteOutput(a: Activity, now: number): void {

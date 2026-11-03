@@ -54,6 +54,8 @@ declare global {
       onPtyStatus: (callback: (info: { id: string; status: PtyStatus }) => void) => () => void;
       onPtyFailed: (callback: (info: { id: string; code: number }) => void) => () => void;
       ptyResources: () => Promise<{ id: string; cpu: number; memMB: number }[]>;
+      onPtyLimit: (callback: (info: { id: string }) => void) => () => void;
+      writeHandoff: (projectPath: string, fromAgent: string) => Promise<{ path?: string; error?: string }>;
       addWorktree: (repoPath: string) => Promise<{ path?: string; error?: string }>;
       setBadge: (count: number) => void;
       focusApp: () => void;

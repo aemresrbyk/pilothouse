@@ -12,6 +12,46 @@ import { newActivity, noteOutput, nextStatus } from '../electron/activity';
 import { parseChoices } from '../src/utils/inbox';
 import { treeUsage } from '../electron/resources';
 import { ttsCommand } from '../electron/voice';
+import { formatHandoff, writeHandoff } from '../electron/handoff';
+import { hitLimit } from '../electron/activity';
+import { promptArgs, handoffPrompt, AGENTS } from '../src/types';
+import { execFileSync } from 'child_process';
+
+{
+  // Hand-off file: conversation, git and memory sections; long messages are cut.
+  const text = formatHandoff({
+    fromAgent: 'claude', at: new Date('2026-11-03T10:00:00Z'),
+    messages: [{ role: 'user', text: 'add login' }, { role: 'assistant', text: 'x'.repeat(2000) }],
+    git: { status: ' M src/a.ts', diffStat: ' 1 file changed', log: 'abc first' },
+    memory: [{ label: 'Project CLAUDE.md', text: 'Use tabs.' }]
+  });
+  assert.ok(text.startsWith('# Hand-off from Claude Code'));
+  assert.ok(text.includes('**User:** add login') && text.includes('… (cut)') && text.includes(' M src/a.ts') && text.includes('Use tabs.'));
+
+  // Real hand-off in a repo without commits: file written, kept out of git, no crash on missing HEAD.
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-ho-'));
+  execFileSync('git', ['init', '-q', repo]);
+  fs.writeFileSync(path.join(repo, 'AGENTS.md'), 'Run the tests.');
+  const r = await writeHandoff(repo, 'gemini');
+  assert.ok(r.path && fs.readFileSync(r.path, 'utf-8').includes('Run the tests.'), JSON.stringify(r));
+  assert.ok(fs.readFileSync(path.join(repo, '.git', 'info', 'exclude'), 'utf-8').includes('.pilothouse/'));
+  assert.ok(!execFileSync('git', ['-C', repo, 'status', '--short'], { encoding: 'utf-8' }).includes('.pilothouse'));
+  await writeHandoff(repo, 'gemini');
+  assert.equal(fs.readFileSync(path.join(repo, '.git', 'info', 'exclude'), 'utf-8').split('.pilothouse/').length, 2, 'exclude added once');
+
+  // Usage limits of the agents are noticed; normal output is not.
+  assert.ok(hitLimit("You've hit your usage limit. Upgrade to Plus or try again in 2 hours."));
+  assert.ok(hitLimit('Claude usage limit reached. Your limit will reset at 3pm'));
+  assert.ok(hitLimit('Quota exceeded for quota metric'));
+  assert.ok(!hitLimit('Done. All 12 tests pass.'));
+
+  // Each agent gets the first prompt its own way; shell characters are refused.
+  const ids = Object.fromEntries(AGENTS.map((a) => [a.id, promptArgs(a, 'hi there')]));
+  assert.deepStrictEqual(ids, { claude: '"hi there"', codex: '"hi there"', gemini: '-i "hi there"', opencode: '--prompt "hi there"' });
+  assert.doesNotThrow(() => promptArgs(AGENTS[0], handoffPrompt('Claude Code')));
+  assert.throws(() => promptArgs(AGENTS[0], 'x"; rm -rf ~'));
+  console.log('handoff ok');
+}
 
 {
   // Windows speech: the language code can't break out of the PowerShell string.

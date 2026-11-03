@@ -9,7 +9,8 @@ import { StorageManager } from './store';
 import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './terminal';
 import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions, readTranscript, searchHistory, isSessionFile, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
 import { startControlServer, CONTROL_FILE, stripAnsi } from './control';
-import { Activity, newActivity, noteOutput, nextStatus } from './activity';
+import { Activity, newActivity, noteOutput, nextStatus, hitLimit } from './activity';
+import { writeHandoff } from './handoff';
 import { processUsage } from './resources';
 import { whisperBinary, hasModel, downloadModel, transcribe, speak, stopSpeaking, MODEL_BYTES } from './voice';
 import { ProjectItem, AppSettings, ClaudeSession, agentById, agentBinary } from '../src/types';
@@ -24,7 +25,7 @@ let win: BrowserWindow | null = null;
 let storage: StorageManager;
 const ptySessions = new Map<string, pty.IPty>();
 // cwd + recent output per PTY, so the control API can tell which project a terminal belongs to and read it back.
-const ptyMeta = new Map<string, { cwd: string; buf: string; act: Activity; sender: Electron.WebContents }>();
+const ptyMeta = new Map<string, { cwd: string; buf: string; act: Activity; sender: Electron.WebContents; limited?: boolean }>();
 const OUTPUT_KEEP = 60_000;
 const pendingOpens = new Map<string, (tabId: string) => void>();
 
@@ -154,10 +155,18 @@ app.whenReady().then(() => {
     const now = Date.now();
     for (const [id, m] of ptyMeta) {
       if (!ptySessions.has(id)) continue;
-      const status = nextStatus(m.act, now, stripAnsi(m.buf.slice(-2000)).slice(-600));
+      const tail = stripAnsi(m.buf.slice(-2000)).slice(-600);
+      const status = nextStatus(m.act, now, tail);
       if (status === m.act.status) continue;
       m.act.status = status;
-      if (!m.sender.isDestroyed()) m.sender.send('pty:status', { id, status });
+      if (m.sender.isDestroyed()) continue;
+      m.sender.send('pty:status', { id, status });
+      // Once per stop: the agent ran out of its plan's usage, so the UI can offer another agent.
+      if (status === 'running') m.limited = false;
+      else if (!m.limited && hitLimit(tail)) {
+        m.limited = true;
+        m.sender.send('pty:limit', { id });
+      }
     }
   }, 1000);
   if (app.isPackaged) {
@@ -422,6 +431,11 @@ function registerIpcHandlers() {
 
   ipcMain.handle('clipboard:write', async (_e, text: string) => {
     clipboard.writeText(text);
+  });
+
+  ipcMain.handle('handoff:write', async (_e, projectPath: string, fromAgent: string) => {
+    if (!storage.listStoredProjects().some((p) => p.path === projectPath)) return { error: 'Unknown project' };
+    return writeHandoff(projectPath, fromAgent);
   });
 
   ipcMain.handle('pty:resources', async () => {
