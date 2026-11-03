@@ -850,6 +850,7 @@ export const App: React.FC = () => {
                   agent={agentById(proj.agent)}
                   agentBinary={agentBinary(agentById(proj.agent), settings)}
                   flagPresets={agentFlagPresets(settings, proj.agent)}
+                  quickCommands={settings.quickCommands}
                   onSwitchAgent={handleSwitchAgent}
                   onRunCommand={(cmd) => handleNewTab(proj.id, cmd)}
                   onOpenWorktree={() => handleOpenWorktree(proj.path)}

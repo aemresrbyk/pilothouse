@@ -44,7 +44,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm select-none font-mono">
-      <div className="bg-[#0c0e14] border border-[#21283a] rounded-xl w-full max-w-md shadow-2xl overflow-hidden">
+      <div className="bg-[#0c0e14] border border-[#21283a] rounded-xl w-full max-w-md max-h-full overflow-y-auto shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1b2131] bg-[#10131d]">
           <div className="flex items-center gap-2">
@@ -106,7 +106,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
               <button
                 type="submit"
                 disabled={!manualPath.trim()}
-                className="flex items-center gap-1.5 bg-\[#C8FF2E\] disabled:opacity-40 text-[#0B0D10] text-xs font-bold px-4 py-1.5 rounded shadow transition-all active:scale-95"
+                className="flex items-center gap-1.5 bg-[#C8FF2E] disabled:opacity-40 text-[#0B0D10] text-xs font-bold px-4 py-1.5 rounded shadow transition-all active:scale-95"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>REGISTER</span>

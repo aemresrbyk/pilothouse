@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Settings, Terminal, Code2, Sliders, Check, Palette } from 'lucide-react';
-import { AppSettings, TerminalOption, AppTheme, isDangerFlag, AGENTS, agentFlagPresets } from '../types';
+import { AppSettings, TerminalOption, AppTheme, isDangerFlag, DEFAULT_QUICK_COMMANDS, AGENTS, agentFlagPresets } from '../types';
 import { THEMES, themeOrDefault } from '../theme';
 import { playClickSound } from '../utils/audio';
 
@@ -64,15 +64,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const toList = (text: string) => [...new Set(text.split('\n').map((l) => l.trim()).filter(Boolean))];
   const presetList = toList(presetsText);
   const defaultAgent = formData.defaultAgent || 'claude';
+  const [quickText, setQuickText] = useState('');
 
   useEffect(() => {
     setFormData(settings);
     setPresetsByAgent(Object.fromEntries(AGENTS.map((a) => [a.id, agentFlagPresets(settings, a.id).join('\n')])));
     setEditAgent(settings.defaultAgent || 'claude');
+    setQuickText((settings.quickCommands ?? DEFAULT_QUICK_COMMANDS).join('\n'));
     if (isOpen) {
       window.electronAPI.getTerminals().then(setTerminals);
     }
   }, [isOpen, settings]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -83,6 +92,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onSaveSettings({
       ...formData,
       agentFlagPresets: agentPresets,
+      // Unchanged built-ins stay unset so future default updates still reach the user.
+      quickCommands: toList(quickText).join('\n') === DEFAULT_QUICK_COMMANDS.join('\n') ? undefined : toList(quickText),
       defaultFlags: formData.defaultFlags.filter((f) => agentPresets[defaultAgent].includes(f))
     });
     setIsSaved(true);
@@ -94,9 +105,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm select-none font-mono">
-      <div className="bg-[#0c0e14] border border-[#21283a] rounded-xl w-full max-w-lg shadow-2xl overflow-hidden">
+      <div className="bg-[#0c0e14] border border-[#21283a] rounded-xl w-full max-w-lg max-h-full flex flex-col shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1b2131] bg-[#10131d]">
+        <div className="flex-shrink-0 flex items-center justify-between px-5 py-3.5 border-b border-[#1b2131] bg-[#10131d]">
           <div className="flex items-center gap-2.5">
             <Settings className="w-4 h-4 text-[#C8FF2E]" />
             <div>
@@ -116,8 +127,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
-        {/* Form Body */}
-        <div className="p-5 space-y-4 text-xs">
+        {/* Form Body: scrolls so header (close) and footer (save) stay on screen in a short window */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 space-y-4 text-xs">
           {/* Setup wizard again: find agents, choose projects and their agents */}
           <button
             type="button"
@@ -303,6 +314,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>}
           </div>
 
+          {/* Quick commands: the "Send to agent" list in the toolbar's … menu */}
+          <div>
+            <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block mb-1.5">QUICK COMMANDS</label>
+            <textarea
+              value={quickText}
+              onChange={(e) => setQuickText(e.target.value)}
+              rows={4}
+              spellCheck={false}
+              placeholder={'/compact\nReview the recent git diff'}
+              className="w-full bg-[#10131c] border border-[#1b2233] focus:border-[#C8FF2E] text-xs text-zinc-200 rounded px-2.5 py-1.5 outline-none font-mono resize-y"
+            />
+            <p className="text-[10px] text-zinc-600 mt-1">
+              One per line: a prompt or a slash command. They appear in the toolbar's … menu and are sent to the agent with one click.
+            </p>
+          </div>
+
           {/* Voice */}
           <div>
             <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block mb-1.5">VOICE PROMPTS</label>
@@ -428,7 +455,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[#1b2131] bg-[#10131d]">
+        <div className="flex-shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-[#1b2131] bg-[#10131d]">
           <button
             onClick={() => {
               playClickSound();
@@ -440,7 +467,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
           <button
             onClick={handleSave}
-            className="flex items-center gap-1.5 bg-\[#C8FF2E\] text-[#0B0D10] text-xs font-bold px-4 py-1.5 rounded shadow transition-all active:scale-95"
+            className="flex items-center gap-1.5 bg-[#C8FF2E] text-[#0B0D10] text-xs font-bold px-4 py-1.5 rounded shadow transition-all active:scale-95"
           >
             {isSaved ? <Check className="w-3.5 h-3.5" /> : null}
             <span>{isSaved ? 'STORED' : 'SAVE CHANGES'}</span>
