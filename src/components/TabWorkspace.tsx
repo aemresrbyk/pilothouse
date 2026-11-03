@@ -37,7 +37,8 @@ import {
   ArrowRightLeft,
   MoreHorizontal
 } from 'lucide-react';
-import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile, TranscriptMessage, HistoryHit, isDangerFlag, AGENTS, AgentProfile, buildAgentCommand, promptArgs, agentById, PendingLaunch } from '../types';
+import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile, TranscriptMessage, HistoryHit, isDangerFlag, AGENTS, AgentProfile, buildAgentCommand, promptArgs, agentById, PendingLaunch, ModelChoice } from '../types';
+import type { AgentOptions } from '../../electron/agentOptions';
 import { ThemeConfig } from '../theme';
 import { EmbeddedTerminal } from './EmbeddedTerminal';
 import { isAppShortcut, keyLabel, isMac } from '../utils/platform';
@@ -62,6 +63,8 @@ interface TabWorkspaceProps {
   onResumeAs: (agentId: string, sessionId: string) => void;
   pendingLaunch?: PendingLaunch; // set by a hand-off or a resume in another agent: restart once with it
   onLaunchUsed: () => void;
+  modelChoice?: ModelChoice; // model + effort this project runs the agent with
+  onSetModel: (choice: ModelChoice) => void;
   onSaveCustomCommands: (commands: RunCommand[]) => void;
 }
 
@@ -84,6 +87,8 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   onResumeAs,
   pendingLaunch,
   onLaunchUsed,
+  modelChoice,
+  onSetModel,
   onSaveCustomCommands
 }) => {
   const [viewMode, setViewMode] = useState<'terminal' | 'claude-md' | 'files' | 'history' | 'run' | 'memory'>('terminal');
@@ -163,8 +168,19 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   }, [loadGitStatus, viewMode]);
 
   // With resumeId it reopens that session instead of --continue / the input bar.
-  const buildCommand = (resumeId?: string) => buildAgentCommand(agent, agentBinary, flags, customInput, resumeId);
-  const fullCommand = useMemo(() => buildCommand(), [flags, customInput, agentBinary, agent]);
+  const buildCommand = (resumeId?: string) => buildAgentCommand(agent, agentBinary, flags, customInput, resumeId, modelChoice);
+  const fullCommand = useMemo(() => buildCommand(), [flags, customInput, agentBinary, agent, modelChoice]);
+
+  // Models and effort levels this agent offers with the user's own account (read from the agent on this computer).
+  const [agentOpts, setAgentOpts] = useState<AgentOptions | null>(null);
+  useEffect(() => {
+    let live = true;
+    setAgentOpts(null);
+    window.electronAPI.agentOptions(agent.id).then((o) => live && setAgentOpts(o)).catch(() => {});
+    return () => { live = false; };
+  }, [agent.id, agentBinary]);
+  const pickedModel = agentOpts?.models.find((m) => m.id === modelChoice?.model);
+  const effortList = pickedModel?.efforts?.length ? pickedModel.efforts : agentOpts?.efforts || [];
   const isClaude = agent.id === 'claude';
   const mdFile = agent.instructionsFile;
 
@@ -189,7 +205,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
     setClaudeMdContent('');
     setViewMode('terminal');
     const first = pendingLaunch.prompt ? promptArgs(agent, pendingLaunch.prompt) : undefined;
-    setLaunchCommand(buildAgentCommand(agent, agentBinary, flags, first, pendingLaunch.resumeId));
+    setLaunchCommand(buildAgentCommand(agent, agentBinary, flags, first, pendingLaunch.resumeId, modelChoice));
     setTermSessionKey((k) => k + 1);
     onLaunchUsed();
   }, [pendingLaunch]);
@@ -509,7 +525,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
           {gitStatus?.isGit && (
             <div
               onClick={() => handleExecuteCommand('Review the recent git diff and summarize changes')}
-              title={`Git Branch: ${gitStatus.branch} (${gitStatus.statusText}). Click to review with Claude!`}
+              title={`Git Branch: ${gitStatus.branch} (${gitStatus.statusText}). Click to have the agent review the diff.`}
               className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] cursor-pointer hover:opacity-90 border transition-all"
               style={{
                 backgroundColor: gitStatus.modifiedCount > 0 ? themeConfig.accentBg : themeConfig.bgTabActive,
@@ -552,6 +568,40 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
               <option key={a.id} value={a.id}>{a.name}</option>
             ))}
           </select>
+
+          {/* Model and effort from the user's own account; "Default" leaves the agent's own setting. Applies on Run. */}
+          {!!agentOpts?.models.length && (
+            <select
+              value={modelChoice?.model || ''}
+              onChange={(e) => {
+                const model = e.target.value || undefined;
+                const next = agentOpts.models.find((m) => m.id === model);
+                const levels = next?.efforts?.length ? next.efforts : agentOpts.efforts;
+                // Keep the effort only if the new model has it.
+                onSetModel({ model, effort: modelChoice?.effort && levels.includes(modelChoice.effort) ? modelChoice.effort : undefined });
+              }}
+              title={`${agent.name} model (press Run to restart with it)`}
+              aria-label="Model"
+              className="text-[11px] px-1.5 py-1 rounded border outline-none cursor-pointer flex-shrink-0 max-w-[140px]"
+              style={{ backgroundColor: themeConfig.bgMain, borderColor: themeConfig.border, color: modelChoice?.model ? themeConfig.textPrimary : themeConfig.textMuted }}
+            >
+              <option value="">Default model</option>
+              {agentOpts.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+          )}
+          {!!effortList.length && (
+            <select
+              value={modelChoice?.effort || ''}
+              onChange={(e) => onSetModel({ ...modelChoice, effort: e.target.value || undefined })}
+              title={`${agent.name} effort: how hard it thinks (press Run to restart with it)`}
+              aria-label="Effort"
+              className="text-[11px] px-1.5 py-1 rounded border outline-none cursor-pointer flex-shrink-0"
+              style={{ backgroundColor: themeConfig.bgMain, borderColor: themeConfig.border, color: modelChoice?.effort ? themeConfig.textPrimary : themeConfig.textMuted }}
+            >
+              <option value="">{pickedModel?.defaultEffort ? `Effort: ${pickedModel.defaultEffort}` : 'Default effort'}</option>
+              {effortList.map((e) => <option key={e} value={e}>{e}</option>)}
+            </select>
+          )}
 
           {/* Hand off: the next agent starts with what this one did (conversation, changes, memory). */}
           <div className="relative flex-shrink-0">
@@ -773,14 +823,14 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             </button>}
           </div>
 
-          {/* Action: Run / Launch Claude */}
+          {/* Action: Run / restart the agent */}
           <button
             onClick={handleRestartClaude}
             title={`Run: ${fullCommand}`}
-            className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-bold text-white shadow-sm transition-all active:scale-95"
-            style={{ backgroundColor: themeConfig.accent }}
+            className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-bold shadow-sm transition-all active:scale-95"
+            style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
           >
-            <Play className="w-3 h-3 fill-white" />
+            <Play className="w-3 h-3 fill-current" />
             <span>Run</span>
           </button>
 
@@ -940,8 +990,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                 <button
                   onClick={handleSendScratchpadToTerminal}
                   disabled={!scratchpadText.trim()}
-                  className="px-2.5 py-1 rounded text-xs font-bold text-white flex items-center gap-1 disabled:opacity-40"
-                  style={{ backgroundColor: themeConfig.accent }}
+                  className="px-2.5 py-1 rounded text-xs font-bold flex items-center gap-1 disabled:opacity-40"
+                  style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
                 >
                   <Send className="w-3 h-3" />
                   <span>Send ↵</span>
@@ -1002,8 +1052,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                   <button
                     onClick={handleSaveClaudeMd}
                     disabled={isSavingMd}
-                    className="px-2.5 py-1 rounded flex items-center gap-1 text-[11px] font-bold text-white shadow-sm"
-                    style={{ backgroundColor: themeConfig.accent }}
+                    className="px-2.5 py-1 rounded flex items-center gap-1 text-[11px] font-bold shadow-sm"
+                    style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
                   >
                     <Save className="w-3 h-3" />
                     <span>{isSavingMd ? 'Saving...' : 'Save Changes'}</span>
@@ -1081,8 +1131,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                   <div className="mt-4 flex items-center gap-2">
                     <button
                       onClick={handleGenerateSmartClaudeMd}
-                      className="px-4 py-2 rounded-lg text-xs font-bold text-white shadow-md flex items-center gap-1.5 transition-all active:scale-95"
-                      style={{ backgroundColor: themeConfig.accent }}
+                      className="px-4 py-2 rounded-lg text-xs font-bold shadow-md flex items-center gap-1.5 transition-all active:scale-95"
+                      style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
                     >
                       <Sparkles className="w-3.5 h-3.5" />
                       <span>✦ Generate Smart {mdFile} Template</span>
@@ -1125,8 +1175,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                 <button
                   type="button"
                   onClick={addCustomCommand}
-                  className="px-2.5 rounded text-xs font-bold flex items-center gap-1 text-white"
-                  style={{ backgroundColor: themeConfig.accent }}
+                  className="px-2.5 rounded text-xs font-bold flex items-center gap-1"
+                  style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
                 >
                   <Plus className="w-3 h-3" /> Add
                 </button>
@@ -1162,10 +1212,10 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                       <button
                         type="button"
                         onClick={() => { playLaunchSound(); onRunCommand(c.command); }}
-                        className="px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 flex-shrink-0 text-white"
-                        style={{ backgroundColor: themeConfig.accent }}
+                        className="px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 flex-shrink-0"
+                        style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
                       >
-                        <Play className="w-3 h-3 fill-white" /> Run
+                        <Play className="w-3 h-3 fill-current" /> Run
                       </button>
                     </div>
                   ))}
@@ -1208,8 +1258,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                   <button
                     type="button"
                     onClick={saveMemoryFile}
-                    className="px-2 py-0.5 rounded font-bold flex items-center gap-1 text-white"
-                    style={{ backgroundColor: themeConfig.accent }}
+                    className="px-2 py-0.5 rounded font-bold flex items-center gap-1"
+                    style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
                   >
                     <Save className="w-3 h-3" /> Save
                   </button>
@@ -1334,8 +1384,8 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                         ? onResumeAs(openSession.agent, openSession.id)
                         : handleResumeSession(openSession.id))}
                       title={`Reopen this conversation in ${agentById(openSession.agent || agent.id).name}`}
-                      className="px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 flex-shrink-0 text-white"
-                      style={{ backgroundColor: themeConfig.accent }}
+                      className="px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 flex-shrink-0"
+                      style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
                     >
                       <RotateCcw className="w-3 h-3" />
                       Resume{openSession.agent && openSession.agent !== agent.id ? ` in ${agentById(openSession.agent).name}` : ''}
@@ -1416,7 +1466,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                     className="px-2 py-1.5 rounded flex items-center gap-2 cursor-pointer text-[11px]"
                     style={{ color: themeConfig.textSecondary }}
                   >
-                    <Folder className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                    <Folder className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
                     <span>..</span>
                   </div>
                 ))}
@@ -1438,9 +1488,9 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                         }}
                       >
                         {file.isDirectory ? (
-                          <Folder className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                          <Folder className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
                         ) : file.name.endsWith('.ts') || file.name.endsWith('.tsx') || file.name.endsWith('.js') ? (
-                          <FileCode className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+                          <FileCode className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
                         ) : file.name.endsWith('.json') ? (
                           <FileJson className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
                         ) : (

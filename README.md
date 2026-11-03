@@ -5,9 +5,9 @@
   # Pilothouse
   ### Desktop cockpit with tabbed, embedded terminals for Claude Code, Codex and other terminal AI agents
 
-  [![License: MIT](https://img.shields.io/badge/License-MIT-amber.svg)](LICENSE)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-C8FF2E.svg?labelColor=0B0D10)](LICENSE)
   [![Author](https://img.shields.io/badge/Author-aemresrbyk-181717?logo=github&logoColor=white)](https://github.com/aemresrbyk)
-  [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-black)](#quick-install)
+  [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-0B0D10)](#quick-install)
   [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
   [![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 
@@ -63,7 +63,7 @@ This puts the AppImage in `~/.local/bin` and adds Pilothouse to your app menu (U
 
 - **Setup on first run.** Pilothouse looks for each agent CLI (Claude Code, Codex, Gemini CLI, opencode) on your shell's PATH and the usual install folders; choose the ones it can't find, or skip them. Then it lists the folders Claude Code and Codex have worked in, with how many sessions each agent has there, and you pick the projects and the agent for each. Run it again from Settings.
 - **Tabbed embedded terminals.** Each tab runs a login shell in the project folder and starts Claude automatically. You can open several tabs for the same project (e.g. one for Claude, one for `npm run dev`). Open tabs come back when you restart the app.
-- **Any terminal agent.** Pick Claude Code, Codex, Gemini CLI or opencode per project. Each agent keeps its own flags, and the instructions tab edits its file (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`). History works for Claude Code and Codex.
+- **Any terminal agent.** Pick Claude Code, Codex, Gemini CLI, Antigravity (`agy`) or opencode per project. Each agent keeps its own flags, and the instructions tab edits its file (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`). History works for Claude Code and Codex.
 - **Knows when you're needed.** A tab's dot pulses while the agent works, turns amber when it asks for approval and green when it finished while you were in another tab. You also get a desktop notification and, on macOS, a Dock badge.
 - **Inbox (`⌘I` / `Ctrl+Shift+I`).** Everything your agents ask you, in one column: each approval prompt shows the agent's own options as buttons (or press 1–9). Commands that failed are listed apart from questions, with their exit code, and finished tabs get a reply box. Nothing is approved for you. Come back after 5+ minutes away and the Inbox opens on what happened meanwhile.
 - **Hand-off between agents.** Ran out of your Claude plan's usage? Pilothouse notices the limit message, and the Inbox offers **Continue with Codex / Gemini / opencode** (or use the ⇄ button next to the agent picker any time). The next agent starts with `.pilothouse/handoff.md`: the last conversation, the uncommitted changes, recent commits and the project's memory and instruction files (`CLAUDE.md`, Claude's auto memory, `AGENTS.md`, `GEMINI.md`). So opencode can see what Claude or Codex did. The folder is added to the repo's local git exclude list, never committed.
@@ -72,6 +72,7 @@ This puts the AppImage in `~/.local/bin` and adds Pilothouse to your app menu (U
 - **Worktree tabs.** The fork button next to the git badge opens a new tab in its own `git worktree` and branch (`pilothouse/<time>`), so two agents on the same repo don't overwrite each other's files.
 - **Voice prompts.** Press `⌘⇧Space` (`Ctrl+Shift+Space` on Windows/Linux) anywhere (or the mic button), speak, and your words are typed into the active agent tab. Speech is recognised on your computer with Whisper large-v3-turbo (one-time 574 MB download) and never leaves it. Works with English in any accent, Turkish and ~100 other languages. Optionally say **"Hey Pilothouse"** instead of pressing the hotkey: a small on-device wake-word model (openWakeWord, trained for this phrase) listens while the app sits in the menu bar / system tray.
 - **Talk with your agent.** Conversation mode turns voice prompts into a back-and-forth: Pilothouse reads the agent's answer aloud (code stays on screen), asks you to repeat words it wasn't sure it heard, reads approval questions out so you can answer "yes" or "no", and keeps listening. Talk over it to interrupt; say "stop" while the agent works to cancel. Replies in the language you speak (English, Turkish …) with your system's own voices (macOS voices, Windows SAPI voices, or `espeak-ng` on Linux).
+- **Model and effort from your own account.** Next to the agent picker, choose the model and effort level each project runs with. The lists come from the agent on your computer: Codex's models and their levels from your ChatGPT/API account, `opencode models` and `agy models` for opencode and Antigravity, Claude Code's effort levels from its own help, and Gemini's aliases (auto, pro, flash, flash-lite). "Default" leaves the agent's own setting. Press **Run** to restart with a new choice.
 - **Per-project flags.** The toolbar has on/off toggles for the flags you use (`--continue`, `--verbose`, `--model opus`…). You choose the list, and which ones new projects start with, in Settings. Add any extra flags/prompt in the input bar. **Run** restarts the session with the current command.
 - **Quick actions.** The ⋯ menu sends `/doctor`, `/compact`, `/init`, `/cost`, plus "Review Git Diff", "Find Bugs" and "Write Tests" prompts to the running agent, and holds stop, clear, open-in-editor and show-in-folder.
 - **Conversation history & search.** Claude Code and Codex conversations of a project in one list, with dates and times; search across all of them with `⌘F` (`Ctrl+Shift+F`). **Resume** reopens one in the agent that wrote it; **Continue with…** hands that exact conversation to another agent (Codex ran out? continue in Claude from the same point).
@@ -80,7 +81,7 @@ This puts the AppImage in `~/.local/bin` and adds Pilothouse to your app menu (U
 - **Prompt drafter.** A per-project scratchpad for multi-line prompts, sent to the terminal with one click.
 - **Git badge.** Shows the current branch and the number of modified files.
 - **Project discovery.** On first run, imports the projects Claude Code already knows about (`~/.claude.json`). Use the sync button to pick up new ones later. You can add folders with the picker, by typing a path, or by drag & drop.
-- **5 themes.** Anthropic Warm, OLED Black, Cyber Slate, Nord Frost, Paper Minimal.
+- **4 themes.** Pilothouse (default: near-black with one signal-lime accent, the logo's colours), OLED Black, Nord Frost and Paper.
 
 > All flags start **off**, including `--dangerously-skip-permissions` (shown in red when on: Claude then runs tools without asking first).
 

@@ -18,13 +18,23 @@ export interface AgentProfile {
   resumeArgs?: string; // {id} is replaced with the session id
   hasHistory?: boolean;
   promptArgs: string; // how the CLI takes a first prompt and stays interactive; {p} is the quoted prompt
+  modelArgs: string; // {m} = model id
+  effortArgs?: string; // {e} = effort level; missing = the CLI has no effort setting
+}
+
+// The model and effort a project runs an agent with; empty = the agent's own default for the account.
+export interface ModelChoice {
+  model?: string;
+  effort?: string;
 }
 
 export const AGENTS: AgentProfile[] = [
-  { id: 'claude', name: 'Claude Code', command: 'claude', instructionsFile: 'CLAUDE.md', flagPresets: DEFAULT_FLAG_PRESETS, resumeArgs: '--resume {id}', hasHistory: true, promptArgs: '{p}' },
-  { id: 'codex', name: 'Codex', command: 'codex', instructionsFile: 'AGENTS.md', flagPresets: ['--full-auto', '--search'], resumeArgs: 'resume {id}', hasHistory: true, promptArgs: '{p}' },
-  { id: 'gemini', name: 'Gemini CLI', command: 'gemini', instructionsFile: 'GEMINI.md', flagPresets: ['--yolo'], promptArgs: '-i {p}' },
-  { id: 'opencode', name: 'opencode', command: 'opencode', instructionsFile: 'AGENTS.md', flagPresets: [], promptArgs: '--prompt {p}' }
+  { id: 'claude', name: 'Claude Code', command: 'claude', instructionsFile: 'CLAUDE.md', flagPresets: DEFAULT_FLAG_PRESETS, resumeArgs: '--resume {id}', hasHistory: true, promptArgs: '{p}', modelArgs: '--model {m}', effortArgs: '--effort {e}' },
+  { id: 'codex', name: 'Codex', command: 'codex', instructionsFile: 'AGENTS.md', flagPresets: ['--full-auto', '--search'], resumeArgs: 'resume {id}', hasHistory: true, promptArgs: '{p}', modelArgs: '-m {m}', effortArgs: '-c model_reasoning_effort={e}' },
+  { id: 'gemini', name: 'Gemini CLI', command: 'gemini', instructionsFile: 'GEMINI.md', flagPresets: ['--yolo'], promptArgs: '-i {p}', modelArgs: '-m {m}' },
+  // Google's successor to Gemini CLI for personal accounts (Gemini CLI now needs an API key for those).
+  { id: 'antigravity', name: 'Antigravity', command: 'agy', instructionsFile: 'GEMINI.md', flagPresets: ['--dangerously-skip-permissions'], resumeArgs: '--conversation {id}', promptArgs: '-i {p}', modelArgs: '--model {m}', effortArgs: '--effort {e}' },
+  { id: 'opencode', name: 'opencode', command: 'opencode', instructionsFile: 'AGENTS.md', flagPresets: [], promptArgs: '--prompt {p}', modelArgs: '-m {m}' }
 ];
 
 export const agentById = (id?: string): AgentProfile => AGENTS.find((a) => a.id === id) || AGENTS[0];
@@ -38,10 +48,15 @@ export function agentFlagPresets(settings: Pick<AppSettings, 'agentFlagPresets'>
 export const agentBinary = (agent: AgentProfile, settings: Pick<AppSettings, 'claudePath' | 'agentPaths'>): string =>
   settings.agentPaths?.[agent.id] || (agent.id === 'claude' ? settings.claudePath : '') || agent.command;
 
+// Model ids and effort levels come from the agent's own lists; anything with shell characters is dropped.
+const SAFE_ARG = /^[\w.:@/-]+$/;
+
 // Shell command line for an agent. resumeId reopens a past session (and drops --continue, which conflicts).
-export function buildAgentCommand(agent: AgentProfile, binary: string, flags: string[], extra?: string, resumeId?: string): string {
+export function buildAgentCommand(agent: AgentProfile, binary: string, flags: string[], extra?: string, resumeId?: string, choice?: ModelChoice): string {
   const parts = [/\s/.test(binary) ? `"${binary}"` : binary];
   if (resumeId && agent.resumeArgs) parts.push(agent.resumeArgs.replace('{id}', resumeId));
+  if (choice?.model && SAFE_ARG.test(choice.model)) parts.push(agent.modelArgs.replace('{m}', choice.model));
+  if (choice?.effort && agent.effortArgs && SAFE_ARG.test(choice.effort)) parts.push(agent.effortArgs.replace('{e}', choice.effort));
   parts.push(...flags.filter((f) => !(resumeId && (f === '--continue' || f === '-c'))));
   if (!resumeId && extra?.trim()) parts.push(extra.trim());
   return parts.join(' ');
@@ -145,6 +160,7 @@ export interface ProjectItem {
   customRunCommands?: RunCommand[];
   agent?: string; // AgentProfile id, default 'claude'
   agentFlags?: Record<string, ProjectFlags>; // flags remembered for the agents this project switched away from
+  agentModels?: Record<string, ModelChoice>; // model + effort per agent id
 }
 
 export interface RunCommand {
@@ -176,7 +192,8 @@ export interface InboxEvent {
   code?: number;
 }
 
-export type AppTheme = 'claude' | 'dark' | 'cyber' | 'nord' | 'light';
+import type { AppTheme } from './theme';
+export type { AppTheme };
 
 export interface AppSettings {
   theme?: AppTheme;

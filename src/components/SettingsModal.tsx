@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Settings, Terminal, Code2, Sliders, Check, Palette } from 'lucide-react';
 import { AppSettings, TerminalOption, AppTheme, isDangerFlag, AGENTS, agentFlagPresets } from '../types';
-import { THEMES } from '../theme';
+import { THEMES, themeOrDefault } from '../theme';
 import { playClickSound } from '../utils/audio';
 
 interface SettingsModalProps {
@@ -11,6 +11,40 @@ interface SettingsModalProps {
   onSaveSettings: (settings: Partial<AppSettings>) => void;
   onRunSetup: () => void;
 }
+
+// Gemini CLI needs an API key now (personal Google logins go to Antigravity). Saved in ~/.gemini/.env, not here.
+const GeminiKeyField: React.FC = () => {
+  const [status, setStatus] = useState<{ hasKey: boolean; last4?: string } | null>(null);
+  const [key, setKey] = useState('');
+  const [msg, setMsg] = useState('');
+  useEffect(() => { window.electronAPI.geminiKeyStatus().then(setStatus).catch(() => {}); }, []);
+  const save = async (value: string) => {
+    const r = await window.electronAPI.setGeminiKey(value);
+    setMsg(r.error || (value ? 'Saved. Gemini CLI uses it from now on.' : 'Removed.'));
+    if (!r.error) { setKey(''); setStatus(await window.electronAPI.geminiKeyStatus()); }
+  };
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs text-zinc-300">Gemini API key</span>
+      <div className="flex gap-1.5">
+        <input
+          type="password"
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          placeholder={status?.hasKey ? `Saved (…${status.last4})` : 'Paste a key from aistudio.google.com'}
+          aria-label="Gemini API key"
+          autoComplete="off"
+          className="flex-1 px-2 py-1.5 rounded border text-xs bg-transparent outline-none border-zinc-700 text-zinc-200"
+        />
+        <button type="button" disabled={!key.trim()} onClick={() => save(key)} className="px-2 rounded border border-zinc-700 text-xs text-zinc-300 disabled:opacity-40">Save</button>
+        {status?.hasKey && <button type="button" onClick={() => save('')} className="px-2 rounded border border-zinc-700 text-xs text-zinc-500">Remove</button>}
+      </div>
+      <span className="text-[10px] text-zinc-600">
+        {msg || 'For Gemini CLI. Stored in ~/.gemini/.env (only you can read it). With a Google account, use the Antigravity agent instead.'}
+      </span>
+    </div>
+  );
+};
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
@@ -64,7 +98,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1b2131] bg-[#10131d]">
           <div className="flex items-center gap-2.5">
-            <Settings className="w-4 h-4 text-amber-500" />
+            <Settings className="w-4 h-4 text-[#C8FF2E]" />
             <div>
               <h3 className="text-xs font-bold text-zinc-100 tracking-wider uppercase">
                 // SYSTEM CONFIGURATION
@@ -98,13 +132,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* Theme Selection */}
           <div>
             <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 mb-2">
-              <Palette className="w-3.5 h-3.5 text-amber-500" />
+              <Palette className="w-3.5 h-3.5 text-[#C8FF2E]" />
               <span>APPLICATION THEME</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
               {(Object.keys(THEMES) as AppTheme[]).map((tId) => {
                 const t = THEMES[tId];
-                const isSelected = (formData.theme || 'claude') === tId;
+                const isSelected = themeOrDefault(formData.theme) === tId;
                 return (
                   <button
                     key={tId}
@@ -115,15 +149,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     }}
                     className={`p-2 rounded border text-xs transition-all flex items-center justify-between ${
                       isSelected
-                        ? 'border-amber-500/80 bg-amber-500/15 text-white font-bold'
+                        ? 'border-[#C8FF2E]/80 bg-[#C8FF2E]/15 text-white font-bold'
                         : 'border-[#1b2233] bg-[#10131c] text-zinc-400 hover:border-[#2b354e]'
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      <span>{t.icon}</span>
+                      <span className="w-3 h-3 rounded-full border" style={{ backgroundColor: t.accent, borderColor: t.bgMain }} />
                       <span>{t.name}</span>
                     </div>
-                    {isSelected && <span className="text-amber-400 text-[10px]">✓</span>}
+                    {isSelected && <span className="text-[#C8FF2E] text-[10px]">✓</span>}
                   </button>
                 );
               })}
@@ -133,7 +167,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* Preferred Terminal */}
           <div>
             <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 mb-2">
-              <Terminal className="w-3.5 h-3.5 text-amber-500" />
+              <Terminal className="w-3.5 h-3.5 text-[#C8FF2E]" />
               <span>TERMINAL EMULATOR</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -147,7 +181,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   }}
                   className={`text-left p-2 rounded border text-xs transition-all flex items-center justify-between ${
                     formData.defaultTerminal === t.id
-                      ? 'border-amber-500/80 bg-amber-500/15 text-white font-bold'
+                      ? 'border-[#C8FF2E]/80 bg-[#C8FF2E]/15 text-white font-bold'
                       : 'border-[#1b2233] bg-[#10131c] text-zinc-400 hover:border-[#2b354e]'
                   }`}
                 >
@@ -165,7 +199,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* Preferred Editor */}
           <div>
             <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 mb-2">
-              <Code2 className="w-3.5 h-3.5 text-sky-400" />
+              <Code2 className="w-3.5 h-3.5 text-zinc-500" />
               <span>PRIMARY IDE / EDITOR</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -179,7 +213,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   }}
                   className={`p-2 rounded border text-xs transition-all text-center ${
                     formData.defaultEditor === ed
-                      ? 'border-amber-500/80 bg-amber-500/15 text-white font-bold'
+                      ? 'border-[#C8FF2E]/80 bg-[#C8FF2E]/15 text-white font-bold'
                       : 'border-[#1b2233] bg-[#10131c] text-zinc-400 hover:border-[#2b354e]'
                   }`}
                 >
@@ -199,7 +233,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               value={formData.claudePath}
               onChange={(e) => setFormData({ ...formData, claudePath: e.target.value })}
               placeholder="claude or /path/to/claude"
-              className="w-full bg-[#10131c] border border-[#1b2233] focus:border-amber-500 text-xs text-zinc-200 rounded px-2.5 py-1.5 outline-none"
+              className="w-full bg-[#10131c] border border-[#1b2233] focus:border-[#C8FF2E] text-xs text-zinc-200 rounded px-2.5 py-1.5 outline-none"
             />
             <p className="text-[10px] text-zinc-600 mt-1">
               Auto-detected at ~/.local/bin/claude or in system PATH.
@@ -209,7 +243,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* Toolbar flags + which of them new projects start with */}
           <div>
             <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
-              <Sliders className="w-3.5 h-3.5 text-purple-400" />
+              <Sliders className="w-3.5 h-3.5 text-zinc-500" />
               <span>AGENTS &amp; TOOLBAR FLAGS</span>
             </label>
             <div className="flex items-center gap-2 mb-2">
@@ -228,7 +262,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   key={a.id}
                   type="button"
                   onClick={() => setEditAgent(a.id)}
-                  className={`px-2 py-0.5 rounded text-[10px] border ${editAgent === a.id ? 'border-amber-500/80 bg-amber-500/15 text-white' : 'border-[#1b2233] text-zinc-400'}`}
+                  className={`px-2 py-0.5 rounded text-[10px] border ${editAgent === a.id ? 'border-[#C8FF2E]/80 bg-[#C8FF2E]/15 text-white' : 'border-[#1b2233] text-zinc-400'}`}
                 >
                   {a.name}
                 </button>
@@ -240,7 +274,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               rows={4}
               spellCheck={false}
               placeholder={'--continue\n--model opus'}
-              className="w-full bg-[#10131c] border border-[#1b2233] focus:border-amber-500 text-xs text-zinc-200 rounded px-2.5 py-1.5 outline-none font-mono resize-y"
+              className="w-full bg-[#10131c] border border-[#1b2233] focus:border-[#C8FF2E] text-xs text-zinc-200 rounded px-2.5 py-1.5 outline-none font-mono resize-y"
             />
             <p className="text-[10px] text-zinc-600 mt-1 mb-2">
               One flag per line. Each becomes an on/off toggle in the toolbar when a project runs this agent.
@@ -261,7 +295,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           : formData.defaultFlags.filter((f) => f !== flag)
                       });
                     }}
-                    className="w-3.5 h-3.5 rounded bg-zinc-900 border-[#2a344a] text-amber-500 accent-amber-500 cursor-pointer"
+                    className="w-3.5 h-3.5 rounded bg-zinc-900 border-[#2a344a] text-[#C8FF2E] accent-[#C8FF2E] cursor-pointer"
                   />
                   <span className={`text-xs font-mono ${isDangerFlag(flag) ? 'text-red-400' : 'text-zinc-300'}`}>{flag}</span>
                 </label>
@@ -278,7 +312,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   type="checkbox"
                   checked={formData.voiceEnabled !== false}
                   onChange={(e) => setFormData({ ...formData, voiceEnabled: e.target.checked })}
-                  className="w-3.5 h-3.5 accent-amber-500 cursor-pointer"
+                  className="w-3.5 h-3.5 accent-[#C8FF2E] cursor-pointer"
                 />
                 <span className="text-xs text-zinc-300">Global hotkey</span>
                 <input
@@ -287,7 +321,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onChange={(e) => setFormData({ ...formData, voiceHotkey: e.target.value })}
                   spellCheck={false}
                   aria-label="Voice hotkey"
-                  className="flex-1 bg-[#0c0e14] border border-[#1b2233] focus:border-amber-500 text-[11px] text-zinc-200 rounded px-2 py-0.5 outline-none font-mono"
+                  className="flex-1 bg-[#0c0e14] border border-[#1b2233] focus:border-[#C8FF2E] text-[11px] text-zinc-200 rounded px-2 py-0.5 outline-none font-mono"
                 />
               </label>
               <div className="flex items-center gap-2">
@@ -310,7 +344,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   type="checkbox"
                   checked={formData.voiceConversation !== false}
                   onChange={(e) => setFormData({ ...formData, voiceConversation: e.target.checked })}
-                  className="mt-0.5 w-3.5 h-3.5 accent-amber-500 cursor-pointer"
+                  className="mt-0.5 w-3.5 h-3.5 accent-[#C8FF2E] cursor-pointer"
                 />
                 <span>
                   <span className="text-xs text-zinc-300 block">Conversation mode</span>
@@ -324,7 +358,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   type="checkbox"
                   checked={!!formData.voiceAutoSend}
                   onChange={(e) => setFormData({ ...formData, voiceAutoSend: e.target.checked })}
-                  className="w-3.5 h-3.5 accent-amber-500 cursor-pointer"
+                  className="w-3.5 h-3.5 accent-[#C8FF2E] cursor-pointer"
                 />
                 <span className="text-xs text-zinc-300">Send right away</span>
                 <span className="text-[10px] text-zinc-600">(off: the text is typed and you press Enter)</span>
@@ -334,7 +368,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   type="checkbox"
                   checked={!!formData.wakeWordEnabled}
                   onChange={(e) => setFormData({ ...formData, wakeWordEnabled: e.target.checked })}
-                  className="mt-0.5 w-3.5 h-3.5 accent-amber-500 cursor-pointer"
+                  className="mt-0.5 w-3.5 h-3.5 accent-[#C8FF2E] cursor-pointer"
                 />
                 <span>
                   <span className="text-xs text-zinc-300 block">Say "Hey Pilothouse" to start</span>
@@ -349,7 +383,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     type="checkbox"
                     checked={!!formData.openAtLogin}
                     onChange={(e) => setFormData({ ...formData, openAtLogin: e.target.checked })}
-                    className="w-3.5 h-3.5 accent-amber-500 cursor-pointer"
+                    className="w-3.5 h-3.5 accent-[#C8FF2E] cursor-pointer"
                   />
                   <span className="text-xs text-zinc-300">Open at login, in the menu bar</span>
                 </label>
@@ -358,13 +392,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
+          <GeminiKeyField />
+
           {/* Notifications */}
           <label className="flex items-start gap-2 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={formData.notificationsEnabled !== false}
               onChange={(e) => setFormData({ ...formData, notificationsEnabled: e.target.checked })}
-              className="mt-0.5 w-3.5 h-3.5 rounded bg-zinc-900 border-[#2a344a] accent-amber-500 cursor-pointer"
+              className="mt-0.5 w-3.5 h-3.5 rounded bg-zinc-900 border-[#2a344a] accent-[#C8FF2E] cursor-pointer"
             />
             <span>
               <span className="text-xs text-zinc-300 block">Notifications</span>
@@ -380,7 +416,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               type="checkbox"
               checked={!!formData.controlApiEnabled}
               onChange={(e) => setFormData({ ...formData, controlApiEnabled: e.target.checked })}
-              className="mt-0.5 w-3.5 h-3.5 rounded bg-zinc-900 border-[#2a344a] accent-amber-500 cursor-pointer"
+              className="mt-0.5 w-3.5 h-3.5 rounded bg-zinc-900 border-[#2a344a] accent-[#C8FF2E] cursor-pointer"
             />
             <span>
               <span className="text-xs text-zinc-300 block">Local control API</span>
@@ -404,7 +440,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
           <button
             onClick={handleSave}
-            className="flex items-center gap-1.5 bg-gradient-to-r from-[#cc6b49] to-[#d97706] text-white text-xs font-bold px-4 py-1.5 rounded shadow transition-all active:scale-95"
+            className="flex items-center gap-1.5 bg-\[#C8FF2E\] text-[#0B0D10] text-xs font-bold px-4 py-1.5 rounded shadow transition-all active:scale-95"
           >
             {isSaved ? <Check className="w-3.5 h-3.5" /> : null}
             <span>{isSaved ? 'STORED' : 'SAVE CHANGES'}</span>

@@ -48,7 +48,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1b2131] bg-[#10131d]">
           <div className="flex items-center gap-2">
-            <FolderPlus className="w-4 h-4 text-amber-500" />
+            <FolderPlus className="w-4 h-4 text-[#C8FF2E]" />
             <h3 className="text-xs font-bold text-zinc-100 uppercase tracking-wider">
               // REGISTER REPOSITORY
             </h3>
@@ -69,9 +69,9 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
           <button
             onClick={handlePickFolder}
             disabled={isPicking}
-            className="w-full flex items-center justify-center gap-2 bg-[#121620] hover:bg-[#191f2d] border border-[#212a3d] hover:border-amber-500/60 py-3 px-4 rounded-lg text-zinc-200 text-xs font-bold transition-all group shadow-sm active:scale-95"
+            className="w-full flex items-center justify-center gap-2 bg-[#121620] hover:bg-[#191f2d] border border-[#212a3d] hover:border-[#C8FF2E]/60 py-3 px-4 rounded-lg text-zinc-200 text-xs font-bold transition-all group shadow-sm active:scale-95"
           >
-            <FolderSearch className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" />
+            <FolderSearch className="w-4 h-4 text-[#C8FF2E] group-hover:scale-110 transition-transform" />
             <span>BROWSE FOLDER ON SYSTEM...</span>
           </button>
 
@@ -89,7 +89,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
               placeholder="/Users/username/Desktop/my-project"
               value={manualPath}
               onChange={(e) => setManualPath(e.target.value)}
-              className="w-full bg-[#10131c] border border-[#1b2233] focus:border-amber-500 text-xs text-zinc-200 placeholder-zinc-700 rounded px-3 py-2 outline-none font-mono"
+              className="w-full bg-[#10131c] border border-[#1b2233] focus:border-[#C8FF2E] text-xs text-zinc-200 placeholder-zinc-700 rounded px-3 py-2 outline-none font-mono"
             />
 
             <div className="flex justify-end gap-2 pt-1">
@@ -106,7 +106,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
               <button
                 type="submit"
                 disabled={!manualPath.trim()}
-                className="flex items-center gap-1.5 bg-gradient-to-r from-[#cc6b49] to-[#d97706] disabled:opacity-40 text-white text-xs font-bold px-4 py-1.5 rounded shadow transition-all active:scale-95"
+                className="flex items-center gap-1.5 bg-\[#C8FF2E\] disabled:opacity-40 text-[#0B0D10] text-xs font-bold px-4 py-1.5 rounded shadow transition-all active:scale-95"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>REGISTER</span>

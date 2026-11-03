@@ -15,7 +15,7 @@ import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme, PtyStatus
 import { InboxPanel } from './components/InboxPanel';
 import { SetupWizard, SetupResult } from './components/SetupWizard';
 import { isMac, isAppShortcut, keyLabel, tabKeyLabel } from './utils/platform';
-import { THEMES, ThemeConfig } from './theme';
+import { THEMES, ThemeConfig, DEFAULT_THEME, themeOrDefault } from './theme';
 import { ChromeTabBar } from './components/ChromeTabBar';
 import { TabWorkspace } from './components/TabWorkspace';
 import { SettingsModal } from './components/SettingsModal';
@@ -32,10 +32,10 @@ export const App: React.FC = () => {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [tabs, setTabs] = useState<TabSession[]>([]);
   const [activeTabId, setActiveTabId] = useState<string>('');
-  const [theme, setTheme] = useState<AppTheme>('claude');
+  const [theme, setTheme] = useState<AppTheme>(DEFAULT_THEME);
 
   const [settings, setSettings] = useState<AppSettings>({
-    theme: 'claude',
+    theme: DEFAULT_THEME,
     defaultTerminal: 'Terminal',
     defaultEditor: 'VSCode',
     defaultFlags: [],
@@ -56,7 +56,7 @@ export const App: React.FC = () => {
   const [isPaletteOpen, setIsPaletteOpen] = useState(false);
 
   const themeConfig: ThemeConfig = useMemo(() => {
-    return THEMES[theme] || THEMES.claude;
+    return THEMES[theme] || THEMES[DEFAULT_THEME];
   }, [theme]);
 
   const showToast = (message: string, type: 'info' | 'success' | 'error' = 'success') => {
@@ -74,9 +74,7 @@ export const App: React.FC = () => {
       setSettings(setts);
       if (!setts.setupDone) setIsSetupOpen(true);
 
-      if (setts.theme && THEMES[setts.theme]) {
-        setTheme(setts.theme);
-      }
+      setTheme(themeOrDefault(setts.theme));
 
       window.electronAPI.getSystemHealth?.().then((h) => {
         if (h) setHealthInfo(h);
@@ -141,7 +139,7 @@ export const App: React.FC = () => {
       if (res.addedCount > 0) {
         showToast(`DISCOVERED & SYNCED ${res.addedCount} REPOSITORIES`);
       } else {
-        showToast('ALL CLAUDE REPOSITORIES ARE UP TO DATE', 'info');
+        showToast('PROJECTS ARE UP TO DATE', 'info');
       }
     } catch (err: any) {
       showToast(`SYNC FAILED: ${err.message}`, 'error');
@@ -687,7 +685,7 @@ export const App: React.FC = () => {
     const updated = await window.electronAPI.updateSettings(newSettings);
     setSettings(updated);
     if (newSettings.theme) {
-      setTheme(newSettings.theme);
+      setTheme(themeOrDefault(newSettings.theme));
     }
     showToast('PREFERENCES STORED');
   };
@@ -859,6 +857,12 @@ export const App: React.FC = () => {
                   onHandoffSession={(agentId, sessionFile, fromAgent) => handleHandoff(tab.id, agentId, sessionFile, fromAgent)}
                   onResumeAs={(agentId, sessionId) => handleResumeAs(tab.id, agentId, sessionId)}
                   pendingLaunch={pendingLaunches[tab.id]}
+                  modelChoice={proj.agentModels?.[proj.agent || 'claude']}
+                  onSetModel={(choice) => {
+                    const agentModels = { ...(proj.agentModels || {}), [proj.agent || 'claude']: choice };
+                    setProjects((prev) => prev.map((p) => (p.id === proj.id ? { ...p, agentModels } : p)));
+                    window.electronAPI.updateProject(proj.id, { agentModels });
+                  }}
                   onLaunchUsed={() => setPendingLaunches(({ [tab.id]: _, ...rest }) => rest)}
                   onSaveCustomCommands={async (cmds) => {
                     const updated = await window.electronAPI.updateProject(proj.id, { customRunCommands: cmds });
@@ -878,13 +882,13 @@ export const App: React.FC = () => {
               NO PROJECT TERMINAL OPEN
             </h2>
             <p className="text-xs mt-1 max-w-xs" style={{ color: themeConfig.textMuted }}>
-              Press {keyLabel('T')} or click [+] to open a Claude Code terminal session.
+              Press {keyLabel('T')} or click [+] to open a project with your agent.
             </p>
             {projects.length > 0 && (
               <button
                 onClick={() => handleNewTab(projects[0].id)}
-                className="mt-4 px-4 py-2 rounded-lg text-xs font-bold text-white shadow-md transition-all active:scale-95"
-                style={{ backgroundColor: themeConfig.accent }}
+                className="mt-4 px-4 py-2 rounded-lg text-xs font-bold shadow-md transition-all active:scale-95"
+                style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
               >
                 Open {projects[0].name}
               </button>
@@ -988,7 +992,7 @@ export const App: React.FC = () => {
             <>
               <Mic className="w-4 h-4 flex-shrink-0" style={{ color: themeConfig.accent }} />
               <span>Voice prompts need a one-time 574 MB speech model. It runs fully offline.</span>
-              <button className="px-2 py-1 rounded font-bold text-white flex-shrink-0" style={{ backgroundColor: themeConfig.accent }} onClick={downloadVoiceModel}>
+              <button className="px-2 py-1 rounded font-bold flex-shrink-0" style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }} onClick={downloadVoiceModel}>
                 Download
               </button>
               <button className="px-2 py-1 rounded flex-shrink-0" style={{ color: themeConfig.textMuted }} onClick={() => setVoice({ phase: 'idle' })}>

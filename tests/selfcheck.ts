@@ -17,6 +17,53 @@ import { hitLimit } from '../electron/activity';
 import { promptArgs, handoffPrompt, AGENTS } from '../src/types';
 import { execFileSync } from 'child_process';
 import { mergeProjects } from '../electron/setup';
+import { setGeminiApiKey, geminiKeyStatus } from '../electron/geminiKey';
+
+{
+  // Gemini API key: owner-only .env, other lines kept, auth type switched, broken settings never overwritten.
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-gem-'));
+  fs.mkdirSync(path.join(home, '.gemini'));
+  fs.writeFileSync(path.join(home, '.gemini', '.env'), 'OTHER=1\nGEMINI_API_KEY=old\n');
+  fs.writeFileSync(path.join(home, '.gemini', 'settings.json'), JSON.stringify({ ui: { theme: 'x' } }));
+  assert.ok(setGeminiApiKey('AIzaSyTESTKEY_0123456789abcd', home).ok);
+  assert.equal(fs.readFileSync(path.join(home, '.gemini', '.env'), 'utf-8'), 'OTHER=1\nGEMINI_API_KEY=AIzaSyTESTKEY_0123456789abcd\n');
+  assert.equal(fs.statSync(path.join(home, '.gemini', '.env')).mode & 0o777, 0o600);
+  const st = JSON.parse(fs.readFileSync(path.join(home, '.gemini', 'settings.json'), 'utf-8'));
+  assert.deepStrictEqual(st, { ui: { theme: 'x' }, security: { auth: { selectedType: 'gemini-api-key' } } });
+  assert.deepStrictEqual(geminiKeyStatus(home), { hasKey: true, last4: 'abcd' });
+  assert.ok(setGeminiApiKey('', home).ok);
+  assert.deepStrictEqual(geminiKeyStatus(home), { hasKey: false });
+  assert.ok(setGeminiApiKey('bad key; rm', home).error);
+  fs.writeFileSync(path.join(home, '.gemini', 'settings.json'), '{ broken');
+  assert.ok(setGeminiApiKey('AIzaSyTESTKEY_0123456789abcd', home).error);
+  assert.equal(fs.readFileSync(path.join(home, '.gemini', 'settings.json'), 'utf-8'), '{ broken');
+  console.log('gemini key ok');
+}
+import { parseClaudeEfforts, parseCodexModels, parseOpencodeModels, parseAgyModels, parseAgyEfforts } from '../electron/agentOptions';
+
+{
+  // Model/effort lists come from each agent's own output; the command gets them in that agent's syntax.
+  assert.deepStrictEqual(parseClaudeEfforts('  --effort <level>     Effort level for the current session\n                        (low, medium, high, xhigh, max)\n'), ['low', 'medium', 'high', 'xhigh', 'max']);
+  const codex = parseCodexModels(JSON.stringify([
+    { slug: 'gpt-reserve', visibility: 'hide' },
+    { slug: 'gpt-6-luna', display_name: 'GPT-6 Luna', visibility: 'list', default_reasoning_level: 'medium', supported_reasoning_levels: [{ effort: 'low' }, { effort: 'ultra' }] }
+  ]));
+  assert.deepStrictEqual(codex, [{ id: 'gpt-6-luna', label: 'GPT-6 Luna', efforts: ['low', 'ultra'], defaultEffort: 'medium' }]);
+  assert.deepStrictEqual(parseCodexModels('not json'), []);
+  assert.deepStrictEqual(parseOpencodeModels('opencode/big-pickle\nanthropic/claude-haiku-4-5\nWarning: x\n').map((m) => m.id), ['opencode/big-pickle', 'anthropic/claude-haiku-4-5']);
+  const cmd = (id: string, model?: string, effort?: string) => buildAgentCommand(agentById(id), id, [], undefined, undefined, { model, effort });
+  assert.equal(cmd('claude', 'sonnet', 'low'), 'claude --model sonnet --effort low');
+  assert.equal(cmd('codex', 'gpt-6-luna', 'high'), 'codex -m gpt-6-luna -c model_reasoning_effort=high');
+  assert.equal(cmd('gemini', 'flash', 'high'), 'gemini -m flash', 'Gemini has no effort setting');
+  assert.equal(cmd('opencode', 'anthropic/claude-haiku-4-5'), 'opencode -m anthropic/claude-haiku-4-5');
+  assert.equal(cmd('claude', 'x; rm -rf ~', 'low'), 'claude --effort low', 'unsafe model ids are dropped');
+  assert.equal(cmd('codex'), 'codex', 'no choice = the account default');
+  assert.equal(cmd('antigravity', 'gemini-3.8-flash-high', 'max'), 'antigravity --model gemini-3.8-flash-high --effort max');
+  assert.deepStrictEqual(parseAgyModels('Fetching available models...\ngemini-3.8-flash-high\tGemini 3.8 Flash (High)\nclaude-opus-4-6-thinking\tClaude Opus 4.6 (Thinking)\n'),
+    [{ id: 'gemini-3.8-flash-high', label: 'Gemini 3.8 Flash (High)' }, { id: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' }]);
+  assert.deepStrictEqual(parseAgyEfforts('  --effort                        Reasoning effort for the current CLI session (low|medium|high|xhigh|max)\n'), ['low', 'medium', 'high', 'xhigh', 'max']);
+  console.log('models ok');
+}
 
 {
   // Setup wizard projects: known first, symlinked duplicates merged, home and temp folders dropped, history counted.
@@ -58,11 +105,12 @@ import { mergeProjects } from '../electron/setup';
   assert.ok(hitLimit("You've hit your usage limit. Upgrade to Plus or try again in 2 hours."));
   assert.ok(hitLimit('Claude usage limit reached. Your limit will reset at 3pm'));
   assert.ok(hitLimit('Quota exceeded for quota metric'));
+  assert.ok(hitLimit('Error authenticating: _GaxiosError: Resource has been exhausted (e.g. check quota).'), 'real Gemini message');
   assert.ok(!hitLimit('Done. All 12 tests pass.'));
 
   // Each agent gets the first prompt its own way; shell characters are refused.
   const ids = Object.fromEntries(AGENTS.map((a) => [a.id, promptArgs(a, 'hi there')]));
-  assert.deepStrictEqual(ids, { claude: '"hi there"', codex: '"hi there"', gemini: '-i "hi there"', opencode: '--prompt "hi there"' });
+  assert.deepStrictEqual(ids, { claude: '"hi there"', codex: '"hi there"', gemini: '-i "hi there"', antigravity: '-i "hi there"', opencode: '--prompt "hi there"' });
   assert.doesNotThrow(() => promptArgs(AGENTS[0], handoffPrompt('Claude Code')));
   assert.throws(() => promptArgs(AGENTS[0], 'x"; rm -rf ~'));
   console.log('handoff ok');

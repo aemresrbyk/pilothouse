@@ -296,13 +296,13 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
           <Search className="w-3.5 h-3.5" />
         </button>
 
-        {/* Sync Claude */}
+        {/* Import projects Claude Code knows about */}
         <button
           onClick={() => {
             playClickSound();
             onSyncClaude();
           }}
-          title="Sync Claude Repositories (~/.claude.json)"
+          title="Import projects from Claude Code (~/.claude.json)"
           disabled={isSyncing}
           className="p-1.5 rounded-md hover:bg-black/20 transition-colors"
           style={{ color: themeConfig.textMuted }}
