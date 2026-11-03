@@ -1,4 +1,5 @@
 import type { SetupProject } from '../electron/setup';
+import type { AgentOptions } from '../electron/agentOptions';
 import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile, PtyStatus, TranscriptMessage, HistoryHit } from './types';
 
 declare module '*.css';
@@ -58,6 +59,7 @@ declare global {
       onPtyLimit: (callback: (info: { id: string }) => void) => () => void;
       writeHandoff: (projectPath: string, fromAgent: string, sessionFile?: string) => Promise<{ path?: string; error?: string }>;
       pickFile: (title: string) => Promise<string | null>;
+      agentOptions: (agentId: string) => Promise<AgentOptions>;
       setupScan: () => Promise<{ agents: { id: string; path: string | null }[]; projects: SetupProject[] }>;
       addWorktree: (repoPath: string) => Promise<{ path?: string; error?: string }>;
       setBadge: (count: number) => void;

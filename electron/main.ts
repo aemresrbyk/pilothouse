@@ -12,6 +12,7 @@ import { startControlServer, CONTROL_FILE, stripAnsi } from './control';
 import { Activity, newActivity, noteOutput, nextStatus, hitLimit } from './activity';
 import { writeHandoff } from './handoff';
 import { detectAgents, scanProjects } from './setup';
+import { agentOptions } from './agentOptions';
 import { processUsage } from './resources';
 import { whisperBinary, hasModel, downloadModel, transcribe, speak, stopSpeaking, MODEL_BYTES } from './voice';
 import { ProjectItem, AppSettings, ClaudeSession, agentById, agentBinary } from '../src/types';
@@ -233,6 +234,9 @@ function registerIpcHandlers() {
     const result = await dialog.showOpenDialog(win, { title: String(title).slice(0, 100), properties: ['openFile', 'showHiddenFiles'] });
     return result.canceled ? null : result.filePaths[0] || null;
   });
+
+  ipcMain.handle('agent:options', async (_e, agentId: string) =>
+    agentOptions(agentId, agentBinary(agentById(agentId), storage.getSettings())));
 
   ipcMain.handle('setup:scan', async () => ({
     agents: await detectAgents(),

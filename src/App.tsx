@@ -859,6 +859,12 @@ export const App: React.FC = () => {
                   onHandoffSession={(agentId, sessionFile, fromAgent) => handleHandoff(tab.id, agentId, sessionFile, fromAgent)}
                   onResumeAs={(agentId, sessionId) => handleResumeAs(tab.id, agentId, sessionId)}
                   pendingLaunch={pendingLaunches[tab.id]}
+                  modelChoice={proj.agentModels?.[proj.agent || 'claude']}
+                  onSetModel={(choice) => {
+                    const agentModels = { ...(proj.agentModels || {}), [proj.agent || 'claude']: choice };
+                    setProjects((prev) => prev.map((p) => (p.id === proj.id ? { ...p, agentModels } : p)));
+                    window.electronAPI.updateProject(proj.id, { agentModels });
+                  }}
                   onLaunchUsed={() => setPendingLaunches(({ [tab.id]: _, ...rest }) => rest)}
                   onSaveCustomCommands={async (cmds) => {
                     const updated = await window.electronAPI.updateProject(proj.id, { customRunCommands: cmds });

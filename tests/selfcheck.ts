@@ -17,6 +17,27 @@ import { hitLimit } from '../electron/activity';
 import { promptArgs, handoffPrompt, AGENTS } from '../src/types';
 import { execFileSync } from 'child_process';
 import { mergeProjects } from '../electron/setup';
+import { parseClaudeEfforts, parseCodexModels, parseOpencodeModels } from '../electron/agentOptions';
+
+{
+  // Model/effort lists come from each agent's own output; the command gets them in that agent's syntax.
+  assert.deepStrictEqual(parseClaudeEfforts('  --effort <level>     Effort level for the current session\n                        (low, medium, high, xhigh, max)\n'), ['low', 'medium', 'high', 'xhigh', 'max']);
+  const codex = parseCodexModels(JSON.stringify([
+    { slug: 'gpt-reserve', visibility: 'hide' },
+    { slug: 'gpt-6-luna', display_name: 'GPT-6 Luna', visibility: 'list', default_reasoning_level: 'medium', supported_reasoning_levels: [{ effort: 'low' }, { effort: 'ultra' }] }
+  ]));
+  assert.deepStrictEqual(codex, [{ id: 'gpt-6-luna', label: 'GPT-6 Luna', efforts: ['low', 'ultra'], defaultEffort: 'medium' }]);
+  assert.deepStrictEqual(parseCodexModels('not json'), []);
+  assert.deepStrictEqual(parseOpencodeModels('opencode/big-pickle\nanthropic/claude-haiku-4-5\nWarning: x\n').map((m) => m.id), ['opencode/big-pickle', 'anthropic/claude-haiku-4-5']);
+  const cmd = (id: string, model?: string, effort?: string) => buildAgentCommand(agentById(id), id, [], undefined, undefined, { model, effort });
+  assert.equal(cmd('claude', 'sonnet', 'low'), 'claude --model sonnet --effort low');
+  assert.equal(cmd('codex', 'gpt-6-luna', 'high'), 'codex -m gpt-6-luna -c model_reasoning_effort=high');
+  assert.equal(cmd('gemini', 'flash', 'high'), 'gemini -m flash', 'Gemini has no effort setting');
+  assert.equal(cmd('opencode', 'anthropic/claude-haiku-4-5'), 'opencode -m anthropic/claude-haiku-4-5');
+  assert.equal(cmd('claude', 'x; rm -rf ~', 'low'), 'claude --effort low', 'unsafe model ids are dropped');
+  assert.equal(cmd('codex'), 'codex', 'no choice = the account default');
+  console.log('models ok');
+}
 
 {
   // Setup wizard projects: known first, symlinked duplicates merged, home and temp folders dropped, history counted.
