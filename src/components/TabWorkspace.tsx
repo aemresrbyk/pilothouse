@@ -37,7 +37,7 @@ import {
   ArrowRightLeft,
   MoreHorizontal
 } from 'lucide-react';
-import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile, TranscriptMessage, HistoryHit, isDangerFlag, AGENTS, AgentProfile, buildAgentCommand, promptArgs, agentById, PendingLaunch, ModelChoice } from '../types';
+import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile, TranscriptMessage, HistoryHit, isDangerFlag, DEFAULT_QUICK_COMMANDS, AGENTS, AgentProfile, buildAgentCommand, promptArgs, agentById, PendingLaunch, ModelChoice } from '../types';
 import type { AgentOptions } from '../../electron/agentOptions';
 import { ThemeConfig } from '../theme';
 import { EmbeddedTerminal } from './EmbeddedTerminal';
@@ -55,6 +55,7 @@ interface TabWorkspaceProps {
   agent: AgentProfile;
   agentBinary: string;
   flagPresets: string[];
+  quickCommands?: string[];
   onSwitchAgent: (projectId: string, agentId: string) => void;
   onRunCommand: (command: string) => void;
   onOpenWorktree: () => void;
@@ -79,6 +80,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   agent,
   agentBinary,
   flagPresets,
+  quickCommands,
   onSwitchAgent,
   onRunCommand,
   onOpenWorktree,
@@ -467,25 +469,28 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
     { label: '/cost', cmd: '/cost', icon: <Coins className="w-3 h-3" />, desc: 'Show tokens & cost' },
     {
       label: 'Review Git Diff',
-      cmd: 'Review the recent git diff and summarize key changes, edge cases or bugs',
+      cmd: DEFAULT_QUICK_COMMANDS[4],
       icon: <GitBranch className="w-3 h-3" />,
       desc: 'Review diff with Claude'
     },
     {
       label: 'Find Bugs',
-      cmd: 'Carefully inspect recent changes and identify any edge cases or bugs',
+      cmd: DEFAULT_QUICK_COMMANDS[5],
       icon: <Search className="w-3 h-3" />,
       desc: 'Scan code for bugs'
     },
     {
       label: 'Write Tests',
-      cmd: 'Write unit tests for the recent changes in this project',
+      cmd: DEFAULT_QUICK_COMMANDS[6],
       icon: <Code2 className="w-3 h-3" />,
       desc: 'Generate test suite'
     }
   ];
-  // Slash commands differ per agent; the prompt actions work with any of them.
-  const quickActions = isClaude ? allQuickActions : allQuickActions.filter((qa) => !qa.cmd.startsWith('/'));
+  // The user's list from Settings, or the built-ins; built-in slash commands are Claude's, so other agents skip them.
+  const quickActions = (quickCommands ?? DEFAULT_QUICK_COMMANDS)
+    .filter((cmd) => isClaude || quickCommands || !cmd.startsWith('/'))
+    .map((cmd) => allQuickActions.find((qa) => qa.cmd === cmd)
+      ?? { label: cmd.length > 32 ? `${cmd.slice(0, 32)}…` : cmd, cmd, icon: <Sparkles className="w-3 h-3" />, desc: cmd });
 
   return (
     <div

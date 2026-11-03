@@ -195,6 +195,17 @@ export interface InboxEvent {
 import type { AppTheme } from './theme';
 export type { AppTheme };
 
+// Built-in "…" menu commands; the user can replace them in Settings.
+export const DEFAULT_QUICK_COMMANDS = [
+  '/doctor',
+  '/compact',
+  '/init',
+  '/cost',
+  'Review the recent git diff and summarize key changes, edge cases or bugs',
+  'Carefully inspect recent changes and identify any edge cases or bugs',
+  'Write unit tests for the recent changes in this project'
+];
+
 export interface AppSettings {
   theme?: AppTheme;
   defaultTerminal: string;
@@ -215,6 +226,7 @@ export interface AppSettings {
   voiceConversation?: boolean; // talk back: read answers aloud, ask to repeat, approve by voice (default on)
   wakeWordEnabled?: boolean; // keep the mic open for "Hey Pilothouse"
   openAtLogin?: boolean;
+  quickCommands?: string[]; // "…" menu: prompts or slash commands sent to the agent; missing = DEFAULT_QUICK_COMMANDS
   soundEnabled?: boolean;
   savedTabs?: TabSession[];
   activeTabId?: string;
