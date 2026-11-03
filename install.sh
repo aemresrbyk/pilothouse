@@ -164,7 +164,8 @@ echo -e "${GREEN}✓${NC} Cleared Gatekeeper quarantine flags"
 echo -e "\n${BOLD}[4/4] Creating Desktop Shortcut...${NC}"
 DESKTOP_PATH="$HOME/Desktop/Pilothouse"
 rm -f "$DESKTOP_PATH"
-osascript -e "tell application \"Finder\" to make alias file to POSIX file \"${TARGET_APP}\" at POSIX file \"$HOME/Desktop\"" 2>/dev/null || {
+# Name it explicitly: Finder otherwise uses its own language ("Pilothouse alias", "Pilothouse arması" …).
+osascript -e "tell application \"Finder\" to make alias file to POSIX file \"${TARGET_APP}\" at POSIX file \"$HOME/Desktop\" with properties {name:\"Pilothouse\"}" 2>/dev/null || {
   ln -sf "${TARGET_APP}" "$DESKTOP_PATH"
 }
 echo -e "${GREEN}✓${NC} Created shortcut at: ${BOLD}${DESKTOP_PATH}${NC}"
