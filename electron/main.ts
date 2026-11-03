@@ -11,6 +11,7 @@ import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions
 import { startControlServer, CONTROL_FILE, stripAnsi } from './control';
 import { Activity, newActivity, noteOutput, nextStatus, hitLimit } from './activity';
 import { writeHandoff } from './handoff';
+import { detectAgents, scanProjects } from './setup';
 import { processUsage } from './resources';
 import { whisperBinary, hasModel, downloadModel, transcribe, speak, stopSpeaking, MODEL_BYTES } from './voice';
 import { ProjectItem, AppSettings, ClaudeSession, agentById, agentBinary } from '../src/types';
@@ -226,6 +227,18 @@ function registerIpcHandlers() {
     return storage.removeProject(id);
   });
 
+  // Setup wizard: an agent CLI the scan couldn't find.
+  ipcMain.handle('dialog:pick-file', async (_e, title: string) => {
+    if (!win) return null;
+    const result = await dialog.showOpenDialog(win, { title: String(title).slice(0, 100), properties: ['openFile', 'showHiddenFiles'] });
+    return result.canceled ? null : result.filePaths[0] || null;
+  });
+
+  ipcMain.handle('setup:scan', async () => ({
+    agents: await detectAgents(),
+    projects: scanProjects(storage.listStoredProjects())
+  }));
+
   ipcMain.handle('dialog:pick-directory', async () => {
     if (!win) return null;
     const result = await dialog.showOpenDialog(win, {
@@ -330,7 +343,7 @@ function registerIpcHandlers() {
     const settings = storage.getSettings();
     const command = (customCommand && customCommand.trim().length > 0)
       ? customCommand
-      : buildClaudeCommand(project.flags, project.customFlags, agentBinary(agentById(project.agent), settings.claudePath));
+      : buildClaudeCommand(project.flags, project.customFlags, agentBinary(agentById(project.agent), settings));
 
     const terminal = (project.terminalOverride && project.terminalOverride !== 'default')
       ? project.terminalOverride
@@ -410,8 +423,12 @@ function registerIpcHandlers() {
   });
 
   // Sessions without a user prompt (opened and closed) have nothing to resume.
+  // 'all' = every agent's sessions in one list, newest first, so you see what Claude and Codex both did.
   const listSessions = (projectPath: string, agentId?: string) =>
-    (agentId === 'codex' ? getCodexSessions(projectPath) : getProjectSessions(projectPath, true)).filter((s) => s.title);
+    (agentId === 'all'
+      ? [...getProjectSessions(projectPath, true), ...getCodexSessions(projectPath)].sort((a, b) => b.modifiedAt - a.modifiedAt)
+      : agentId === 'codex' ? getCodexSessions(projectPath) : getProjectSessions(projectPath, true)
+    ).filter((s) => s.title);
   ipcMain.handle('project:get-sessions', async (_e, projectPath: string, agentId?: string) => listSessions(projectPath, agentId));
   ipcMain.handle('history:transcript', async (_e, file: string) => (isSessionFile(file) ? readTranscript(file) : []));
   ipcMain.handle('history:search', async (_e, projectPath: string, agentId: string, query: string) =>
@@ -433,9 +450,10 @@ function registerIpcHandlers() {
     clipboard.writeText(text);
   });
 
-  ipcMain.handle('handoff:write', async (_e, projectPath: string, fromAgent: string) => {
+  ipcMain.handle('handoff:write', async (_e, projectPath: string, fromAgent: string, sessionFile?: string) => {
     if (!storage.listStoredProjects().some((p) => p.path === projectPath)) return { error: 'Unknown project' };
-    return writeHandoff(projectPath, fromAgent);
+    if (sessionFile && !isSessionFile(sessionFile)) return { error: 'Not a session file' };
+    return writeHandoff(projectPath, fromAgent, sessionFile);
   });
 
   ipcMain.handle('pty:resources', async () => {

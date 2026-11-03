@@ -61,6 +61,7 @@ This puts the AppImage in `~/.local/bin` and adds Pilothouse to your app menu (U
 
 ## Features
 
+- **Setup on first run.** Pilothouse looks for each agent CLI (Claude Code, Codex, Gemini CLI, opencode) on your shell's PATH and the usual install folders; choose the ones it can't find, or skip them. Then it lists the folders Claude Code and Codex have worked in, with how many sessions each agent has there, and you pick the projects and the agent for each. Run it again from Settings.
 - **Tabbed embedded terminals.** Each tab runs a login shell in the project folder and starts Claude automatically. You can open several tabs for the same project (e.g. one for Claude, one for `npm run dev`). Open tabs come back when you restart the app.
 - **Any terminal agent.** Pick Claude Code, Codex, Gemini CLI or opencode per project. Each agent keeps its own flags, and the instructions tab edits its file (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`). History works for Claude Code and Codex.
 - **Knows when you're needed.** A tab's dot pulses while the agent works, turns amber when it asks for approval and green when it finished while you were in another tab. You also get a desktop notification and, on macOS, a Dock badge.
@@ -73,7 +74,7 @@ This puts the AppImage in `~/.local/bin` and adds Pilothouse to your app menu (U
 - **Talk with your agent.** Conversation mode turns voice prompts into a back-and-forth: Pilothouse reads the agent's answer aloud (code stays on screen), asks you to repeat words it wasn't sure it heard, reads approval questions out so you can answer "yes" or "no", and keeps listening. Talk over it to interrupt; say "stop" while the agent works to cancel. Replies in the language you speak (English, Turkish …) with your system's own voices (macOS voices, Windows SAPI voices, or `espeak-ng` on Linux).
 - **Per-project flags.** The toolbar has on/off toggles for the flags you use (`--continue`, `--verbose`, `--model opus`…). You choose the list, and which ones new projects start with, in Settings. Add any extra flags/prompt in the input bar. **Run** restarts the session with the current command.
 - **Quick actions.** The ⋯ menu sends `/doctor`, `/compact`, `/init`, `/cost`, plus "Review Git Diff", "Find Bugs" and "Write Tests" prompts to the running agent, and holds stop, clear, open-in-editor and show-in-folder.
-- **Conversation history & search.** Read every past conversation of a project with dates and times, search across all of them with `⌘F` (`Ctrl+Shift+F`), and reopen one with one click. Works for Claude Code and Codex.
+- **Conversation history & search.** Claude Code and Codex conversations of a project in one list, with dates and times; search across all of them with `⌘F` (`Ctrl+Shift+F`). **Resume** reopens one in the agent that wrote it; **Continue with…** hands that exact conversation to another agent (Codex ran out? continue in Claude from the same point).
 - **CLAUDE.md editor.** View and edit the project's `CLAUDE.md` in the app, or start from a template if the project doesn't have one.
 - **File browser.** Browse project folders and preview files (large files are truncated, open them in your editor for the full content).
 - **Prompt drafter.** A per-project scratchpad for multi-line prompts, sent to the terminal with one click.

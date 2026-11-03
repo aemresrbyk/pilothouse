@@ -16,6 +16,21 @@ import { formatHandoff, writeHandoff } from '../electron/handoff';
 import { hitLimit } from '../electron/activity';
 import { promptArgs, handoffPrompt, AGENTS } from '../src/types';
 import { execFileSync } from 'child_process';
+import { mergeProjects } from '../electron/setup';
+
+{
+  // Setup wizard projects: known first, symlinked duplicates merged, home and temp folders dropped, history counted.
+  const codex = new Map([['/w/api', { count: 3, last: 300 }], ['/tmp/scratch', { count: 1, last: 999 }]]);
+  const canon = (p: string) => (p === '/desk/web' ? '/w/web' : p);
+  const ps = mergeProjects(
+    [{ path: '/w/web', agent: 'codex', lastLaunched: 100 }],
+    [{ path: '/desk/web', lastStartTime: 50 }, { path: '/w/api', lastStartTime: 200 }, { path: '/home/me' }, { path: '/w/gone' }],
+    codex, (p) => (p === '/w/api' ? 2 : 0), (p) => p !== '/w/gone', '/home/me', ['/tmp'], canon
+  );
+  assert.deepStrictEqual(ps.map((p) => [p.path, p.known, p.agent, p.claude, p.codex, p.last]),
+    [['/w/web', true, 'codex', 0, 0, 100], ['/w/api', false, undefined, 2, 3, 300]]);
+  console.log('setup ok');
+}
 
 {
   // Hand-off file: conversation, git and memory sections; long messages are cut.

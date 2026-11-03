@@ -1,3 +1,4 @@
+import type { SetupProject } from '../electron/setup';
 import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile, PtyStatus, TranscriptMessage, HistoryHit } from './types';
 
 declare module '*.css';
@@ -55,7 +56,9 @@ declare global {
       onPtyFailed: (callback: (info: { id: string; code: number }) => void) => () => void;
       ptyResources: () => Promise<{ id: string; cpu: number; memMB: number }[]>;
       onPtyLimit: (callback: (info: { id: string }) => void) => () => void;
-      writeHandoff: (projectPath: string, fromAgent: string) => Promise<{ path?: string; error?: string }>;
+      writeHandoff: (projectPath: string, fromAgent: string, sessionFile?: string) => Promise<{ path?: string; error?: string }>;
+      pickFile: (title: string) => Promise<string | null>;
+      setupScan: () => Promise<{ agents: { id: string; path: string | null }[]; projects: SetupProject[] }>;
       addWorktree: (repoPath: string) => Promise<{ path?: string; error?: string }>;
       setBadge: (count: number) => void;
       focusApp: () => void;

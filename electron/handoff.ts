@@ -77,16 +77,17 @@ function memoryFiles(projectPath: string) {
   });
 }
 
-export async function writeHandoff(projectPath: string, fromAgent: string): Promise<{ path?: string; error?: string }> {
+// sessionFile: continue from that past conversation instead of the agent's latest one.
+export async function writeHandoff(projectPath: string, fromAgent: string, sessionFile?: string): Promise<{ path?: string; error?: string }> {
   try {
     const sessions = fromAgent === 'codex' ? getCodexSessions(projectPath) : fromAgent === 'claude' ? getProjectSessions(projectPath, true) : [];
-    const latest = sessions.find((s) => s.file);
-    const messages = latest?.file ? readTranscript(latest.file).slice(-16) : [];
+    const file = sessionFile || sessions.find((s) => s.file)?.file;
+    const messages = file ? readTranscript(file).slice(-16) : [];
     const text = formatHandoff({ fromAgent, at: new Date(), messages, git: await gitInfo(projectPath), memory: memoryFiles(projectPath) });
-    const file = path.join(projectPath, HANDOFF_FILE);
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, text);
-    return { path: file };
+    const out = path.join(projectPath, HANDOFF_FILE);
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, text);
+    return { path: out };
   } catch (err: any) {
     return { error: err.message };
   }
