@@ -36,9 +36,20 @@ function viaShell(cmd: string): Promise<string | null> {
   }));
 }
 
+// CLIs that come inside desktop apps: the ChatGPT and Codex apps ship the Codex CLI (logged in with the same account).
+const BUNDLED: Record<string, string[]> = process.platform === 'darwin' ? {
+  codex: [
+    '/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex',
+    '/Applications/Codex.app/Contents/Resources/codex',
+    path.join(os.homedir(), 'Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex')
+  ]
+} : {};
+
 export async function findAgentBinary(cmd: string): Promise<string | null> {
   const found = await viaShell(cmd);
   if (found) return found;
+  const bundled = (BUNDLED[cmd] || []).find((p) => fs.existsSync(p));
+  if (bundled) return bundled;
   const names = isWin ? [`${cmd}.exe`, `${cmd}.cmd`] : [cmd];
   for (const dir of commonDirs()) for (const n of names) if (fs.existsSync(path.join(dir, n))) return path.join(dir, n);
   return null;
