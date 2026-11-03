@@ -1,5 +1,5 @@
 // "Hey Pilothouse" detector: a port of openWakeWord's streaming pipeline (openwakeword/utils.py AudioFeatures +
-// model.py predict) to onnxruntime-web, so it runs in the renderer on any Mac (WASM, no native module).
+// model.py predict) to onnxruntime-web, so it runs in the renderer on any OS (WASM, no native module).
 //   16 kHz int16 audio, 1280-sample (80 ms) chunks
 //   -> melspectrogram.onnx (x/10 + 2) -> embedding_model.onnx over the last 76 mel frames -> 96-dim feature
 //   -> wake model over the last N features -> score 0..1

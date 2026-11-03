@@ -11,6 +11,15 @@ import { toFlagList, buildAgentCommand, agentById } from '../src/types';
 import { newActivity, noteOutput, nextStatus } from '../electron/activity';
 import { parseChoices } from '../src/utils/inbox';
 import { treeUsage } from '../electron/resources';
+import { ttsCommand } from '../electron/voice';
+
+{
+  // Windows speech: the language code can't break out of the PowerShell string.
+  const [cmd, args] = ttsCommand("tr'; Remove-Item x; '", 'win32')!;
+  assert.equal(cmd, 'powershell.exe');
+  assert.ok(args[3].includes("-like 'trRemove*'") && !args[3].includes("x; '"), args[3]);
+  assert.ok(ttsCommand('en', 'win32')![1][3].includes("-like 'en*'"));
+}
 
 {
   // Inbox: the last redraw of a numbered prompt wins; y/n prompts fall back to y/n; plain output has no choices.

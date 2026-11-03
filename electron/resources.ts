@@ -6,7 +6,7 @@ export interface Usage {
   memMB: number;
 }
 
-// ps: output of `ps -A -o pid=,ppid=,%cpu=,rss=` (rss in KB).
+// ps: lines of "pid ppid cpu% memKB", as `ps -A -o pid=,ppid=,%cpu=,rss=` prints them.
 export function treeUsage(ps: string, roots: number[]): Map<number, Usage> {
   const kids = new Map<number, number[]>();
   const own = new Map<number, Usage>();
@@ -34,11 +34,16 @@ export function treeUsage(ps: string, roots: number[]): Map<number, Usage> {
   return out;
 }
 
+// Windows has no ps: the process performance counters give the same four columns (working set in bytes -> KB).
+const WIN_QUERY = "Get-CimInstance Win32_PerfFormattedData_PerfProc_Process | ForEach-Object { \"$($_.IDProcess) $($_.CreatingProcessID) $($_.PercentProcessorTime) $([math]::Round($_.WorkingSetPrivate / 1024))\" }";
+
 export function processUsage(roots: number[]): Promise<Map<number, Usage>> {
-  // shortcut: no Windows support (no ps); add a wmic/PowerShell query when Windows builds ship.
-  if (process.platform === 'win32' || !roots.length) return Promise.resolve(new Map());
+  if (!roots.length) return Promise.resolve(new Map());
+  const [cmd, args] = process.platform === 'win32'
+    ? ['powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', WIN_QUERY]]
+    : ['ps', ['-A', '-o', 'pid=,ppid=,%cpu=,rss=']];
   return new Promise((resolve) => {
-    execFile('ps', ['-A', '-o', 'pid=,ppid=,%cpu=,rss='], { timeout: 3000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
+    execFile(cmd, args, { timeout: 8000, maxBuffer: 8 * 1024 * 1024, windowsHide: true }, (err, stdout) => {
       resolve(err ? new Map() : treeUsage(stdout, roots));
     });
   });

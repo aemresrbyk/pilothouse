@@ -60,7 +60,13 @@ export const InboxPanel: React.FC<InboxPanelProps> = ({
 
   useEffect(() => {
     if (!isOpen || view !== 'resources') return;
-    const poll = () => window.electronAPI.ptyResources().then(setUsage).catch(() => {});
+    // The Windows query can take longer than the interval, so never stack calls.
+    let busy = false;
+    const poll = () => {
+      if (busy) return;
+      busy = true;
+      window.electronAPI.ptyResources().then(setUsage).catch(() => {}).finally(() => { busy = false; });
+    };
     poll();
     const timer = setInterval(poll, 2000);
     return () => clearInterval(timer);

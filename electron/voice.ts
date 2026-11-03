@@ -11,13 +11,15 @@ export const MODEL_SHA256 = '394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294
 export const MODEL_BYTES = 574_041_195;
 export const MODEL_FILE = path.join(os.homedir(), '.pilothouse', 'models', 'ggml-large-v3-turbo-q5_0.bin');
 
-// Packaged: Resources/whisper-cli (built in CI). Dev: vendor/whisper/whisper-cli. Else a Homebrew install.
+// Packaged: Resources/whisper-cli (built in CI). Dev: vendor/whisper/whisper-cli. Else a Homebrew / system install.
 export function whisperBinary(resourcesPath: string | undefined, appPath: string): string | null {
+  const exe = process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
   const candidates = [
-    resourcesPath && path.join(resourcesPath, 'whisper-cli'),
-    path.join(appPath, 'vendor', 'whisper', 'whisper-cli'),
+    resourcesPath && path.join(resourcesPath, exe),
+    path.join(appPath, 'vendor', 'whisper', exe),
     '/opt/homebrew/bin/whisper-cli',
-    '/usr/local/bin/whisper-cli'
+    '/usr/local/bin/whisper-cli',
+    '/usr/bin/whisper-cli'
   ].filter(Boolean) as string[];
   return candidates.find((c) => fs.existsSync(c)) || null;
 }
@@ -122,7 +124,7 @@ export function transcribe(binary: string, pcm: Buffer, language: string, prompt
   });
 }
 
-// --- Speech output: macOS's own voices through \`say\`, killable for barge-in. ---
+// --- Speech output: the system's own voices (macOS say, Windows SAPI, Linux espeak-ng), killable for barge-in. ---
 
 // Best installed voice per language: Premium > Enhanced > natural voices > Eloquence voices; novelty voices never.
 const NOVELTY = /^(albert|bad news|bahh|bells|boing|bubbles|cellos|wobble|fred|good news|jester|junior|kathy|organ|superstar|ralph|trinoids|whisper|zarvox|deranged|hysterical|pipe organ)\b/i;
@@ -145,14 +147,40 @@ function listVoices() {
   return voiceList;
 }
 
+// Windows: the built-in SAPI voices, first one installed for the language. Text is read from stdin as UTF-8.
+const winSpeech = (lang: string) =>
+  `[Console]::InputEncoding = [Text.Encoding]::UTF8; Add-Type -AssemblyName System.Speech; ` +
+  `$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; ` +
+  `$v = $s.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like '${lang}*' } | Select-Object -First 1; ` +
+  `if ($v) { $s.SelectVoice($v.VoiceInfo.Name) }; $s.Speak([Console]::In.ReadToEnd())`;
+
+let linuxTts: string | null | undefined;
+// Program + args that read the text from stdin, so nothing in it can be read as an option. null = no speech engine.
+export function ttsCommand(lang: string, platform = process.platform): [string, string[]] | null {
+  const code = lang.replace(/[^a-zA-Z-]/g, '').slice(0, 8) || 'en';
+  if (platform === 'darwin') {
+    const voice = pickVoice(code);
+    return ['say', voice ? ['-v', voice] : []];
+  }
+  if (platform === 'win32') return ['powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', winSpeech(code)]];
+  // shortcut: Linux needs espeak-ng (or espeak) installed; without one, answers are only shown, not read aloud.
+  if (linuxTts === undefined) {
+    linuxTts = ['espeak-ng', 'espeak'].find((bin) => {
+      try { execFileSync('which', [bin], { stdio: 'ignore' }); return true; } catch { return false; }
+    }) || null;
+  }
+  return linuxTts ? [linuxTts, ['-v', code, '--stdin']] : null;
+}
+
 let speaking: ChildProcess | null = null;
 // Resolves true if it was cut off (stopSpeaking), false when it finished.
 export function speak(text: string, lang: string): Promise<boolean> {
   stopSpeaking();
-  const voice = pickVoice(lang);
-  // Text goes in on stdin, so nothing in it can be read as a \`say\` option.
-  const proc = spawn('say', voice ? ['-v', voice] : [], { stdio: ['pipe', 'ignore', 'ignore'] });
+  const tts = ttsCommand(lang);
+  if (!tts) return Promise.resolve(false);
+  const proc = spawn(tts[0], tts[1], { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true });
   speaking = proc;
+  proc.stdin!.on('error', () => {}); // engine missing or quit early: EPIPE must not crash the app
   proc.stdin!.end(text);
   return new Promise((resolve) => {
     proc.on('close', (code, signal) => {

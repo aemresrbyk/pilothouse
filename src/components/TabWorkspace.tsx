@@ -38,6 +38,7 @@ import {
 import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile, TranscriptMessage, HistoryHit, isDangerFlag, AGENTS, AgentProfile, buildAgentCommand } from '../types';
 import { ThemeConfig } from '../theme';
 import { EmbeddedTerminal } from './EmbeddedTerminal';
+import { isAppShortcut, keyLabel } from '../utils/platform';
 import { playClickSound, playToggleSound, playLaunchSound } from '../utils/audio';
 
 interface TabWorkspaceProps {
@@ -191,11 +192,11 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
     transcriptRef.current?.querySelector(`[data-msg="${focusMsg}"]`)?.scrollIntoView({ block: 'center' });
   }, [focusMsg, transcript]);
 
-  // Cmd/Ctrl+F opens History with the search box focused.
+  // ⌘F (Ctrl+Shift+F off macOS) opens History with the search box focused.
   useEffect(() => {
     if (!isActive || !agent.hasHistory) return;
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+      if (isAppShortcut(e, 'f')) {
         e.preventDefault();
         setViewMode('history');
         setTimeout(() => histSearchRef.current?.select(), 0);
@@ -1219,7 +1220,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                 <input
                   ref={histSearchRef}
                   type="search"
-                  placeholder="Search all conversations (⌘F)"
+                  placeholder={`Search all conversations (${keyLabel('F')})`}
                   value={histQuery}
                   onChange={(e) => setHistQuery(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Escape') setHistQuery(''); }}

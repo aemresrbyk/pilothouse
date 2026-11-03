@@ -454,12 +454,15 @@ export async function getSystemHealth(): Promise<{ claudeInstalled: boolean; cla
   let claudeVersion = '';
   const nodeVersion = process.version;
 
-  const candidatePaths = [
-    path.join(os.homedir(), '.local/bin/claude'),
-    '/opt/homebrew/bin/claude',
-    '/usr/local/bin/claude',
-    path.join(os.homedir(), '.bun/bin/claude')
-  ];
+  const isWin = process.platform === 'win32';
+  const candidatePaths = isWin
+    ? [path.join(os.homedir(), '.local', 'bin', 'claude.exe'), path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'claude.cmd')]
+    : [
+        path.join(os.homedir(), '.local/bin/claude'),
+        '/opt/homebrew/bin/claude',
+        '/usr/local/bin/claude',
+        path.join(os.homedir(), '.bun/bin/claude')
+      ];
 
   for (const p of candidatePaths) {
     if (fs.existsSync(p)) {
@@ -471,7 +474,7 @@ export async function getSystemHealth(): Promise<{ claudeInstalled: boolean; cla
 
   if (!claudeInstalled) {
     try {
-      claudePath = (await execFileAsync('which', ['claude'], { encoding: 'utf-8', timeout: 1000 })).stdout.trim();
+      claudePath = (await execFileAsync(isWin ? 'where' : 'which', ['claude'], { encoding: 'utf-8', timeout: 1000 })).stdout.trim().split(/\r?\n/)[0];
       if (claudePath && fs.existsSync(claudePath)) {
         claudeInstalled = true;
       }
@@ -480,10 +483,12 @@ export async function getSystemHealth(): Promise<{ claudeInstalled: boolean; cla
 
   if (claudeInstalled && claudePath) {
     try {
-      const { stdout: verOut } = await execFileAsync(claudePath, ['--version'], {
+      const viaShell = isWin && claudePath.endsWith('.cmd');
+      const { stdout: verOut } = await execFileAsync(viaShell ? `"${claudePath}"` : claudePath, ['--version'], {
         encoding: 'utf-8',
         timeout: 2000,
-        env: { ...process.env, PATH: `${os.homedir()}/.local/bin:/opt/homebrew/bin:/usr/local/bin:${process.env.PATH}` }
+        shell: viaShell, // Node refuses to run .cmd files without a shell
+        env: isWin ? process.env : { ...process.env, PATH: [`${os.homedir()}/.local/bin`, '/opt/homebrew/bin', '/usr/local/bin', process.env.PATH].join(path.delimiter) }
       });
       claudeVersion = verOut.trim().split('\n')[0];
     } catch {

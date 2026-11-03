@@ -13,6 +13,7 @@ import { Heard } from './utils/conversation';
 import { WakeWordDetector, startWakeListener, WakeListener } from './utils/wakeword';
 import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme, PtyStatus, TabState, InboxEvent, agentById, agentBinary, agentFlagPresets } from './types';
 import { InboxPanel } from './components/InboxPanel';
+import { isMac, isAppShortcut, keyLabel, tabKeyLabel } from './utils/platform';
 import { THEMES, ThemeConfig } from './theme';
 import { ChromeTabBar } from './components/ChromeTabBar';
 import { TabWorkspace } from './components/TabWorkspace';
@@ -640,31 +641,31 @@ export const App: React.FC = () => {
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd/Ctrl + P or Cmd/Ctrl + K -> Command Palette
-      if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'p' || e.key.toLowerCase() === 'k')) {
+      // ⌘P / ⌘K (Ctrl+Shift+P / K off macOS) -> Command Palette
+      if (isAppShortcut(e, 'p') || isAppShortcut(e, 'k')) {
         e.preventDefault();
         playClickSound();
         setIsPaletteOpen(true);
         return;
       }
 
-      // Cmd/Ctrl + I -> Inbox
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') {
+      // ⌘I -> Inbox
+      if (isAppShortcut(e, 'i')) {
         e.preventDefault();
         setAwaySince(null);
         setIsInboxOpen((open) => !open);
         return;
       }
 
-      // Cmd/Ctrl + T -> Open New Tab / Project Selector
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 't') {
+      // ⌘T -> Open New Tab / Project Selector
+      if (isAppShortcut(e, 't')) {
         e.preventDefault();
         playClickSound();
         setIsPaletteOpen(true);
       }
 
-      // Cmd/Ctrl + W -> Close active tab
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'w') {
+      // ⌘W -> Close active tab
+      if (isAppShortcut(e, 'w')) {
         if (tabs.length > 1 && activeTabId) {
           e.preventDefault();
           playClickSound();
@@ -673,7 +674,7 @@ export const App: React.FC = () => {
       }
 
       // Cmd/Ctrl + 1..9 -> Switch tab
-      if ((e.metaKey || e.ctrlKey) && /^[1-9]$/.test(e.key)) {
+      if ((isMac ? e.metaKey : e.ctrlKey) && /^[1-9]$/.test(e.key)) {
         const idx = parseInt(e.key, 10) - 1;
         if (tabs[idx]) {
           e.preventDefault();
@@ -788,7 +789,7 @@ export const App: React.FC = () => {
               NO PROJECT TERMINAL OPEN
             </h2>
             <p className="text-xs mt-1 max-w-xs" style={{ color: themeConfig.textMuted }}>
-              Press ⌘T or click [+] to open a Claude Code terminal session.
+              Press {keyLabel('T')} or click [+] to open a Claude Code terminal session.
             </p>
             {projects.length > 0 && (
               <button
@@ -817,11 +818,11 @@ export const App: React.FC = () => {
             onClick={() => setIsPaletteOpen(true)}
             className="cursor-pointer hover:opacity-100 transition-opacity"
           >
-            <span style={{ color: themeConfig.accent }}>⌘P</span> Find
+            <span style={{ color: themeConfig.accent }}>{keyLabel('P')}</span> Find
           </span>
-          <span><span style={{ color: themeConfig.accent }}>⌘T</span> Tab</span>
-          <span><span style={{ color: themeConfig.accent }}>⌘W</span> Close</span>
-          <span><span style={{ color: themeConfig.accent }}>⌘1-9</span> Switch</span>
+          <span><span style={{ color: themeConfig.accent }}>{keyLabel('T')}</span> Tab</span>
+          <span><span style={{ color: themeConfig.accent }}>{keyLabel('W')}</span> Close</span>
+          <span><span style={{ color: themeConfig.accent }}>{tabKeyLabel}</span> Switch</span>
         </div>
 
         <div className="flex items-center gap-3">
@@ -878,7 +879,7 @@ export const App: React.FC = () => {
           {voice.phase === 'transcribing' && (
             <>
               <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" style={{ color: themeConfig.accent }} />
-              <span className="truncate">{voice.note ? `“${voice.note}”` : 'Transcribing on this Mac…'}</span>
+              <span className="truncate">{voice.note ? `“${voice.note}”` : 'Transcribing on this computer…'}</span>
             </>
           )}
           {voice.phase === 'speaking' && (
