@@ -21,11 +21,11 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 git clone -q --depth 1 --branch "$VERSION" https://github.com/ggml-org/whisper.cpp.git "$WORK/src"
 cmake -S "$WORK/src" -B "$WORK/build" -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF \
-  "${FLAGS[@]}" -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF >/dev/null
+  "${FLAGS[@]}" -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF
 JOBS="$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)"
-cmake --build "$WORK/build" --config Release -j "$JOBS" --target whisper-cli >/dev/null
+cmake --build "$WORK/build" --config Release -j "$JOBS" --target whisper-cli
 mkdir -p "$OUT"
 # Single-config generators (make, ninja) put it in bin/, Visual Studio in bin/Release/.
-BIN="$(ls "$WORK/build/bin/$EXE" "$WORK/build/bin/Release/$EXE" 2>/dev/null | head -1)"
+for BIN in "$WORK/build/bin/$EXE" "$WORK/build/bin/Release/$EXE"; do [ -f "$BIN" ] && break; done
 cp "$BIN" "$OUT/$EXE"
 if command -v lipo >/dev/null; then lipo -info "$OUT/$EXE"; else ls -l "$OUT/$EXE"; fi
