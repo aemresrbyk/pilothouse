@@ -326,7 +326,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span>
                   <span className="text-xs text-zinc-300 block">Say "Hey Pilothouse" to start</span>
                   <span className="text-[10px] text-zinc-600">
-                    Keeps the microphone on (macOS shows the orange dot) and listens for the phrase on this Mac. Closing the window keeps Pilothouse in the menu bar.
+                    Keeps the microphone on (macOS shows the orange dot) and listens for the phrase on this computer. Closing the window keeps Pilothouse in the menu bar / system tray.
                   </span>
                 </span>
               </label>
@@ -341,7 +341,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <span className="text-xs text-zinc-300">Open at login, in the menu bar</span>
                 </label>
               )}
-              <p className="text-[10px] text-zinc-600">Speech is recognised on this Mac with Whisper; audio never leaves your computer.</p>
+              <p className="text-[10px] text-zinc-600">Speech is recognised on this computer with Whisper; audio never leaves your computer.</p>
             </div>
           </div>
 
@@ -372,7 +372,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <span>
               <span className="text-xs text-zinc-300 block">Local control API</span>
               <span className="text-[10px] text-zinc-600">
-                Lets other apps on this Mac open tabs, send prompts and read terminal output (token in ~/.pilothouse/control.json). Takes effect after a restart.
+                Lets other apps on this computer open tabs, send prompts and read terminal output (token in ~/.pilothouse/control.json). Takes effect after a restart.
               </span>
             </span>
           </label>

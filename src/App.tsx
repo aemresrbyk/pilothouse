@@ -11,7 +11,9 @@ import { startRecording, Recording } from './utils/voice';
 import { converse, ConvoDeps } from './utils/conversationLoop';
 import { Heard } from './utils/conversation';
 import { WakeWordDetector, startWakeListener, WakeListener } from './utils/wakeword';
-import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme, PtyStatus, agentById, agentBinary, agentFlagPresets } from './types';
+import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme, PtyStatus, TabState, InboxEvent, agentById, agentBinary, agentFlagPresets } from './types';
+import { InboxPanel } from './components/InboxPanel';
+import { isMac, isAppShortcut, keyLabel, tabKeyLabel } from './utils/platform';
 import { THEMES, ThemeConfig } from './theme';
 import { ChromeTabBar } from './components/ChromeTabBar';
 import { TabWorkspace } from './components/TabWorkspace';
@@ -211,7 +213,13 @@ export const App: React.FC = () => {
   }), []);
 
   // Agent status per tab (guessed from PTY output in main). unseen = it finished or asked for approval while you looked elsewhere.
-  const [tabStatus, setTabStatus] = useState<Record<string, { status: PtyStatus; unseen: boolean }>>({});
+  const [tabStatus, setTabStatus] = useState<Record<string, TabState>>({});
+  // Inbox: activity log (newest first) + the time you left, when it opened itself on your return.
+  const [events, setEvents] = useState<InboxEvent[]>([]);
+  const logEvent = (e: InboxEvent) => setEvents((prev) => [e, ...prev].slice(0, 100));
+  const [isInboxOpen, setIsInboxOpen] = useState(false);
+  const [awaySince, setAwaySince] = useState<number | null>(null);
+  const [gridMode, setGridMode] = useState(false);
   const statusCtx = useRef({ tabs, projects, activeTabId, notify: true });
   statusCtx.current = { tabs, projects, activeTabId, notify: settings.notificationsEnabled !== false };
 
@@ -226,7 +234,9 @@ export const App: React.FC = () => {
     const looking = id === ctx.activeTabId && document.hasFocus();
     // Run-command tabs (dev servers …) get a dot but never nag.
     const attention = status !== 'running' && !looking && !tab.initialCommand;
-    setTabStatus((prev) => ({ ...prev, [id]: { status, unseen: attention } }));
+    // A new run clears an earlier failure.
+    setTabStatus((prev) => ({ ...prev, [id]: { status, unseen: attention, failed: status === 'running' ? undefined : prev[id]?.failed } }));
+    if (attention) logEvent({ tabId: id, kind: status === 'waiting' ? 'waiting' : 'finished', at: Date.now() });
     if (attention && ctx.notify) {
       const name = ctx.projects.find((p) => p.id === tab.projectId)?.name || 'Project';
       const n = new Notification(name, { body: status === 'waiting' ? 'Needs your approval' : 'Finished, your turn' });
@@ -237,21 +247,55 @@ export const App: React.FC = () => {
     }
   }), []);
 
-  // Looking at a tab clears its "unseen" mark.
+  // A command exited with an error: its own Inbox section, apart from "needs your answer".
+  useEffect(() => window.electronAPI.onPtyFailed(({ id, code }) => {
+    const ctx = statusCtx.current;
+    const tab = ctx.tabs.find((t) => t.id === id);
+    if (!tab || (id === ctx.activeTabId && document.hasFocus())) return;
+    setTabStatus((prev) => ({ ...prev, [id]: { status: prev[id]?.status || 'idle', unseen: true, failed: code } }));
+    logEvent({ tabId: id, kind: 'failed', at: Date.now(), code });
+    if (ctx.notify) {
+      const n = new Notification(ctx.projects.find((p) => p.id === tab.projectId)?.name || 'Project', { body: `Failed (exit code ${code})` });
+      n.onclick = () => { window.electronAPI.focusApp(); setActiveTabId(id); };
+    }
+  }), []);
+
+  // Looking at a tab clears its "unseen" and "failed" marks.
   useEffect(() => {
     const clear = () => {
       if (!document.hasFocus()) return;
-      setTabStatus((prev) => (prev[activeTabId]?.unseen ? { ...prev, [activeTabId]: { ...prev[activeTabId], unseen: false } } : prev));
+      setTabStatus((prev) => (prev[activeTabId]?.unseen || prev[activeTabId]?.failed !== undefined
+        ? { ...prev, [activeTabId]: { ...prev[activeTabId], unseen: false, failed: undefined } } : prev));
     };
     clear();
     window.addEventListener('focus', clear);
     return () => window.removeEventListener('focus', clear);
   }, [activeTabId]);
 
-  // Dock badge: tabs that need you (unseen result or pending approval).
+  // Back after a while with something new: open the Inbox on what happened meanwhile.
+  const eventsRef = useRef(events);
+  eventsRef.current = events;
   useEffect(() => {
-    window.electronAPI.setBadge(tabs.filter((t) => tabStatus[t.id]?.unseen || tabStatus[t.id]?.status === 'waiting').length);
-  }, [tabStatus, tabs]);
+    let leftAt = 0;
+    const onBlur = () => { leftAt = Date.now(); };
+    const onFocus = () => {
+      const since = leftAt;
+      leftAt = 0;
+      if (since && Date.now() - since >= 5 * 60_000 && eventsRef.current.some((e) => e.at >= since)) {
+        setAwaySince(since);
+        setIsInboxOpen(true);
+      }
+    };
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
+    return () => { window.removeEventListener('blur', onBlur); window.removeEventListener('focus', onFocus); };
+  }, []);
+
+  // Tabs that need you: unseen result, pending approval or a failure. Dock badge + Inbox count.
+  const needsYou = tabs.filter((t) => tabStatus[t.id]?.unseen || tabStatus[t.id]?.status === 'waiting').length;
+  useEffect(() => {
+    window.electronAPI.setBadge(needsYou);
+  }, [needsYou]);
 
   // Voice prompts: hotkey or mic button -> record until a pause -> local Whisper -> typed into the active tab.
   type VoicePhase = 'idle' | 'listening' | 'transcribing' | 'needs-model' | 'downloading' | 'speaking' | 'working';
@@ -540,6 +584,13 @@ export const App: React.FC = () => {
     }
   };
 
+  // A new tab in its own git worktree + branch, registered as a project so it gets history, CLAUDE.md etc.
+  const handleOpenWorktree = async (projectPath: string) => {
+    const r = await window.electronAPI.addWorktree(projectPath);
+    if (!r.path) return showToast(`WORKTREE FAILED: ${r.error || 'unknown error'}`, 'error');
+    await handleAddProject(r.path);
+  };
+
   const handleOpenFolder = async (path: string) => {
     await window.electronAPI.openFolder(path);
   };
@@ -590,23 +641,31 @@ export const App: React.FC = () => {
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd/Ctrl + P or Cmd/Ctrl + K -> Command Palette
-      if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'p' || e.key.toLowerCase() === 'k')) {
+      // ⌘P / ⌘K (Ctrl+Shift+P / K off macOS) -> Command Palette
+      if (isAppShortcut(e, 'p') || isAppShortcut(e, 'k')) {
         e.preventDefault();
         playClickSound();
         setIsPaletteOpen(true);
         return;
       }
 
-      // Cmd/Ctrl + T -> Open New Tab / Project Selector
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 't') {
+      // ⌘I -> Inbox
+      if (isAppShortcut(e, 'i')) {
+        e.preventDefault();
+        setAwaySince(null);
+        setIsInboxOpen((open) => !open);
+        return;
+      }
+
+      // ⌘T -> Open New Tab / Project Selector
+      if (isAppShortcut(e, 't')) {
         e.preventDefault();
         playClickSound();
         setIsPaletteOpen(true);
       }
 
-      // Cmd/Ctrl + W -> Close active tab
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'w') {
+      // ⌘W -> Close active tab
+      if (isAppShortcut(e, 'w')) {
         if (tabs.length > 1 && activeTabId) {
           e.preventDefault();
           playClickSound();
@@ -615,7 +674,7 @@ export const App: React.FC = () => {
       }
 
       // Cmd/Ctrl + 1..9 -> Switch tab
-      if ((e.metaKey || e.ctrlKey) && /^[1-9]$/.test(e.key)) {
+      if ((isMac ? e.metaKey : e.ctrlKey) && /^[1-9]$/.test(e.key)) {
         const idx = parseInt(e.key, 10) - 1;
         if (tabs[idx]) {
           e.preventDefault();
@@ -663,21 +722,40 @@ export const App: React.FC = () => {
         currentTheme={theme}
         onSelectTheme={handleSelectTheme}
         themeConfig={themeConfig}
+        inboxCount={needsYou}
+        onOpenInbox={() => { setAwaySince(null); setIsInboxOpen(true); }}
+        gridMode={gridMode}
+        onToggleGrid={() => setGridMode((g) => !g)}
       />
 
-      {/* 2. Embedded Terminal Workspace Area (All tabs preserved in DOM) */}
-      <div className="flex-1 flex flex-col overflow-hidden relative">
+      {/* 2. Embedded Terminal Workspace Area (All tabs preserved in DOM; grid mode shows them side by side) */}
+      <div
+        className="flex-1 flex flex-col overflow-hidden relative"
+        style={gridMode && tabs.length > 1 ? {
+          display: 'grid',
+          gridTemplateColumns: `repeat(${Math.ceil(Math.sqrt(tabs.length))}, minmax(0, 1fr))`,
+          gridAutoRows: 'minmax(0, 1fr)',
+          gap: 2,
+          backgroundColor: themeConfig.border
+        } : undefined}
+      >
         {tabs.length > 0 ? (
           tabs.map((tab) => {
             const proj = projects.find((p) => p.id === tab.projectId);
             if (!proj) return null;
             const isTabActive = tab.id === activeTabId;
+            const inGrid = gridMode && tabs.length > 1;
 
             return (
               <div
                 key={tab.id}
+                onMouseDownCapture={inGrid ? () => setActiveTabId(tab.id) : undefined}
                 className="flex-1 w-full h-full flex flex-col overflow-hidden"
-                style={{ display: isTabActive ? 'flex' : 'none' }}
+                style={{
+                  display: isTabActive || inGrid ? 'flex' : 'none',
+                  backgroundColor: themeConfig.bgMain,
+                  outline: inGrid && isTabActive ? `1px solid ${themeConfig.accent}` : undefined
+                }}
               >
                 <TabWorkspace
                   project={proj}
@@ -692,6 +770,7 @@ export const App: React.FC = () => {
                   flagPresets={agentFlagPresets(settings, proj.agent)}
                   onSwitchAgent={handleSwitchAgent}
                   onRunCommand={(cmd) => handleNewTab(proj.id, cmd)}
+                  onOpenWorktree={() => handleOpenWorktree(proj.path)}
                   onSaveCustomCommands={async (cmds) => {
                     const updated = await window.electronAPI.updateProject(proj.id, { customRunCommands: cmds });
                     if (updated) setProjects((prev) => prev.map((p) => (p.id === proj.id ? { ...p, customRunCommands: cmds } : p)));
@@ -710,7 +789,7 @@ export const App: React.FC = () => {
               NO PROJECT TERMINAL OPEN
             </h2>
             <p className="text-xs mt-1 max-w-xs" style={{ color: themeConfig.textMuted }}>
-              Press ⌘T or click [+] to open a Claude Code terminal session.
+              Press {keyLabel('T')} or click [+] to open a Claude Code terminal session.
             </p>
             {projects.length > 0 && (
               <button
@@ -739,11 +818,11 @@ export const App: React.FC = () => {
             onClick={() => setIsPaletteOpen(true)}
             className="cursor-pointer hover:opacity-100 transition-opacity"
           >
-            <span style={{ color: themeConfig.accent }}>⌘P</span> Find
+            <span style={{ color: themeConfig.accent }}>{keyLabel('P')}</span> Find
           </span>
-          <span><span style={{ color: themeConfig.accent }}>⌘T</span> Tab</span>
-          <span><span style={{ color: themeConfig.accent }}>⌘W</span> Close</span>
-          <span><span style={{ color: themeConfig.accent }}>⌘1-9</span> Switch</span>
+          <span><span style={{ color: themeConfig.accent }}>{keyLabel('T')}</span> Tab</span>
+          <span><span style={{ color: themeConfig.accent }}>{keyLabel('W')}</span> Close</span>
+          <span><span style={{ color: themeConfig.accent }}>{tabKeyLabel}</span> Switch</span>
         </div>
 
         <div className="flex items-center gap-3">
@@ -800,7 +879,7 @@ export const App: React.FC = () => {
           {voice.phase === 'transcribing' && (
             <>
               <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" style={{ color: themeConfig.accent }} />
-              <span className="truncate">{voice.note ? `“${voice.note}”` : 'Transcribing on this Mac…'}</span>
+              <span className="truncate">{voice.note ? `“${voice.note}”` : 'Transcribing on this computer…'}</span>
             </>
           )}
           {voice.phase === 'speaking' && (
@@ -872,6 +951,19 @@ export const App: React.FC = () => {
         onRemoveProject={handleRemoveProject}
         onOpenAddModal={() => setIsAddProjectOpen(true)}
         onBrowseFolder={handleBrowseFolder}
+      />
+
+      <InboxPanel
+        isOpen={isInboxOpen}
+        onClose={() => setIsInboxOpen(false)}
+        tabs={tabs}
+        projects={projects}
+        tabStatus={tabStatus}
+        events={events}
+        awaySince={awaySince}
+        onGoToTab={setActiveTabId}
+        onStopTab={handleCloseTab}
+        themeConfig={themeConfig}
       />
 
       <SettingsModal

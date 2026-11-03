@@ -141,6 +141,21 @@ export interface MemoryFile {
 
 export type PtyStatus = 'running' | 'waiting' | 'idle';
 
+// unseen = it finished or asked for approval while you looked elsewhere; failed = exit code of a command that failed.
+export interface TabState {
+  status: PtyStatus;
+  unseen: boolean;
+  failed?: number;
+}
+
+// One line of the Inbox activity log.
+export interface InboxEvent {
+  tabId: string;
+  kind: 'waiting' | 'finished' | 'failed';
+  at: number;
+  code?: number;
+}
+
 export type AppTheme = 'claude' | 'dark' | 'cyber' | 'nord' | 'light';
 
 export interface AppSettings {

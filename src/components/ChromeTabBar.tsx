@@ -10,17 +10,20 @@ import {
   Palette,
   Search,
   FolderPlus,
-  Mic
+  Mic,
+  Inbox,
+  LayoutGrid
 } from 'lucide-react';
-import { ProjectItem, TabSession, AppTheme, PtyStatus } from '../types';
+import { ProjectItem, TabSession, AppTheme, TabState } from '../types';
 import { THEMES, ThemeConfig } from '../theme';
 import { playClickSound } from '../utils/audio';
 import { AppLogo } from './AppLogo';
+import { isMac, keyLabel } from '../utils/platform';
 
 interface ChromeTabBarProps {
   tabs: TabSession[];
   activeTabId: string;
-  tabStatus: Record<string, { status: PtyStatus; unseen: boolean }>;
+  tabStatus: Record<string, TabState>;
   projects: ProjectItem[];
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
@@ -39,6 +42,10 @@ interface ChromeTabBarProps {
   currentTheme: AppTheme;
   onSelectTheme: (theme: AppTheme) => void;
   themeConfig: ThemeConfig;
+  inboxCount: number;
+  onOpenInbox: () => void;
+  gridMode: boolean;
+  onToggleGrid: () => void;
 }
 
 export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
@@ -62,7 +69,11 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
   onToggleSound,
   currentTheme,
   onSelectTheme,
-  themeConfig
+  themeConfig,
+  inboxCount,
+  onOpenInbox,
+  gridMode,
+  onToggleGrid
 }) => {
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const themeMenuRef = useRef<HTMLDivElement>(null);
@@ -88,13 +99,13 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
     >
       {/* Left: Window Traffic Lights Spacer + App Brand + Tab Reel */}
       <div className="flex items-center gap-1.5 flex-1 min-w-0 titlebar-no-drag h-full pt-1">
-        {/* Dedicated 80px space for macOS window buttons */}
-        <div className="w-20 flex-shrink-0 h-full pointer-events-none" />
+        {/* Dedicated 80px space for macOS window buttons (other systems draw a normal title bar above) */}
+        {isMac && <div className="w-20 flex-shrink-0 h-full pointer-events-none" />}
 
         {/* Brand App Logo */}
         <div
           onClick={onOpenPalette}
-          title="Pilothouse (⌘P)"
+          title={`Pilothouse (${keyLabel('P')})`}
           className="flex items-center gap-1.5 mr-2 px-1.5 py-1 rounded-md cursor-pointer hover:bg-black/10 transition-colors flex-shrink-0"
         >
           <AppLogo className="w-4 h-4" />
@@ -143,9 +154,10 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
                   const st = tabStatus[tab.id];
                   const waiting = st?.status === 'waiting';
                   const running = st?.status === 'running';
+                  const failed = st?.failed !== undefined && !waiting;
                   const done = !!st?.unseen && !waiting;
-                  const color = waiting ? '#f59e0b' : done ? '#22c55e' : running || isActive ? themeConfig.accent : themeConfig.textMuted;
-                  const label = waiting ? 'Needs your approval' : done ? 'Finished' : running ? 'Working…' : 'Idle';
+                  const color = waiting ? '#f59e0b' : failed ? '#ef4444' : done ? '#22c55e' : running || isActive ? themeConfig.accent : themeConfig.textMuted;
+                  const label = waiting ? 'Needs your approval' : failed ? `Failed (exit code ${st?.failed})` : done ? 'Finished' : running ? 'Working…' : 'Idle';
                   return (
                     <div className="flex items-center gap-1 flex-shrink-0" title={label} aria-label={label}>
                       <span
@@ -172,7 +184,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
                       playClickSound();
                       onCloseTab(tab.id);
                     }}
-                    title="Close tab (⌘W)"
+                    title={`Close tab (${keyLabel('W')})`}
                     className="p-0.5 rounded opacity-40 group-hover:opacity-100 hover:bg-black/20 transition-all flex-shrink-0"
                     style={{ color: themeConfig.textMuted }}
                   >
@@ -192,7 +204,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
                 playClickSound();
                 onOpenPalette();
               }}
-              title="Open or Create Terminal Tab (⌘T / ⌘P)"
+              title={`Open or Create Terminal Tab (${keyLabel('T')})`}
               className="p-1 rounded-md hover:bg-black/20 transition-all border flex items-center gap-1 text-[11px]"
               style={{
                 borderColor: themeConfig.border,
@@ -226,10 +238,43 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
 
       {/* Right: Actions & Theme Picker */}
       <div className="flex items-center gap-1 titlebar-no-drag pl-2 flex-shrink-0">
+        {/* Inbox: everything the agents ask you */}
+        <button
+          onClick={() => {
+            playClickSound();
+            onOpenInbox();
+          }}
+          title={`Inbox (${keyLabel('I')})`}
+          aria-label={`Inbox, ${inboxCount} need you`}
+          className="relative p-1.5 rounded-md hover:bg-black/20 transition-colors"
+          style={{ color: inboxCount ? '#f59e0b' : themeConfig.textMuted }}
+        >
+          <Inbox className="w-3.5 h-3.5" />
+          {inboxCount > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-0.5 rounded-full text-[9px] leading-[14px] text-center font-bold text-black" style={{ backgroundColor: '#f59e0b' }}>
+              {inboxCount}
+            </span>
+          )}
+        </button>
+
+        {/* Grid: all tabs side by side */}
+        <button
+          onClick={() => {
+            playClickSound();
+            onToggleGrid();
+          }}
+          title={gridMode ? 'Show one tab' : 'Show all tabs in a grid'}
+          aria-pressed={gridMode}
+          className="p-1.5 rounded-md hover:bg-black/20 transition-colors"
+          style={{ color: gridMode ? themeConfig.accent : themeConfig.textMuted }}
+        >
+          <LayoutGrid className="w-3.5 h-3.5" />
+        </button>
+
         {/* Voice prompt */}
         <button
           onClick={onToggleVoice}
-          title={`Speak a prompt to the active tab (${voiceHotkey.replace('CommandOrControl', '⌘').replace('Shift', '⇧').replace(/\+/g, '')})`}
+          title={`Speak a prompt to the active tab (${isMac ? voiceHotkey.replace('CommandOrControl', '⌘').replace('Shift', '⇧').replace(/\+/g, '') : voiceHotkey.replace('CommandOrControl', 'Ctrl')})`}
           aria-label="Voice prompt"
           aria-pressed={voiceActive}
           className={`p-1.5 rounded-md hover:bg-black/20 transition-colors ${voiceActive ? 'animate-pulse' : ''}`}
@@ -244,7 +289,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
             playClickSound();
             onOpenPalette();
           }}
-          title="Command Palette (⌘P / ⌘K)"
+          title={`Command Palette (${keyLabel('P')} / ${keyLabel('K')})`}
           className="p-1.5 rounded-md hover:bg-black/20 transition-colors"
           style={{ color: themeConfig.textMuted }}
         >

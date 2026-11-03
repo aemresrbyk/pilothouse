@@ -1,7 +1,7 @@
 {
   "name": "pilothouse",
   "version": "1.2.0",
-  "description": "Pilothouse: a desktop cockpit with tabbed embedded terminals for Claude Code, Codex and other terminal AI agents",
+  "description": "Pilothouse: a desktop cockpit for macOS, Windows and Linux with tabbed embedded terminals for Claude Code, Codex and other terminal AI agents",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -48,13 +48,25 @@
         "NSDocumentsFolderUsageDescription": "Pilothouse opens terminals and reads git status for projects stored in your Documents folder.",
         "NSDownloadsFolderUsageDescription": "Pilothouse opens terminals and reads git status for projects stored in your Downloads folder.",
         "NSMicrophoneUsageDescription": "Pilothouse listens only while you speak a prompt (hotkey or mic button). Speech is recognised on this Mac and never uploaded."
-      }
+      },
+      "extraResources": [
+        {
+          "from": "vendor/whisper/whisper-cli",
+          "to": "whisper-cli"
+        }
+      ]
     },
     "win": {
       "icon": "build/icon.png",
       "target": [
         "nsis",
         "portable"
+      ],
+      "extraResources": [
+        {
+          "from": "vendor/whisper/whisper-cli.exe",
+          "to": "whisper-cli.exe"
+        }
       ]
     },
     "linux": {
@@ -63,16 +75,20 @@
         "AppImage",
         "deb"
       ],
-      "category": "Development"
+      "category": "Development",
+      "extraResources": [
+        {
+          "from": "vendor/whisper/whisper-cli",
+          "to": "whisper-cli"
+        }
+      ],
+      "artifactName": "Pilothouse-${arch}-linux.${ext}",
+      "maintainer": "aemresrbyk <aemresrbyk@users.noreply.github.com>"
     },
     "asarUnpack": [
       "node_modules/node-pty/**"
     ],
     "extraResources": [
-      {
-        "from": "vendor/whisper/whisper-cli",
-        "to": "whisper-cli"
-      },
       {
         "from": "resources/wakeword",
         "to": "wakeword"
@@ -85,7 +101,15 @@
         "from": "resources/tray",
         "to": "tray"
       }
-    ]
+    ],
+    "nsis": {
+      "artifactName": "Pilothouse-Setup-${arch}.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "portable": {
+      "artifactName": "Pilothouse-Portable-${arch}.${ext}"
+    }
   },
   "keywords": [
     "claude",

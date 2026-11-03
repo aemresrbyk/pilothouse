@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-#  Pilothouse - macOS Automated Installer & Setup
+#  Pilothouse - Installer for macOS and Linux (Windows: use the Setup .exe from Releases)
 #  Author: Ali Emre Sarıbıyık (aemresrbyk)
 #  Repository: https://github.com/aemresrbyk/pilothouse
 # ==============================================================================
@@ -26,15 +26,44 @@ cat << "EOF"
      >_  desktop cockpit for Claude Code
 EOF
 echo -e "${NC}"
-echo -e "${AMBER}Automated Setup & Installer for macOS${NC}"
+echo -e "${AMBER}Automated Setup & Installer for macOS and Linux${NC}"
 echo -e "Repository: ${BLUE}https://github.com/aemresrbyk/pilothouse${NC}"
 echo "--------------------------------------------------------"
 
 # 1. System Check
 OS="$(uname -s)"
+if [ "$OS" = "Linux" ]; then
+  # Linux: the AppImage from the latest release into ~/.local/bin, plus a menu entry.
+  if [ "$(uname -m)" != "x86_64" ]; then
+    echo -e "${RED}[ERROR] Linux builds are x64 only for now. Build from source: npm install && npm run dist:linux${NC}"
+    exit 1
+  fi
+  BIN_DIR="$HOME/.local/bin"
+  APPIMAGE="$BIN_DIR/Pilothouse.AppImage"
+  mkdir -p "$BIN_DIR" "$HOME/.local/share/applications"
+  echo -e "Downloading the latest Linux release from GitHub..."
+  curl -fsSL -o "$APPIMAGE.part" "https://github.com/aemresrbyk/pilothouse/releases/latest/download/Pilothouse-x86_64-linux.AppImage" || {
+    echo -e "${RED}[ERROR] Could not download the AppImage.${NC}"
+    exit 1
+  }
+  mv "$APPIMAGE.part" "$APPIMAGE"
+  chmod +x "$APPIMAGE"
+  cat > "$HOME/.local/share/applications/pilothouse.desktop" <<DESKTOP
+[Desktop Entry]
+Name=Pilothouse
+Comment=Tabbed terminals for Claude Code, Codex and other AI agents
+Exec=$APPIMAGE
+Terminal=false
+Type=Application
+Categories=Development;
+DESKTOP
+  echo -e "${GREEN}✓${NC} Installed ${BOLD}$APPIMAGE${NC} (also in your app menu as Pilothouse)"
+  echo "AppImages need FUSE 2: on Ubuntu 22.04+ run 'sudo apt install libfuse2' if it doesn't start."
+  echo "Prefer a package? The .deb is on https://github.com/aemresrbyk/pilothouse/releases"
+  exit 0
+fi
 if [ "$OS" != "Darwin" ]; then
-  echo -e "${RED}[ERROR] This installer is currently optimized for macOS.${NC}"
-  echo "For Linux/Windows, build from source using 'bun run build && bun run pack'."
+  echo -e "${RED}[ERROR] On Windows, download Pilothouse-Setup-x64.exe from https://github.com/aemresrbyk/pilothouse/releases${NC}"
   exit 1
 fi
 

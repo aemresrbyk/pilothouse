@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { isMac, APP_KEYS } from '../utils/platform';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -109,10 +110,11 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({
     term.attachCustomKeyEventHandler((e) => {
       // Paste is left to xterm's native paste handler, which honours bracketed-paste mode.
       // Copy: Cmd+C (mac) / Ctrl+C (others) when there is a selection; otherwise Ctrl+C stays SIGINT.
-      const isMac = navigator.platform.startsWith('Mac');
       const mod = isMac ? e.metaKey : e.ctrlKey;
       // Off mac, don't let xterm turn Ctrl+V into ^V; returning false lets the browser fire a native paste.
       if (!isMac && e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'v') return false;
+      // Off mac, Ctrl+Shift+T/W/K/P/I/F are app shortcuts (handled on window), not keys for the shell.
+      if (!isMac && e.ctrlKey && e.shiftKey && APP_KEYS.test(e.key)) return false;
       if (mod && e.key.toLowerCase() === 'c' && term.hasSelection() && e.type === 'keydown') {
         navigator.clipboard.writeText(term.getSelection()).catch(() => {});
         return false;

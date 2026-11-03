@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell, clipboard, globalShortcut, 
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import * as pty from 'node-pty';
 import { autoUpdater } from 'electron-updater';
 import { StorageManager } from './store';
@@ -10,6 +10,7 @@ import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './t
 import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions, readTranscript, searchHistory, isSessionFile, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
 import { startControlServer, CONTROL_FILE, stripAnsi } from './control';
 import { Activity, newActivity, noteOutput, nextStatus } from './activity';
+import { processUsage } from './resources';
 import { whisperBinary, hasModel, downloadModel, transcribe, speak, stopSpeaking, MODEL_BYTES } from './voice';
 import { ProjectItem, AppSettings, ClaudeSession, agentById, agentBinary } from '../src/types';
 
@@ -54,8 +55,9 @@ function createWindow() {
     minWidth: 850,
     minHeight: 580,
     backgroundColor: '#0c0d12',
-    icon: path.join(__dirname, '../public/icon.png'),
+    icon: path.join(process.env.VITE_PUBLIC || '', 'icon.png'), // Windows/Linux window + taskbar icon
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    autoHideMenuBar: true,
     trafficLightPosition: { x: 16, y: 16 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -95,8 +97,12 @@ const resourceDir = (sub: string) => (app.isPackaged ? path.join(process.resourc
 let tray: Tray | null = null;
 function applyWakeWord(settings: AppSettings) {
   if (settings.wakeWordEnabled && !tray) {
-    const icon = nativeImage.createFromPath(path.join(resourceDir('tray'), 'trayTemplate.png'));
-    icon.setTemplateImage(true);
+    // macOS: monochrome template that follows the menu bar colour. Elsewhere the colour app icon, since a black
+    // template disappears on dark taskbars.
+    const icon = process.platform === 'darwin'
+      ? nativeImage.createFromPath(path.join(resourceDir('tray'), 'trayTemplate.png'))
+      : nativeImage.createFromPath(path.join(process.env.VITE_PUBLIC || '', 'icon.png')).resize({ width: 32, height: 32 });
+    if (process.platform === 'darwin') icon.setTemplateImage(true);
     tray = new Tray(icon);
     tray.setToolTip('Pilothouse: say "Hey Pilothouse"');
     tray.setContextMenu(Menu.buildFromTemplate([
@@ -118,7 +124,8 @@ function applyWakeWord(settings: AppSettings) {
     tray.destroy();
     tray = null;
   }
-  if (app.isPackaged && process.platform === 'darwin') app.setLoginItemSettings({ openAtLogin: !!settings.openAtLogin });
+  // Electron has no login-item API on Linux.
+  if (app.isPackaged && process.platform !== 'linux') app.setLoginItemSettings({ openAtLogin: !!settings.openAtLogin });
 }
 
 app.on('window-all-closed', () => {
@@ -134,6 +141,9 @@ app.on('activate', () => {
 });
 
 app.whenReady().then(() => {
+  // Windows/Linux: the default menu's accelerators (Ctrl+R reload, Ctrl+Shift+I devtools, Ctrl+W …) would steal
+  // terminal and app keys. Text editing keys still work there without a menu; macOS needs its menu for them.
+  if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
   storage = new StorageManager();
   registerIpcHandlers();
   createWindow();
@@ -414,6 +424,21 @@ function registerIpcHandlers() {
     clipboard.writeText(text);
   });
 
+  ipcMain.handle('pty:resources', async () => {
+    const live = [...ptySessions.entries()];
+    const usage = await processUsage(live.map(([, p]) => p.pid));
+    return live.map(([id, p]) => ({ id, ...(usage.get(p.pid) || { cpu: 0, memMB: 0 }) }));
+  });
+
+  // A sibling folder <repo>-wt-<stamp> on its own branch, so a second agent can't overwrite the first one's files.
+  ipcMain.handle('git:worktree-add', async (_e, repoPath: string): Promise<{ path?: string; error?: string }> => {
+    if (!storage.listStoredProjects().some((p) => p.path === repoPath)) return { error: 'Unknown project' };
+    const stamp = new Date().toISOString().replace(/\D/g, '').slice(2, 14);
+    const dir = `${repoPath.replace(/[\\/]+$/, '')}-wt-${stamp}`;
+    return new Promise((resolve) => execFile('git', ['-C', repoPath, 'worktree', 'add', '-b', `pilothouse/${stamp}`, dir],
+      { timeout: 30_000 }, (err, _out, stderr) => resolve(err ? { error: String(stderr || err.message).trim() } : { path: dir })));
+  });
+
   // Embedded Terminal PTY Handlers
   ipcMain.handle('pty:create', async (event, opts: { id: string; cwd: string; initialCommand?: string; cols?: number; rows?: number }) => {
     const { id, cwd, initialCommand, cols = 80, rows = 24 } = opts;
@@ -440,8 +465,8 @@ function registerIpcHandlers() {
       }
 
       const home = os.homedir();
-      const envPath = `${home}/.local/bin:/opt/homebrew/bin:/usr/local/bin:${cleanEnv.PATH || ''}`;
-      cleanEnv.PATH = envPath;
+      // Where agent CLIs usually live on macOS/Linux; Windows keeps its own PATH (other separator, other folders).
+      if (!isWin) cleanEnv.PATH = [`${home}/.local/bin`, '/opt/homebrew/bin', '/usr/local/bin', cleanEnv.PATH || ''].join(path.delimiter);
       // Apple Terminal's per-window session restore must not run inside our PTY.
       for (const k of ['TERM_PROGRAM', 'TERM_PROGRAM_VERSION', 'TERM_SESSION_ID']) delete cleanEnv[k];
       cleanEnv.TERM = 'xterm-256color';
@@ -456,8 +481,11 @@ function registerIpcHandlers() {
       // characters while slow rc files were still loading); an interactive shell takes over when it exits.
       const cmd = initialCommand?.trim();
       // Exit code 127 = command not found; usually means Claude Code isn't installed (fish has no $?, so it gets no hint).
+      // Any other non-zero exit is reported with an invisible OSC 7777 marker, so the Inbox can list the tab as failed.
+      // shortcut: POSIX shells only (not fish, not Windows cmd/PowerShell, which get the command typed in); add a
+      // PowerShell `if (-not $?)` variant if Windows users need failure tracking.
       const hint = path.basename(shell) === 'fish' ? '' :
-        `; [ $? -eq 127 ] && printf '\\n\\033[33mCommand not found. Install the agent CLI, e.g.\\n  Claude Code: npm install -g @anthropic-ai/claude-code\\n  Codex:       npm install -g @openai/codex\\n  Gemini CLI:  npm install -g @google/gemini-cli\\nor set its path in Pilothouse Settings.\\033[0m\\n\\n'`;
+        `; __ph=$?; [ $__ph -eq 127 ] && printf '\\n\\033[33mCommand not found. Install the agent CLI, e.g.\\n  Claude Code: npm install -g @anthropic-ai/claude-code\\n  Codex:       npm install -g @openai/codex\\n  Gemini CLI:  npm install -g @google/gemini-cli\\nor set its path in Pilothouse Settings.\\033[0m\\n\\n'; [ $__ph -ne 0 ] && printf '\\033]7777;exit;%s\\007' $__ph`;
       const args = isWin ? [] : cmd ? ['-l', '-i', '-c', `${cmd}${hint}; exec "${shell}" -l`] : ['-l'];
       const ptyProcess = pty.spawn(shell, args, {
         name: 'xterm-256color',
@@ -478,9 +506,13 @@ function registerIpcHandlers() {
         if (!isCurrent()) return;
         meta.buf = (meta.buf + data).slice(-OUTPUT_KEEP);
         noteOutput(meta.act, Date.now());
+        // shortcut: assumes printf's marker arrives in one chunk (it is one small write); buffer across chunks if it ever misses.
+        const exit = /\x1b\]7777;exit;(\d+)\x07/.exec(data);
         try {
           if (!event.sender.isDestroyed()) {
             event.sender.send(`pty:data:${id}`, data);
+            // 130 = Ctrl+C, the user stopped it on purpose.
+            if (exit && exit[1] !== '130') event.sender.send('pty:failed', { id, code: Number(exit[1]) });
           }
         } catch {}
       });

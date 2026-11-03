@@ -52,6 +52,9 @@ declare global {
       ptyResize: (id: string, cols: number, rows: number) => void;
       ptyKill: (id: string) => Promise<void>;
       onPtyStatus: (callback: (info: { id: string; status: PtyStatus }) => void) => () => void;
+      onPtyFailed: (callback: (info: { id: string; code: number }) => void) => () => void;
+      ptyResources: () => Promise<{ id: string; cpu: number; memMB: number }[]>;
+      addWorktree: (repoPath: string) => Promise<{ path?: string; error?: string }>;
       setBadge: (count: number) => void;
       focusApp: () => void;
       onPtyData: (id: string, callback: (data: string) => void) => () => void;
