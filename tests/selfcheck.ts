@@ -17,7 +17,7 @@ import { hitLimit } from '../electron/activity';
 import { promptArgs, handoffPrompt, AGENTS } from '../src/types';
 import { execFileSync } from 'child_process';
 import { mergeProjects } from '../electron/setup';
-import { parseClaudeEfforts, parseCodexModels, parseOpencodeModels } from '../electron/agentOptions';
+import { parseClaudeEfforts, parseCodexModels, parseOpencodeModels, parseAgyModels, parseAgyEfforts } from '../electron/agentOptions';
 
 {
   // Model/effort lists come from each agent's own output; the command gets them in that agent's syntax.
@@ -36,6 +36,10 @@ import { parseClaudeEfforts, parseCodexModels, parseOpencodeModels } from '../el
   assert.equal(cmd('opencode', 'anthropic/claude-haiku-4-5'), 'opencode -m anthropic/claude-haiku-4-5');
   assert.equal(cmd('claude', 'x; rm -rf ~', 'low'), 'claude --effort low', 'unsafe model ids are dropped');
   assert.equal(cmd('codex'), 'codex', 'no choice = the account default');
+  assert.equal(cmd('antigravity', 'gemini-3.8-flash-high', 'max'), 'antigravity --model gemini-3.8-flash-high --effort max');
+  assert.deepStrictEqual(parseAgyModels('Fetching available models...\ngemini-3.8-flash-high\tGemini 3.8 Flash (High)\nclaude-opus-4-6-thinking\tClaude Opus 4.6 (Thinking)\n'),
+    [{ id: 'gemini-3.8-flash-high', label: 'Gemini 3.8 Flash (High)' }, { id: 'claude-opus-4-6-thinking', label: 'Claude Opus 4.6 (Thinking)' }]);
+  assert.deepStrictEqual(parseAgyEfforts('  --effort                        Reasoning effort for the current CLI session (low|medium|high|xhigh|max)\n'), ['low', 'medium', 'high', 'xhigh', 'max']);
   console.log('models ok');
 }
 
@@ -79,11 +83,12 @@ import { parseClaudeEfforts, parseCodexModels, parseOpencodeModels } from '../el
   assert.ok(hitLimit("You've hit your usage limit. Upgrade to Plus or try again in 2 hours."));
   assert.ok(hitLimit('Claude usage limit reached. Your limit will reset at 3pm'));
   assert.ok(hitLimit('Quota exceeded for quota metric'));
+  assert.ok(hitLimit('Error authenticating: _GaxiosError: Resource has been exhausted (e.g. check quota).'), 'real Gemini message');
   assert.ok(!hitLimit('Done. All 12 tests pass.'));
 
   // Each agent gets the first prompt its own way; shell characters are refused.
   const ids = Object.fromEntries(AGENTS.map((a) => [a.id, promptArgs(a, 'hi there')]));
-  assert.deepStrictEqual(ids, { claude: '"hi there"', codex: '"hi there"', gemini: '-i "hi there"', opencode: '--prompt "hi there"' });
+  assert.deepStrictEqual(ids, { claude: '"hi there"', codex: '"hi there"', gemini: '-i "hi there"', antigravity: '-i "hi there"', opencode: '--prompt "hi there"' });
   assert.doesNotThrow(() => promptArgs(AGENTS[0], handoffPrompt('Claude Code')));
   assert.throws(() => promptArgs(AGENTS[0], 'x"; rm -rf ~'));
   console.log('handoff ok');

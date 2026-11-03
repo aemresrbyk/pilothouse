@@ -32,6 +32,8 @@ export const AGENTS: AgentProfile[] = [
   { id: 'claude', name: 'Claude Code', command: 'claude', instructionsFile: 'CLAUDE.md', flagPresets: DEFAULT_FLAG_PRESETS, resumeArgs: '--resume {id}', hasHistory: true, promptArgs: '{p}', modelArgs: '--model {m}', effortArgs: '--effort {e}' },
   { id: 'codex', name: 'Codex', command: 'codex', instructionsFile: 'AGENTS.md', flagPresets: ['--full-auto', '--search'], resumeArgs: 'resume {id}', hasHistory: true, promptArgs: '{p}', modelArgs: '-m {m}', effortArgs: '-c model_reasoning_effort={e}' },
   { id: 'gemini', name: 'Gemini CLI', command: 'gemini', instructionsFile: 'GEMINI.md', flagPresets: ['--yolo'], promptArgs: '-i {p}', modelArgs: '-m {m}' },
+  // Google's successor to Gemini CLI for personal accounts (Gemini CLI now needs an API key for those).
+  { id: 'antigravity', name: 'Antigravity', command: 'agy', instructionsFile: 'GEMINI.md', flagPresets: ['--dangerously-skip-permissions'], resumeArgs: '--conversation {id}', promptArgs: '-i {p}', modelArgs: '--model {m}', effortArgs: '--effort {e}' },
   { id: 'opencode', name: 'opencode', command: 'opencode', instructionsFile: 'AGENTS.md', flagPresets: [], promptArgs: '--prompt {p}', modelArgs: '-m {m}' }
 ];
 

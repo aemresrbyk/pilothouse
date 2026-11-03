@@ -18,7 +18,8 @@ export interface AgentOptions {
 
 const run = (bin: string, args: string[]) => new Promise<string>((resolve) =>
   execFile(bin, args, { timeout: 20_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true, shell: process.platform === 'win32' && bin.endsWith('.cmd') },
-    (err, out) => resolve(err ? '' : String(out))));
+    // Help often goes to stderr (Go's flag package) and may exit non-zero, so both streams count either way.
+    (_err, out, errOut) => resolve(`${out}\n${errOut}`)));
 
 // "--effort <level> ... (low, medium, high, xhigh, max)" in `claude --help`.
 export function parseClaudeEfforts(help: string): string[] {
@@ -40,6 +41,17 @@ export function parseCodexModels(json: string): ModelOption[] {
   } catch {
     return [];
   }
+}
+
+// `agy models`: "id<TAB>label" per line after a "Fetching…" line.
+export const parseAgyModels = (out: string): ModelOption[] =>
+  out.split(/\r?\n/).map((l) => l.split('\t')).filter((p) => p.length >= 2 && /^[\w.:@/-]+$/.test(p[0].trim()))
+    .map(([id, label]) => ({ id: id.trim(), label: label.trim() || id.trim() }));
+
+// "--effort  Reasoning effort … (low|medium|high|xhigh|max)" in `agy --help`.
+export function parseAgyEfforts(help: string): string[] {
+  const m = help.match(/--effort[^\n]*\(([a-z|]+)\)/);
+  return m ? m[1].split('|').filter(Boolean) : [];
 }
 
 // `opencode models`: one provider/model per line.
@@ -66,6 +78,9 @@ export async function agentOptions(agentId: string, binary: string, codexHome = 
     opts = { models: parseCodexModels(json), efforts: [] };
   } else if (agentId === 'gemini') {
     opts = { models: GEMINI_MODELS.map((m) => ({ id: m, label: cap(m) })), efforts: [] };
+  } else if (agentId === 'antigravity') {
+    const [models, help] = await Promise.all([run(binary, ['models']), run(binary, ['--help'])]);
+    opts = { models: parseAgyModels(models), efforts: parseAgyEfforts(help) };
   } else if (agentId === 'opencode') {
     opts = { models: parseOpencodeModels(await run(binary, ['models'])), efforts: [] };
   }

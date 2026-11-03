@@ -24,7 +24,7 @@ const commonDirs = () => {
   return isWin
     ? [path.join(home, '.local', 'bin'), path.join(home, 'AppData', 'Roaming', 'npm')]
     : [path.join(home, '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', path.join(home, '.bun', 'bin'),
-       path.join(home, '.npm-global', 'bin'), path.join(home, '.opencode', 'bin')];
+       path.join(home, '.npm-global', 'bin'), path.join(home, '.opencode', 'bin'), path.join(home, '.gemini', 'bin')];
 };
 
 function viaShell(cmd: string): Promise<string | null> {

@@ -24,7 +24,7 @@ const APPROVAL_RE = /doyouwantto|wouldyouliketo|allow(this|command|once)|approve
 
 // "You've hit your usage limit" (Claude Code, Codex), quota errors (Gemini), provider rate limits (opencode).
 // shortcut: can also match when the conversation itself is about limits; it only suggests a hand-off, never acts.
-const LIMIT_RE = /usagelimit|limitreached|hityour(usage)?limit|quotaexceeded|exhaustedyour(daily)?quota|resource_exhausted|ratelimitexceeded/i;
+const LIMIT_RE = /usagelimit|limitreached|hityour(usage)?limit|quotaexceeded|exhaustedyour(daily)?quota|resource_exhausted|resourcehasbeenexhausted|ratelimitexceeded/i;
 export const hitLimit = (tail: string) => LIMIT_RE.test(tail.replace(/\s+/g, ''));
 
 export const newActivity = (now: number): Activity => ({ status: 'idle', busySince: now, lastData: 0, lastInput: 0, created: now });
