@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
+import type { SetupProject } from './setup';
 import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile, PtyStatus, TranscriptMessage, HistoryHit } from '../src/types';
 
 export const electronAPI = {
@@ -111,6 +112,15 @@ export const electronAPI = {
     return () => { ipcRenderer.removeListener('pty:failed', listener); };
   },
   ptyResources: (): Promise<{ id: string; cpu: number; memMB: number }[]> => ipcRenderer.invoke('pty:resources'),
+  onPtyLimit: (callback: (info: { id: string }) => void): (() => void) => {
+    const listener = (_e: any, info: { id: string }) => callback(info);
+    ipcRenderer.on('pty:limit', listener);
+    return () => { ipcRenderer.removeListener('pty:limit', listener); };
+  },
+  writeHandoff: (projectPath: string, fromAgent: string, sessionFile?: string): Promise<{ path?: string; error?: string }> =>
+    ipcRenderer.invoke('handoff:write', projectPath, fromAgent, sessionFile),
+  pickFile: (title: string): Promise<string | null> => ipcRenderer.invoke('dialog:pick-file', title),
+  setupScan: (): Promise<{ agents: { id: string; path: string | null }[]; projects: SetupProject[] }> => ipcRenderer.invoke('setup:scan'),
   addWorktree: (repoPath: string): Promise<{ path?: string; error?: string }> => ipcRenderer.invoke('git:worktree-add', repoPath),
   setBadge: (count: number): void => ipcRenderer.send('app:badge', count),
   focusApp: (): void => ipcRenderer.send('app:focus'),

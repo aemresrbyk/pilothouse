@@ -310,73 +310,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
           <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
         </button>
 
-        {/* Theme Selector Dropdown */}
-        <div className="relative" ref={themeMenuRef}>
-          <button
-            onClick={() => {
-              playClickSound();
-              setIsThemeMenuOpen(!isThemeMenuOpen);
-            }}
-            title="Theme Selection"
-            className="flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-mono hover:bg-black/20 transition-colors border"
-            style={{
-              color: themeConfig.textPrimary,
-              borderColor: themeConfig.border,
-              backgroundColor: themeConfig.bgTabActive
-            }}
-          >
-            <span>{themeConfig.icon}</span>
-            <span className="hidden sm:inline text-[10px] font-medium">{themeConfig.name}</span>
-          </button>
-
-          {isThemeMenuOpen && (
-            <div
-              className="absolute right-0 top-full mt-1.5 w-48 rounded-xl shadow-2xl py-1.5 z-50 animate-fade-in font-mono text-xs border"
-              style={{
-                backgroundColor: themeConfig.bgCard,
-                borderColor: themeConfig.border
-              }}
-            >
-              <div
-                className="px-3 py-1 text-[10px] uppercase font-bold tracking-wider border-b"
-                style={{
-                  color: themeConfig.textMuted,
-                  borderColor: themeConfig.border
-                }}
-              >
-                SELECT THEME
-              </div>
-              <div className="p-1 space-y-0.5">
-                {(Object.keys(THEMES) as AppTheme[]).map((tId) => {
-                  const t = THEMES[tId];
-                  const isCurrent = tId === currentTheme;
-                  return (
-                    <button
-                      key={tId}
-                      type="button"
-                      onClick={() => {
-                        playClickSound();
-                        onSelectTheme(tId);
-                        setIsThemeMenuOpen(false);
-                      }}
-                      className="w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between text-xs transition-colors"
-                      style={{
-                        backgroundColor: isCurrent ? themeConfig.accentBg : 'transparent',
-                        color: isCurrent ? themeConfig.accent : themeConfig.textSecondary
-                      }}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span>{t.icon}</span>
-                        <span>{t.name}</span>
-                      </div>
-                      {isCurrent && <span className="text-[10px] font-bold">✓</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
+        {/* Theme: chosen in Settings, so the bar stays short. */}
 
         {/* Sound Toggle */}
         <button

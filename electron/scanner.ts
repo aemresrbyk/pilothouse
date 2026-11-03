@@ -43,7 +43,8 @@ export function getProjectSessions(projectPath: string, withTitles = false): Cla
             formattedSize,
             dateStr,
             title: withTitles ? getSessionTitle(fullPath) : undefined,
-            file: fullPath
+            file: fullPath,
+            agent: 'claude'
           });
         } catch {
           // ignore stat errors
@@ -61,20 +62,54 @@ export function getProjectSessions(projectPath: string, withTitles = false): Cla
 // First real user prompt of a session transcript, used as its title in the History view.
 // Codex keeps sessions in ~/.codex/sessions/YYYY/MM/DD/rollout-<time>-<uuid>.jsonl; the first line (session_meta)
 // holds the cwd, and ~/.codex/session_index.jsonl maps ids to thread names.
-export function getCodexSessions(projectPath: string, codexHome = path.join(os.homedir(), '.codex')): ClaudeSession[] {
-  const root = path.join(codexHome, 'sessions');
+// Newest Codex session logs first.
+function codexSessionFiles(codexHome: string, max = 500): string[] {
   const files: string[] = [];
   const walk = (dir: string, depth: number) => {
     let names: string[];
     try { names = fs.readdirSync(dir).sort().reverse(); } catch { return; }
     for (const n of names) {
-      if (files.length >= 500) return; // shortcut: newest 500 sessions only; page further if users need older ones
+      if (files.length >= max) return; // shortcut: newest sessions only; page further if users need older ones
       const full = path.join(dir, n);
       if (depth < 3) walk(full, depth + 1);
       else if (n.endsWith('.jsonl')) files.push(full);
     }
   };
-  walk(root, 0);
+  walk(path.join(codexHome, 'sessions'), 0);
+  return files;
+}
+
+// The first 64 KB of a Codex session: its session_meta line holds the cwd.
+function codexHead(f: string): string {
+  const fd = fs.openSync(f, 'r');
+  try {
+    const buf = Buffer.alloc(64 * 1024);
+    return buf.subarray(0, fs.readSync(fd, buf, 0, buf.length, 0)).toString('utf-8');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+const codexCwd = (head: string) => {
+  const raw = head.match(/"cwd":"((?:[^"\\]|\\.)*)"/)?.[1];
+  return raw ? JSON.parse(`"${raw}"`) as string : undefined;
+};
+
+// Folders Codex has worked in, with how many sessions and when last, for the setup wizard.
+export function getCodexProjectDirs(codexHome = path.join(os.homedir(), '.codex')): Map<string, { count: number; last: number }> {
+  const dirs = new Map<string, { count: number; last: number }>();
+  for (const f of codexSessionFiles(codexHome)) {
+    try {
+      const cwd = codexCwd(codexHead(f));
+      if (!cwd) continue;
+      const d = dirs.get(cwd) || { count: 0, last: 0 };
+      dirs.set(cwd, { count: d.count + 1, last: Math.max(d.last, fs.statSync(f).mtimeMs) });
+    } catch {}
+  }
+  return dirs;
+}
+
+export function getCodexSessions(projectPath: string, codexHome = path.join(os.homedir(), '.codex')): ClaudeSession[] {
+  const files = codexSessionFiles(codexHome);
 
   const titles = new Map<string, string>();
   try {
@@ -88,13 +123,9 @@ export function getCodexSessions(projectPath: string, codexHome = path.join(os.h
   const sessions: ClaudeSession[] = [];
   for (const f of files) {
     try {
-      const fd = fs.openSync(f, 'r');
-      const buf = Buffer.alloc(64 * 1024);
-      const n = fs.readSync(fd, buf, 0, buf.length, 0);
-      fs.closeSync(fd);
-      const head = buf.subarray(0, n).toString('utf-8');
-      const cwd = head.match(/"cwd":"((?:[^"\\]|\\.)*)"/)?.[1];
-      if (!cwd || real(JSON.parse(`"${cwd}"`)) !== target) continue;
+      const head = codexHead(f);
+      const cwd = codexCwd(head);
+      if (!cwd || real(cwd) !== target) continue;
       const id = path.basename(f, '.jsonl').slice(-36);
       const firstPrompt = head.match(/"type":"user_message","message":"((?:[^"\\]|\\.){1,200})/)?.[1];
       const stat = fs.statSync(f);
@@ -106,7 +137,8 @@ export function getCodexSessions(projectPath: string, codexHome = path.join(os.h
         formattedSize: sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)} MB` : `${sizeKb} KB`,
         dateStr: new Date(stat.mtimeMs).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
         title: titles.get(id) || (firstPrompt ? firstPrompt.replace(/\\n/g, ' ').trim() : undefined),
-        file: f
+        file: f,
+        agent: 'codex'
       });
     } catch {}
   }
@@ -174,7 +206,7 @@ export function searchHistory(sessions: ClaudeSession[], query: string, limit = 
       if (at < 0) return;
       const from = Math.max(0, at - 60);
       const snippet = (from > 0 ? '…' : '') + m.text.slice(from, at + q.length + 100).replace(/\s+/g, ' ');
-      hits.push({ sessionId: s.id, file: s.file!, title: s.title, index, role: m.role, time: m.time, snippet });
+      hits.push({ sessionId: s.id, file: s.file!, title: s.title, index, role: m.role, time: m.time, snippet, agent: s.agent });
     });
     if (hits.length >= limit) break;
   }

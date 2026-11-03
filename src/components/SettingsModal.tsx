@@ -9,13 +9,15 @@ interface SettingsModalProps {
   onClose: () => void;
   settings: AppSettings;
   onSaveSettings: (settings: Partial<AppSettings>) => void;
+  onRunSetup: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   settings,
-  onSaveSettings
+  onSaveSettings,
+  onRunSetup
 }) => {
   const [formData, setFormData] = useState<AppSettings>(settings);
   const [terminals, setTerminals] = useState<TerminalOption[]>([]);
@@ -82,6 +84,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Form Body */}
         <div className="p-5 space-y-4 text-xs">
+          {/* Setup wizard again: find agents, choose projects and their agents */}
+          <button
+            type="button"
+            onClick={() => { onClose(); onRunSetup(); }}
+            className="w-full text-left px-3 py-2 rounded-lg border text-xs hover:opacity-90"
+            style={{ borderColor: '#3f3f46', color: '#e4e4e7' }}
+          >
+            <span className="font-bold">Run setup again</span>
+            <span className="block text-[10px] text-zinc-500">Find agent CLIs, choose projects and which agent each one uses</span>
+          </button>
+
           {/* Theme Selection */}
           <div>
             <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 mb-2">

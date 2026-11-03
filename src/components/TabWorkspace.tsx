@@ -33,12 +33,14 @@ import {
   Rocket,
   Plus,
   SlidersHorizontal,
-  GitFork
+  GitFork,
+  ArrowRightLeft,
+  MoreHorizontal
 } from 'lucide-react';
-import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile, TranscriptMessage, HistoryHit, isDangerFlag, AGENTS, AgentProfile, buildAgentCommand } from '../types';
+import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile, TranscriptMessage, HistoryHit, isDangerFlag, AGENTS, AgentProfile, buildAgentCommand, promptArgs, agentById, PendingLaunch } from '../types';
 import { ThemeConfig } from '../theme';
 import { EmbeddedTerminal } from './EmbeddedTerminal';
-import { isAppShortcut, keyLabel } from '../utils/platform';
+import { isAppShortcut, keyLabel, isMac } from '../utils/platform';
 import { playClickSound, playToggleSound, playLaunchSound } from '../utils/audio';
 
 interface TabWorkspaceProps {
@@ -55,6 +57,11 @@ interface TabWorkspaceProps {
   onSwitchAgent: (projectId: string, agentId: string) => void;
   onRunCommand: (command: string) => void;
   onOpenWorktree: () => void;
+  onHandoff: (agentId: string) => void;
+  onHandoffSession: (agentId: string, sessionFile: string, fromAgent: string) => void;
+  onResumeAs: (agentId: string, sessionId: string) => void;
+  pendingLaunch?: PendingLaunch; // set by a hand-off or a resume in another agent: restart once with it
+  onLaunchUsed: () => void;
   onSaveCustomCommands: (commands: RunCommand[]) => void;
 }
 
@@ -72,6 +79,11 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   onSwitchAgent,
   onRunCommand,
   onOpenWorktree,
+  onHandoff,
+  onHandoffSession,
+  onResumeAs,
+  pendingLaunch,
+  onLaunchUsed,
   onSaveCustomCommands
 }) => {
   const [viewMode, setViewMode] = useState<'terminal' | 'claude-md' | 'files' | 'history' | 'run' | 'memory'>('terminal');
@@ -169,6 +181,21 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
     setTermSessionKey((k) => k + 1);
   };
 
+  // A hand-off or resume switched the agent (via props): start the new one once with its prompt or session.
+  useEffect(() => {
+    if (!pendingLaunch) return;
+    setSessions(null);
+    setOpenSession(null);
+    setClaudeMdContent('');
+    setViewMode('terminal');
+    const first = pendingLaunch.prompt ? promptArgs(agent, pendingLaunch.prompt) : undefined;
+    setLaunchCommand(buildAgentCommand(agent, agentBinary, flags, first, pendingLaunch.resumeId));
+    setTermSessionKey((k) => k + 1);
+    onLaunchUsed();
+  }, [pendingLaunch]);
+  const [isHandoffOpen, setIsHandoffOpen] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+
   const openTranscript = (sess: ClaudeSession, msgIndex: number | null = null) => {
     setOpenSession(sess);
     setFocusMsg(msgIndex);
@@ -181,7 +208,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
     const q = histQuery.trim();
     if (!q) { setHits(null); return; }
     const t = setTimeout(() => {
-      window.electronAPI.searchHistory(project.path, agent.id, q).then(setHits).catch(() => setHits([]));
+      window.electronAPI.searchHistory(project.path, 'all', q).then(setHits).catch(() => setHits([]));
     }, 250);
     return () => clearTimeout(t);
   }, [histQuery, project.path, agent.id]);
@@ -194,7 +221,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
 
   // ⌘F (Ctrl+Shift+F off macOS) opens History with the search box focused.
   useEffect(() => {
-    if (!isActive || !agent.hasHistory) return;
+    if (!isActive) return;
     const onKey = (e: KeyboardEvent) => {
       if (isAppShortcut(e, 'f')) {
         e.preventDefault();
@@ -204,7 +231,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [isActive, agent.hasHistory]);
+  }, [isActive]);
 
   const toggleFlag = (flag: string) => {
     const on = !flags.includes(flag);
@@ -277,7 +304,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
 
     if (viewMode === 'history') {
       setSessions(null);
-      window.electronAPI.getSessions(project.path, agent.id).then(setSessions).catch(() => setSessions([]));
+      window.electronAPI.getSessions(project.path, 'all').then(setSessions).catch(() => setSessions([]));
     }
 
     if (viewMode === 'files') {
@@ -526,6 +553,38 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             ))}
           </select>
 
+          {/* Hand off: the next agent starts with what this one did (conversation, changes, memory). */}
+          <div className="relative flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsHandoffOpen((o) => !o)}
+              title="Continue this work with another agent (it gets the conversation, changes and memory)"
+              aria-label="Hand off to another agent"
+              aria-expanded={isHandoffOpen}
+              className="p-1 rounded border hover:opacity-80"
+              style={{ borderColor: themeConfig.border, color: themeConfig.textMuted }}
+            >
+              <ArrowRightLeft className="w-3 h-3" />
+            </button>
+            {isHandoffOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsHandoffOpen(false)} />
+                <div className="absolute left-0 top-full mt-1 z-50 min-w-[200px] rounded-lg border shadow-2xl p-1"
+                  style={{ backgroundColor: themeConfig.bgCard, borderColor: themeConfig.border }}>
+                  <div className="px-2 py-1 text-[10px]" style={{ color: themeConfig.textMuted }}>Continue with</div>
+                  {AGENTS.filter((a) => a.id !== agent.id).map((a) => (
+                    <button key={a.id} type="button"
+                      onClick={() => { setIsHandoffOpen(false); playLaunchSound(); onHandoff(a.id); }}
+                      className="w-full text-left px-2 py-1.5 rounded text-[11px] hover:opacity-80"
+                      style={{ color: themeConfig.textPrimary }}>
+                      {a.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
           {/* Flags menu: one button keeps the toolbar from overflowing however many flags there are. List is set in Settings. */}
           {(() => {
             const dangerOn = flags.some(isDangerFlag);
@@ -665,7 +724,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
               <span>Files</span>
             </button>
 
-            {agent.hasHistory && <button
+            {<button
               onClick={() => {
                 playClickSound();
                 setViewMode('history');
@@ -725,32 +784,6 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             <span>Run</span>
           </button>
 
-          {/* Action: Interrupt ^C */}
-          <button
-            onClick={handleSendInterrupt}
-            title="Send SIGINT (^C) to Terminal"
-            className="p-1 rounded hover:bg-black/20 transition-colors border"
-            style={{
-              borderColor: themeConfig.border,
-              color: themeConfig.textMuted
-            }}
-          >
-            <Square className="w-3 h-3" />
-          </button>
-
-          {/* Action: Clear */}
-          <button
-            onClick={handleClearTerminal}
-            title="Clear terminal screen"
-            className="p-1 rounded hover:bg-black/20 transition-colors border"
-            style={{
-              borderColor: themeConfig.border,
-              color: themeConfig.textMuted
-            }}
-          >
-            <Trash2 className="w-3 h-3" />
-          </button>
-
           {/* Action: Toggle Scratchpad Drawer */}
           <button
             onClick={() => {
@@ -768,66 +801,49 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             <FileEdit className="w-3 h-3" />
           </button>
 
-          {/* Action: Open in VS Code */}
-          <button
-            onClick={() => onOpenEditor(project.path)}
-            title="Open in VS Code"
-            className="p-1 rounded hover:bg-black/20 transition-colors border"
-            style={{
-              borderColor: themeConfig.border,
-              color: themeConfig.textMuted
-            }}
-          >
-            <Code2 className="w-3 h-3" />
-          </button>
-
-          {/* Action: Reveal in Finder */}
-          <button
-            onClick={() => onOpenFolder(project.path)}
-            title="Reveal in Finder"
-            className="p-1 rounded hover:bg-black/20 transition-colors border"
-            style={{
-              borderColor: themeConfig.border,
-              color: themeConfig.textMuted
-            }}
-          >
-            <FolderOpen className="w-3 h-3" />
-          </button>
+          {/* More: rarely used actions and the agent's quick commands, so the toolbar stays one short row. */}
+          <div className="relative flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsMoreOpen((o) => !o)}
+              title="More actions"
+              aria-label="More actions"
+              aria-expanded={isMoreOpen}
+              className="p-1 rounded hover:bg-black/20 transition-colors border"
+              style={{ borderColor: themeConfig.border, color: themeConfig.textMuted }}
+            >
+              <MoreHorizontal className="w-3 h-3" />
+            </button>
+            {isMoreOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsMoreOpen(false)} />
+                <div className="absolute right-0 top-full mt-1 z-50 min-w-[220px] max-h-[70vh] overflow-y-auto rounded-lg border shadow-2xl p-1 text-[11px]"
+                  style={{ backgroundColor: themeConfig.bgCard, borderColor: themeConfig.border }}>
+                  {[
+                    { label: 'Stop (Ctrl+C)', icon: <Square className="w-3 h-3" />, run: handleSendInterrupt },
+                    { label: 'Clear screen', icon: <Trash2 className="w-3 h-3" />, run: handleClearTerminal },
+                    { label: 'Open in editor', icon: <Code2 className="w-3 h-3" />, run: () => onOpenEditor(project.path) },
+                    { label: isMac ? 'Show in Finder' : 'Show in folder', icon: <FolderOpen className="w-3 h-3" />, run: () => onOpenFolder(project.path) }
+                  ].map((item) => (
+                    <button key={item.label} type="button" onClick={() => { setIsMoreOpen(false); item.run(); }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left hover:bg-black/20" style={{ color: themeConfig.textPrimary }}>
+                      <span style={{ color: themeConfig.textMuted }}>{item.icon}</span>{item.label}
+                    </button>
+                  ))}
+                  <div className="my-1 border-t" style={{ borderColor: themeConfig.border }} />
+                  <div className="px-2 py-1 text-[10px]" style={{ color: themeConfig.textMuted }}>Send to {agent.name}</div>
+                  {quickActions.map((qa) => (
+                    <button key={qa.label} type="button" title={qa.desc} onClick={() => { setIsMoreOpen(false); handleExecuteCommand(qa.cmd); }}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left hover:bg-black/20" style={{ color: themeConfig.textPrimary }}>
+                      <span style={{ color: themeConfig.accent }}>{qa.icon}</span>{qa.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
-
-      {/* 2. Quick Actions & Slash Commands Strip (Visible in Terminal mode) */}
-      {viewMode === 'terminal' && (
-        <div
-          className="h-7 px-3 flex items-center gap-1.5 overflow-x-auto no-scrollbar border-b text-[10px] flex-shrink-0"
-          style={{
-            backgroundColor: themeConfig.bgMain,
-            borderColor: themeConfig.border
-          }}
-        >
-          <span className="text-[9px] uppercase font-bold tracking-wider mr-1" style={{ color: themeConfig.textMuted }}>
-            QUICK ACTIONS:
-          </span>
-
-          {quickActions.map((qa) => (
-            <button
-              key={qa.label}
-              type="button"
-              onClick={() => handleExecuteCommand(qa.cmd)}
-              title={`${qa.desc} (Click to execute in Claude)`}
-              className="px-2 py-0.5 rounded flex items-center gap-1 transition-all border flex-shrink-0 hover:opacity-100 opacity-80"
-              style={{
-                backgroundColor: themeConfig.bgTabActive,
-                borderColor: themeConfig.border,
-                color: themeConfig.textSecondary
-              }}
-            >
-              <span style={{ color: themeConfig.accent }}>{qa.icon}</span>
-              <span className="font-medium">{qa.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* 3. Workspace Body */}
       <div className="relative flex-1 w-full h-full min-h-0 min-w-0 overflow-hidden flex">
@@ -1242,7 +1258,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                         <button
                           key={`${h.sessionId}-${h.index}`}
                           type="button"
-                          onClick={() => openTranscript(sessions?.find((x) => x.id === h.sessionId) || { id: h.sessionId, file: h.file, title: h.title, modifiedAt: 0, sizeBytes: 0, formattedSize: '', dateStr: '' }, h.index)}
+                          onClick={() => openTranscript(sessions?.find((x) => x.id === h.sessionId) || { id: h.sessionId, file: h.file, title: h.title, agent: h.agent, modifiedAt: 0, sizeBytes: 0, formattedSize: '', dateStr: '' }, h.index)}
                           className="w-full text-left px-2 py-1.5 rounded border transition-colors"
                           style={{
                             backgroundColor: openSession?.id === h.sessionId && focusMsg === h.index ? themeConfig.bgTabActive : 'transparent',
@@ -1250,7 +1266,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                           }}
                         >
                           <div className="text-[10px] truncate" style={{ color: themeConfig.textMuted }}>
-                            {h.role === 'user' ? 'You' : agent.name} · {h.time ? new Date(h.time).toLocaleString() : ''} · {h.title}
+                            {h.role === 'user' ? 'You' : agentById(h.agent).name} · {h.time ? new Date(h.time).toLocaleString() : ''} · {h.title}
                           </div>
                           <div className="text-[11px] mt-0.5 line-clamp-2" style={{ color: themeConfig.textPrimary }}>
                             <Highlight text={h.snippet} query={histQuery} color={themeConfig.accent} />
@@ -1275,7 +1291,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                     >
                       <div className="text-[11px] truncate" style={{ color: themeConfig.textPrimary }}>{sess.title}</div>
                       <div className="text-[10px] mt-0.5" style={{ color: themeConfig.textMuted }}>
-                        {sess.dateStr} · {sess.formattedSize}
+                        <span style={{ color: sess.agent === agent.id ? themeConfig.accent : themeConfig.textSecondary }}>{agentById(sess.agent).name}</span> · {sess.dateStr} · {sess.formattedSize}
                       </div>
                     </button>
                   ))
@@ -1287,7 +1303,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
             <div className="flex-1 flex flex-col min-w-0">
               {!openSession ? (
                 <div className="flex-1 flex items-center justify-center text-[11px] p-8 text-center" style={{ color: themeConfig.textMuted }}>
-                  Pick a conversation to read it, or search across all of them. {agent.name} saves every conversation in this project.
+                  Pick a conversation to read it, or search across all of them. Claude Code and Codex conversations in this project are both listed.
                 </div>
               ) : (
                 <>
@@ -1298,15 +1314,31 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                         {transcript?.[0]?.time ? new Date(transcript[0].time).toLocaleString() : openSession.dateStr} · {transcript?.length ?? '…'} messages · {openSession.id.slice(0, 8)}
                       </div>
                     </div>
+                    {/* Continue with another agent from this exact conversation (e.g. Codex ran out → Claude). */}
+                    {openSession.file && (
+                      <select
+                        value=""
+                        onChange={(e) => e.target.value && onHandoffSession(e.target.value, openSession.file!, openSession.agent || agent.id)}
+                        title="Hand this conversation, the changes and the project memory to another agent"
+                        aria-label="Continue with another agent"
+                        className="text-[10px] px-1.5 py-1 rounded border outline-none flex-shrink-0"
+                        style={{ backgroundColor: themeConfig.bgMain, borderColor: themeConfig.border, color: themeConfig.textSecondary }}
+                      >
+                        <option value="">Continue with…</option>
+                        {AGENTS.filter((a) => a.id !== (openSession.agent || agent.id)).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      </select>
+                    )}
                     <button
                       type="button"
-                      onClick={() => handleResumeSession(openSession.id)}
-                      title={`Reopen this conversation in ${agent.name}`}
+                      onClick={() => (openSession.agent && openSession.agent !== agent.id
+                        ? onResumeAs(openSession.agent, openSession.id)
+                        : handleResumeSession(openSession.id))}
+                      title={`Reopen this conversation in ${agentById(openSession.agent || agent.id).name}`}
                       className="px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 flex-shrink-0 text-white"
                       style={{ backgroundColor: themeConfig.accent }}
                     >
                       <RotateCcw className="w-3 h-3" />
-                      Resume
+                      Resume{openSession.agent && openSession.agent !== agent.id ? ` in ${agentById(openSession.agent).name}` : ''}
                     </button>
                   </div>
                   <div ref={transcriptRef} className="flex-1 overflow-y-auto p-4 select-text">
@@ -1327,7 +1359,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
                             }}
                           >
                             <div className="text-[10px] mb-1 font-bold" style={{ color: m.role === 'user' ? themeConfig.accent : themeConfig.textMuted }}>
-                              {m.role === 'user' ? 'You' : agent.name}
+                              {m.role === 'user' ? 'You' : agentById(openSession.agent).name}
                               <span className="font-normal ml-2">{m.time ? new Date(m.time).toLocaleString() : ''}</span>
                             </div>
                             <div className="text-xs whitespace-pre-wrap break-words leading-relaxed" style={{ color: themeConfig.textPrimary }}>

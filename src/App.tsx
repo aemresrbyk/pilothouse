@@ -11,8 +11,9 @@ import { startRecording, Recording } from './utils/voice';
 import { converse, ConvoDeps } from './utils/conversationLoop';
 import { Heard } from './utils/conversation';
 import { WakeWordDetector, startWakeListener, WakeListener } from './utils/wakeword';
-import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme, PtyStatus, TabState, InboxEvent, agentById, agentBinary, agentFlagPresets } from './types';
+import { ProjectItem, ProjectFlags, AppSettings, TabSession, AppTheme, PtyStatus, TabState, InboxEvent, PendingLaunch, handoffPrompt, agentById, agentBinary, agentFlagPresets } from './types';
 import { InboxPanel } from './components/InboxPanel';
+import { SetupWizard, SetupResult } from './components/SetupWizard';
 import { isMac, isAppShortcut, keyLabel, tabKeyLabel } from './utils/platform';
 import { THEMES, ThemeConfig } from './theme';
 import { ChromeTabBar } from './components/ChromeTabBar';
@@ -71,6 +72,7 @@ export const App: React.FC = () => {
       ]);
       setProjects(projs);
       setSettings(setts);
+      if (!setts.setupDone) setIsSetupOpen(true);
 
       if (setts.theme && THEMES[setts.theme]) {
         setTheme(setts.theme);
@@ -220,6 +222,7 @@ export const App: React.FC = () => {
   const [isInboxOpen, setIsInboxOpen] = useState(false);
   const [awaySince, setAwaySince] = useState<number | null>(null);
   const [gridMode, setGridMode] = useState(false);
+  const [isSetupOpen, setIsSetupOpen] = useState(false);
   const statusCtx = useRef({ tabs, projects, activeTabId, notify: true });
   statusCtx.current = { tabs, projects, activeTabId, notify: settings.notificationsEnabled !== false };
 
@@ -235,7 +238,12 @@ export const App: React.FC = () => {
     // Run-command tabs (dev servers …) get a dot but never nag.
     const attention = status !== 'running' && !looking && !tab.initialCommand;
     // A new run clears an earlier failure.
-    setTabStatus((prev) => ({ ...prev, [id]: { status, unseen: attention, failed: status === 'running' ? undefined : prev[id]?.failed } }));
+    setTabStatus((prev) => ({ ...prev, [id]: {
+      status,
+      unseen: attention,
+      failed: status === 'running' ? undefined : prev[id]?.failed,
+      limit: status === 'running' ? undefined : prev[id]?.limit
+    } }));
     if (attention) logEvent({ tabId: id, kind: status === 'waiting' ? 'waiting' : 'finished', at: Date.now() });
     if (attention && ctx.notify) {
       const name = ctx.projects.find((p) => p.id === tab.projectId)?.name || 'Project';
@@ -257,6 +265,21 @@ export const App: React.FC = () => {
     if (ctx.notify) {
       const n = new Notification(ctx.projects.find((p) => p.id === tab.projectId)?.name || 'Project', { body: `Failed (exit code ${code})` });
       n.onclick = () => { window.electronAPI.focusApp(); setActiveTabId(id); };
+    }
+  }), []);
+
+  // The agent ran out of its plan's usage: offer to continue with another agent (Inbox + notification).
+  useEffect(() => window.electronAPI.onPtyLimit(({ id }) => {
+    const ctx = statusCtx.current;
+    const tab = ctx.tabs.find((t) => t.id === id);
+    if (!tab) return;
+    setTabStatus((prev) => ({ ...prev, [id]: { status: prev[id]?.status || 'idle', unseen: true, failed: prev[id]?.failed, limit: true } }));
+    logEvent({ tabId: id, kind: 'limit', at: Date.now() });
+    setAwaySince(null);
+    setIsInboxOpen(true);
+    if (ctx.notify) {
+      const n = new Notification(ctx.projects.find((p) => p.id === tab.projectId)?.name || 'Project', { body: 'Usage limit reached. Continue with another agent from the Inbox.' });
+      n.onclick = () => { window.electronAPI.focusApp(); setIsInboxOpen(true); };
     }
   }), []);
 
@@ -292,7 +315,7 @@ export const App: React.FC = () => {
   }, []);
 
   // Tabs that need you: unseen result, pending approval or a failure. Dock badge + Inbox count.
-  const needsYou = tabs.filter((t) => tabStatus[t.id]?.unseen || tabStatus[t.id]?.status === 'waiting').length;
+  const needsYou = tabs.filter((t) => tabStatus[t.id]?.unseen || tabStatus[t.id]?.limit || tabStatus[t.id]?.status === 'waiting').length;
   useEffect(() => {
     window.electronAPI.setBadge(needsYou);
   }, [needsYou]);
@@ -584,6 +607,32 @@ export const App: React.FC = () => {
     }
   };
 
+  // Hand-off: write .pilothouse/handoff.md from the current agent's work, switch the project to the next agent and
+  // restart the tab with a first prompt telling it to read that file.
+  // sessionFile/fromAgentId: continue from a past conversation picked in History instead of the latest one.
+  const [pendingLaunches, setPendingLaunches] = useState<Record<string, PendingLaunch>>({});
+  const handleHandoff = async (tabId: string, toAgentId: string, sessionFile?: string, fromAgentId?: string) => {
+    const tab = tabs.find((t) => t.id === tabId);
+    const proj = projects.find((p) => p.id === tab?.projectId);
+    if (!tab || !proj) return;
+    const from = agentById(fromAgentId || proj.agent);
+    const r = await window.electronAPI.writeHandoff(proj.path, from.id, sessionFile);
+    if (!r.path) return showToast(`HAND-OFF FAILED: ${r.error || 'unknown error'}`, 'error');
+    handleSwitchAgent(proj.id, toAgentId);
+    setPendingLaunches((p) => ({ ...p, [tabId]: { prompt: handoffPrompt(from.name) } }));
+    setTabStatus((prev) => ({ ...prev, [tabId]: { status: 'idle', unseen: false } }));
+    setActiveTabId(tabId);
+    setIsInboxOpen(false);
+    showToast(`HANDED OFF: ${from.name} → ${agentById(toAgentId).name}`, 'success');
+  };
+  // Reopen a past session in the agent that wrote it, switching the project's agent if needed.
+  const handleResumeAs = (tabId: string, agentId: string, sessionId: string) => {
+    const proj = projects.find((p) => p.id === tabs.find((t) => t.id === tabId)?.projectId);
+    if (!proj) return;
+    handleSwitchAgent(proj.id, agentId);
+    setPendingLaunches((p) => ({ ...p, [tabId]: { resumeId: sessionId } }));
+  };
+
   // A new tab in its own git worktree + branch, registered as a project so it gets history, CLAUDE.md etc.
   const handleOpenWorktree = async (projectPath: string) => {
     const r = await window.electronAPI.addWorktree(projectPath);
@@ -597,6 +646,41 @@ export const App: React.FC = () => {
 
   const handleOpenEditor = async (path: string, editor?: string) => {
     await window.electronAPI.openInEditor(path, editor || settings.defaultEditor);
+  };
+
+  // Setup wizard: store the agent paths, add/remove projects, set each project's agent.
+  const handleFinishSetup = async ({ agentPaths, projects: rows }: SetupResult) => {
+    setIsSetupOpen(false);
+    const norm = (p: string) => p.replace(/[\\/]+$/, '');
+    const current = await window.electronAPI.getProjects();
+    let failed = 0;
+    for (const r of rows) {
+      const existing = current.find((p) => norm(p.path) === norm(r.path));
+      try {
+        if (existing && !r.include) await window.electronAPI.removeProject(existing.id); // only leaves the list; files untouched
+        if (!r.include) continue;
+        const proj = existing || await window.electronAPI.addProject(r.path);
+        const from = proj.agent || 'claude';
+        if (from !== r.agent) {
+          // Same bookkeeping as switching agent in the toolbar: each agent keeps its own flags.
+          const agentFlags = { ...(proj.agentFlags || {}), [from]: proj.flags };
+          await window.electronAPI.updateProject(proj.id, { agent: r.agent, flags: agentFlags[r.agent] || [], agentFlags });
+        }
+      } catch {
+        failed++;
+      }
+    }
+    // Claude's path goes to its existing Settings field, so editing it there keeps working.
+    const { claude, ...others } = agentPaths;
+    setSettings(await window.electronAPI.updateSettings({ agentPaths: others, ...(claude ? { claudePath: claude } : {}), setupDone: true }));
+    const projs = await window.electronAPI.getProjects();
+    setProjects(projs);
+    setTabs((prev) => prev.filter((t) => projs.some((p) => p.id === t.projectId)));
+    showToast(failed ? `SETUP SAVED, ${failed} PROJECT(S) FAILED` : `READY: ${rows.filter((r) => r.include).length} PROJECTS`, failed ? 'error' : 'success');
+  };
+  const handleSkipSetup = async () => {
+    setIsSetupOpen(false);
+    setSettings(await window.electronAPI.updateSettings({ setupDone: true }));
   };
 
   const handleSaveSettings = async (newSettings: Partial<AppSettings>) => {
@@ -766,11 +850,16 @@ export const App: React.FC = () => {
                   themeConfig={themeConfig}
                   isActive={isTabActive}
                   agent={agentById(proj.agent)}
-                  agentBinary={agentBinary(agentById(proj.agent), settings.claudePath)}
+                  agentBinary={agentBinary(agentById(proj.agent), settings)}
                   flagPresets={agentFlagPresets(settings, proj.agent)}
                   onSwitchAgent={handleSwitchAgent}
                   onRunCommand={(cmd) => handleNewTab(proj.id, cmd)}
                   onOpenWorktree={() => handleOpenWorktree(proj.path)}
+                  onHandoff={(agentId) => handleHandoff(tab.id, agentId)}
+                  onHandoffSession={(agentId, sessionFile, fromAgent) => handleHandoff(tab.id, agentId, sessionFile, fromAgent)}
+                  onResumeAs={(agentId, sessionId) => handleResumeAs(tab.id, agentId, sessionId)}
+                  pendingLaunch={pendingLaunches[tab.id]}
+                  onLaunchUsed={() => setPendingLaunches(({ [tab.id]: _, ...rest }) => rest)}
                   onSaveCustomCommands={async (cmds) => {
                     const updated = await window.electronAPI.updateProject(proj.id, { customRunCommands: cmds });
                     if (updated) setProjects((prev) => prev.map((p) => (p.id === proj.id ? { ...p, customRunCommands: cmds } : p)));
@@ -963,6 +1052,7 @@ export const App: React.FC = () => {
         awaySince={awaySince}
         onGoToTab={setActiveTabId}
         onStopTab={handleCloseTab}
+        onHandoff={handleHandoff}
         themeConfig={themeConfig}
       />
 
@@ -971,6 +1061,14 @@ export const App: React.FC = () => {
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
         onSaveSettings={handleSaveSettings}
+        onRunSetup={() => setIsSetupOpen(true)}
+      />
+
+      <SetupWizard
+        isOpen={isSetupOpen}
+        onFinish={handleFinishSetup}
+        onSkip={handleSkipSetup}
+        themeConfig={themeConfig}
       />
     </div>
   );

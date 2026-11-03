@@ -9,7 +9,9 @@ import { StorageManager } from './store';
 import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './terminal';
 import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions, readTranscript, searchHistory, isSessionFile, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
 import { startControlServer, CONTROL_FILE, stripAnsi } from './control';
-import { Activity, newActivity, noteOutput, nextStatus } from './activity';
+import { Activity, newActivity, noteOutput, nextStatus, hitLimit } from './activity';
+import { writeHandoff } from './handoff';
+import { detectAgents, scanProjects } from './setup';
 import { processUsage } from './resources';
 import { whisperBinary, hasModel, downloadModel, transcribe, speak, stopSpeaking, MODEL_BYTES } from './voice';
 import { ProjectItem, AppSettings, ClaudeSession, agentById, agentBinary } from '../src/types';
@@ -24,7 +26,7 @@ let win: BrowserWindow | null = null;
 let storage: StorageManager;
 const ptySessions = new Map<string, pty.IPty>();
 // cwd + recent output per PTY, so the control API can tell which project a terminal belongs to and read it back.
-const ptyMeta = new Map<string, { cwd: string; buf: string; act: Activity; sender: Electron.WebContents }>();
+const ptyMeta = new Map<string, { cwd: string; buf: string; act: Activity; sender: Electron.WebContents; limited?: boolean }>();
 const OUTPUT_KEEP = 60_000;
 const pendingOpens = new Map<string, (tabId: string) => void>();
 
@@ -154,10 +156,18 @@ app.whenReady().then(() => {
     const now = Date.now();
     for (const [id, m] of ptyMeta) {
       if (!ptySessions.has(id)) continue;
-      const status = nextStatus(m.act, now, stripAnsi(m.buf.slice(-2000)).slice(-600));
+      const tail = stripAnsi(m.buf.slice(-2000)).slice(-600);
+      const status = nextStatus(m.act, now, tail);
       if (status === m.act.status) continue;
       m.act.status = status;
-      if (!m.sender.isDestroyed()) m.sender.send('pty:status', { id, status });
+      if (m.sender.isDestroyed()) continue;
+      m.sender.send('pty:status', { id, status });
+      // Once per stop: the agent ran out of its plan's usage, so the UI can offer another agent.
+      if (status === 'running') m.limited = false;
+      else if (!m.limited && hitLimit(tail)) {
+        m.limited = true;
+        m.sender.send('pty:limit', { id });
+      }
     }
   }, 1000);
   if (app.isPackaged) {
@@ -216,6 +226,18 @@ function registerIpcHandlers() {
   ipcMain.handle('projects:remove', async (_e, id: string) => {
     return storage.removeProject(id);
   });
+
+  // Setup wizard: an agent CLI the scan couldn't find.
+  ipcMain.handle('dialog:pick-file', async (_e, title: string) => {
+    if (!win) return null;
+    const result = await dialog.showOpenDialog(win, { title: String(title).slice(0, 100), properties: ['openFile', 'showHiddenFiles'] });
+    return result.canceled ? null : result.filePaths[0] || null;
+  });
+
+  ipcMain.handle('setup:scan', async () => ({
+    agents: await detectAgents(),
+    projects: scanProjects(storage.listStoredProjects())
+  }));
 
   ipcMain.handle('dialog:pick-directory', async () => {
     if (!win) return null;
@@ -321,7 +343,7 @@ function registerIpcHandlers() {
     const settings = storage.getSettings();
     const command = (customCommand && customCommand.trim().length > 0)
       ? customCommand
-      : buildClaudeCommand(project.flags, project.customFlags, agentBinary(agentById(project.agent), settings.claudePath));
+      : buildClaudeCommand(project.flags, project.customFlags, agentBinary(agentById(project.agent), settings));
 
     const terminal = (project.terminalOverride && project.terminalOverride !== 'default')
       ? project.terminalOverride
@@ -401,8 +423,12 @@ function registerIpcHandlers() {
   });
 
   // Sessions without a user prompt (opened and closed) have nothing to resume.
+  // 'all' = every agent's sessions in one list, newest first, so you see what Claude and Codex both did.
   const listSessions = (projectPath: string, agentId?: string) =>
-    (agentId === 'codex' ? getCodexSessions(projectPath) : getProjectSessions(projectPath, true)).filter((s) => s.title);
+    (agentId === 'all'
+      ? [...getProjectSessions(projectPath, true), ...getCodexSessions(projectPath)].sort((a, b) => b.modifiedAt - a.modifiedAt)
+      : agentId === 'codex' ? getCodexSessions(projectPath) : getProjectSessions(projectPath, true)
+    ).filter((s) => s.title);
   ipcMain.handle('project:get-sessions', async (_e, projectPath: string, agentId?: string) => listSessions(projectPath, agentId));
   ipcMain.handle('history:transcript', async (_e, file: string) => (isSessionFile(file) ? readTranscript(file) : []));
   ipcMain.handle('history:search', async (_e, projectPath: string, agentId: string, query: string) =>
@@ -422,6 +448,12 @@ function registerIpcHandlers() {
 
   ipcMain.handle('clipboard:write', async (_e, text: string) => {
     clipboard.writeText(text);
+  });
+
+  ipcMain.handle('handoff:write', async (_e, projectPath: string, fromAgent: string, sessionFile?: string) => {
+    if (!storage.listStoredProjects().some((p) => p.path === projectPath)) return { error: 'Unknown project' };
+    if (sessionFile && !isSessionFile(sessionFile)) return { error: 'Not a session file' };
+    return writeHandoff(projectPath, fromAgent, sessionFile);
   });
 
   ipcMain.handle('pty:resources', async () => {
