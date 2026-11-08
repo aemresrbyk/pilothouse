@@ -13,6 +13,10 @@
 
 </div>
 
+<p align="center">
+  <img src="docs/media/demo.gif" alt="Three agents working in Pilothouse's grid view; one asks for approval, the tab dot turns amber and the Inbox answers it" width="900" />
+</p>
+
 > Built with the [Electron framework](https://www.electronjs.org/); not affiliated with the OpenJS Foundation or the Electron project.
 
 **Website:** [kitefoldgames.com/pilothouse-site](https://kitefoldgames.com/pilothouse-site/)

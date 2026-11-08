@@ -214,6 +214,8 @@ assert.equal(findProject(ps, '/x/pilothouse')?.id, 'b');
 assert.equal(findProject(ps, 'pilot house')?.id, 'b');
 assert.equal(findProject(ps, 'nope'), undefined);
 assert.equal(stripAnsi('\x1b[31mhi\x1b[0m\r\x1b]0;t\x07ok'), 'hi\nok');
+// Claude Code redraws skip unchanged spaces with absolute column jumps (ESC[nG).
+assert.deepEqual(parseChoices(stripAnsi('❯ 1. Yes\n  2. Yes,\x1b[12Gand\x1b[16Gswitch\n  3. No')).map(c => c.label), ['Yes', 'Yes, and switch', 'No']);
 
 {
   // Voice endpointing: speech then a 1.5 s pause ends it; silence alone gives up after 8 s.
