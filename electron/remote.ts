@@ -111,7 +111,8 @@ export function autoChoice(v: SessionView, rules: string[]): Choice | null {
 
 // ---- Paired devices ----
 
-interface Device { id: string; name: string; hash: string; created: number; lastSeen?: number; apns?: string; sandbox?: boolean }
+// pushKey: AES-256 key shared with the phone, so notification text is end-to-end encrypted through the relay.
+interface Device { id: string; name: string; hash: string; created: number; lastSeen?: number; apns?: string; sandbox?: boolean; pushKey?: string }
 interface RemoteState { pair: string; devices: Device[] }
 export interface DeviceInfo { id: string; name: string; created: number; lastSeen?: number; push: boolean }
 
@@ -144,7 +145,7 @@ export function revokeDevice(id: string) { const s = remoteState(); s.devices = 
 export const listDevices = (): DeviceInfo[] =>
   remoteState().devices.map(d => ({ id: d.id, name: d.name, created: d.created, lastSeen: d.lastSeen, push: !!d.apns }));
 
-export const pushTargets = () => remoteState().devices.filter(d => d.apns).map(d => ({ token: d.apns!, sandbox: d.sandbox }));
+export const pushTargets = () => remoteState().devices.filter(d => d.apns).map(d => ({ token: d.apns!, sandbox: d.sandbox, key: d.pushKey }));
 
 export function forgetPushTokens(tokens: string[]) {
   if (!tokens.length) return;
@@ -292,8 +293,12 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
         if (!/^[0-9a-f]{64,200}$/i.test(token)) return send(400, { error: 'bad token' });
         const s = remoteState();
         const d = s.devices.find(x => x.id === device.id);
-        if (d) { d.apns = token; d.sandbox = body.sandbox === true; saveState(s); }
-        return send(200, { ok: true });
+        if (!d) return send(404, { error: 'device not found' });
+        d.apns = token;
+        d.sandbox = body.sandbox === true;
+        d.pushKey ||= crypto.randomBytes(32).toString('base64');
+        saveState(s);
+        return send(200, { ok: true, pushKey: d.pushKey });
       }
       if (route === 'POST /api/unpair') {
         revokeDevice(device.id);
