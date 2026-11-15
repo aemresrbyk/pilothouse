@@ -31,6 +31,8 @@ export const REMOTE_PAGE = `<!doctype html>
   .row { display:flex; gap:6px; margin-top:10px; }
   input { flex:1; min-width:0; font:inherit; color:var(--text); background:#07090c; border:1px solid var(--line); border-radius:10px; padding:10px; min-height:44px; }
   .row button { flex-shrink:0; text-align:center; }
+  h2 { font-size:14px; color:var(--dim); margin:20px 0 8px; font-weight:600; }
+  .proj { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0 6px 12px; }
   details summary { color:var(--dim); font-size:13px; margin-top:8px; }
 </style>
 </head>
@@ -38,6 +40,8 @@ export const REMOTE_PAGE = `<!doctype html>
 <h1><b>●</b> Pilothouse</h1>
 <div id="msg">Connecting…</div>
 <div id="list"></div>
+<h2 id="ptitle" hidden>Projects</h2>
+<div id="projects"></div>
 <script>
 (function () {
   var KEY = 'pilothouse-token';
@@ -46,7 +50,8 @@ export const REMOTE_PAGE = `<!doctype html>
   var token = m ? m[1] : (function () { try { return localStorage.getItem(KEY); } catch (e) { return null; } })();
   var msg = document.getElementById('msg'), list = document.getElementById('list');
   var armed = {}; // session id -> choice key armed for a risky approval
-  var last = '';
+  var last = '', lastProj = '';
+  var plist = document.getElementById('projects'), ptitle = document.getElementById('ptitle');
 
   function api(method, path, body) {
     return fetch(path, { method: method, headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
@@ -115,6 +120,32 @@ export const REMOTE_PAGE = `<!doctype html>
       list.replaceChildren.apply(list, r.body.map(card));
     }).catch(function () { msg.textContent = 'Cannot reach Pilothouse. Is the computer awake and on Tailscale?'; });
   }
+  function loadProjects() {
+    if (!token) return;
+    api('GET', '/api/projects').then(function (r) {
+      if (r.status !== 200) return;
+      var key = JSON.stringify(r.body);
+      if (key === lastProj) return;
+      lastProj = key;
+      ptitle.hidden = !r.body.length;
+      plist.replaceChildren.apply(plist, r.body.map(function (p) {
+        var row = el('div', 'card proj');
+        row.appendChild(el('span', 'name', p.name));
+        var b = el('button', null, 'Open agent');
+        b.onclick = function () {
+          b.disabled = true; b.textContent = 'Opening…';
+          api('POST', '/api/open', { project: p.id }).then(function (x) {
+            if (x.status !== 200) msg.textContent = x.body.error || 'Failed';
+            last = ''; lastProj = ''; setTimeout(function () { load(); loadProjects(); }, 1500);
+          });
+        };
+        row.appendChild(b);
+        return row;
+      }));
+    }).catch(function () {});
+  }
+  loadProjects();
+  setInterval(loadProjects, 10000);
   load();
   // shortcut: polling every 2 s; switch to server-sent events if many phones or battery use become a problem.
   setInterval(load, 2000);

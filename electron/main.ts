@@ -203,7 +203,8 @@ async function applyRemote(enabled: boolean) {
   const r = await startRemoteServer({
     listProjects: () => storage.listStoredProjects(),
     sessions: () => [...ptyMeta.entries()].filter(([id]) => ptySessions.has(id)).map(([id, m]) => ({ id, cwd: m.cwd, status: m.act.status, buf: m.buf })),
-    write: (id, data) => { const p = ptySessions.get(id); const m = ptyMeta.get(id); if (!p) return false; if (m) m.act.lastInput = Date.now(); p.write(data); return true; }
+    write: (id, data) => { const p = ptySessions.get(id); const m = ptyMeta.get(id); if (!p) return false; if (m) m.act.lastInput = Date.now(); p.write(data); return true; },
+    openTab: (projectId) => openTabViaRenderer(projectId)
   });
   if ('error' in r) remoteError = r.error; else remote = r;
 }
