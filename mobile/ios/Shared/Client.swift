@@ -37,6 +37,19 @@ struct AgentUsage: Codable, Identifiable, Hashable {
     var id: String { agent }
 }
 
+struct Conversation: Codable, Identifiable, Hashable {
+    let key: String // "claude:<session id>"
+    let agent: String
+    let project: String
+    let projectId: String
+    let title: String
+    let updatedAt: Double
+    let live: Bool
+    var id: String { key }
+}
+struct ChatMessage: Codable, Hashable { let role: String; let text: String; let time: String? }
+struct ChatLog: Codable { let messages: [ChatMessage]; let live: Bool }
+
 struct TodoItem: Codable, Hashable { let file: String; let line: Int; let text: String; let kind: String }
 struct TodoList: Codable { let project: String; let items: [TodoItem] }
 struct DiffResult: Codable { let project: String; let stat: String; let diff: String; let untracked: [String] }
@@ -131,6 +144,11 @@ final class Client {
     func sessions() async throws -> [Session] { try await send("GET", "/api/sessions") }
     func projects() async throws -> [Project] { try await send("GET", "/api/projects") }
     func usage() async throws -> [AgentUsage] { try await send("GET", "/api/usage") }
+    func conversations() async throws -> [Conversation] { try await send("GET", "/api/conversations") }
+    func conversation(_ key: String) async throws -> ChatLog {
+        try await send("GET", "/api/conversation?key=\(key.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? key)")
+    }
+    func resume(_ key: String) async throws { let _: OK = try await send("POST", "/api/resume", ["key": key]) }
     func todos(_ projectId: String) async throws -> TodoList {
         try await send("GET", "/api/todos?project=\(projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId)")
     }

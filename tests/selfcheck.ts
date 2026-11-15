@@ -383,7 +383,8 @@ if (bin && hasModel()) {
     listProjects: () => [{ id: 'p', name: 'demo', path: '/tmp/demo' } as any, { id: 'q', name: 'other', path: '/tmp/other' } as any],
     sessions: () => [{ id: 't1', cwd: '/tmp/demo', status: 'waiting', buf: tail }],
     write: (_id, d) => { writes.push(d); return true; },
-    openTab: async (pid) => { opened.push(pid); return 'tab'; }
+    openTab: async (pid) => { opened.push(pid); return 'tab'; },
+    resume: async () => 'tab'
   }, '127.0.0.1', 0);
   assert.ok('server' in r);
   const port = (r.server.address() as any).port;
@@ -502,7 +503,7 @@ if (bin && hasModel()) {
   globalThis.fetch = realFetch;
 
   // Without Tailscale it refuses to start rather than falling back to the LAN.
-  const off = await startRemoteServer({ listProjects: () => [], sessions: () => [], write: () => true, openTab: async () => '' }, '');
+  const off = await startRemoteServer({ listProjects: () => [], sessions: () => [], write: () => true, openTab: async () => '', resume: async () => '' }, '');
   assert.ok('error' in off);
   console.log('remote ok');
 }
@@ -558,9 +559,20 @@ if (bin && hasModel()) {
   assert.deepStrictEqual(todos.map(t => [t.file, t.line, t.kind]), [['plan.md', 2, 'task'], ['a.ts', 1, 'todo'], ['a.ts', 2, 'todo']]);
   delete process.env.PILOTHOUSE_DIR;
   console.log('usage + todos ok');
+
+  // Recent conversations from any terminal: Claude (cwd in the transcript) and Codex.
+  const { recentSessions } = await import('../electron/scanner');
+  const homes = { claude: fs.mkdtempSync(path.join(os.tmpdir(), 'ph-rc-')), codex: fs.mkdtempSync(path.join(os.tmpdir(), 'ph-rx-')) };
+  fs.mkdirSync(path.join(homes.claude, 'projects', '-x-app'), { recursive: true });
+  fs.writeFileSync(path.join(homes.claude, 'projects', '-x-app', 'abc.jsonl'), JSON.stringify({ type: 'user', cwd: '/x/app', message: { content: 'fix the login bug' } }) + '\n');
+  fs.writeFileSync(path.join(homes.claude, 'projects', '-x-app', 'old.jsonl'), JSON.stringify({ type: 'user', cwd: '/x/app', message: { content: 'old' } }) + '\n');
+  fs.utimesSync(path.join(homes.claude, 'projects', '-x-app', 'old.jsonl'), new Date(0), new Date(0));
+  const rs = recentSessions(Date.now() - 60_000, homes);
+  assert.deepStrictEqual(rs.map(r => [r.agent, r.id, r.cwd]), [['claude', 'abc', '/x/app']]);
   const { previewOf } = await import('../electron/remote');
   assert.equal(previewOf('⏺ Tests pass, pushed the fix.\n\n↓ 2 more\n────\n❯ \n  ⏵⏵ bypass permissions on (shift+tab to cycle)\n'), 'Tests pass, pushed the fix.');
   assert.equal(stripAnsi('\x1b(Bhello\x1b)0'), 'hello');
+  assert.equal(previewOf('❯ say it\n✻ Contemplating… (2s · thinking)\n⏺\n  Bildirim testi tamam.\n  Contemplating… running Stop hooks… 1/2\n✻ Baked for 3s · done 17:14\n❯ \noff $0.00 0s Review Audit Board Details [-]\n'), 'Bildirim testi tamam.');
 }
 
 console.log('selfcheck ok');

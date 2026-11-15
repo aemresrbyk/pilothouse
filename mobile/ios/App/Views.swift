@@ -117,8 +117,15 @@ struct HomeView: View {
                 if model.sessions.isEmpty && model.error == nil {
                     Section { Text("No agent tabs open. Open one from Projects below.").foregroundStyle(.secondary) }
                 }
+                if !model.conversations.isEmpty {
+                    Section {
+                        ForEach(model.conversations.prefix(8)) { c in
+                            NavigationLink { ConversationView(c: c) } label: { ConversationRow(c: c) }
+                        }
+                    } header: { Text("Conversations") } footer: { Text("Claude Code and Codex sessions from any terminal, including ones outside Pilothouse.") }
+                }
                 if !model.usage.isEmpty {
-                    Section("Usage left") { ForEach(model.usage) { u in UsageRow(u: u) } }
+                    Section("Usage") { ForEach(model.usage) { u in UsageRow(u: u) } }
                 }
                 if !model.projects.isEmpty {
                     Section {
@@ -350,6 +357,93 @@ struct DiffLine: View {
     }
 }
 
+// MARK: - Conversations
+
+struct ConversationRow: View {
+    let c: Conversation
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle().fill(c.live ? Color.lime : Color.gray.opacity(0.4)).frame(width: 9, height: 9)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(c.project).font(.headline)
+                    Text(c.agent).font(.caption2.bold()).foregroundStyle(Color.lime.opacity(0.8))
+                }
+                Text(c.title.isEmpty ? "Conversation" : c.title).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            }
+            Spacer()
+            Text(Date(timeIntervalSince1970: c.updatedAt / 1000), style: .relative).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+}
+
+struct ConversationView: View {
+    let c: Conversation
+    @State private var log: ChatLog?
+    @State private var error: String?
+    @State private var confirmResume = false
+    @State private var resumed = false
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    if let log {
+                        ForEach(Array(log.messages.enumerated()), id: \.offset) { _, m in Bubble(m: m) }
+                    } else if let error {
+                        Text(error).foregroundStyle(.orange)
+                    } else {
+                        ProgressView().frame(maxWidth: .infinity)
+                    }
+                    Color.clear.frame(height: 1).id("end")
+                }
+                .padding(12)
+            }
+            .onChange(of: log?.messages.count) { _, _ in withAnimation { proxy.scrollTo("end", anchor: .bottom) } }
+        }
+        .navigationTitle(c.project)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(resumed ? "Opened" : "Continue here") { confirmResume = true }.disabled(resumed || c.projectId.isEmpty)
+            }
+        }
+        .confirmationDialog("Continue this conversation in a Pilothouse tab?", isPresented: $confirmResume, titleVisibility: .visible) {
+            Button("Open in Pilothouse") {
+                Task {
+                    do { try await Client.shared.resume(c.key); resumed = true } catch { self.error = error.localizedDescription }
+                }
+            }
+        } message: {
+            Text("If it is still running in another terminal, close it there first, or both will write to the same conversation.")
+        }
+        // Follows a live session: polls while this screen is open.
+        .task {
+            while !Task.isCancelled {
+                do { log = try await Client.shared.conversation(c.key); error = nil } catch { if log == nil { self.error = error.localizedDescription } }
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
+    }
+}
+
+struct Bubble: View {
+    let m: ChatMessage
+    var body: some View {
+        let mine = m.role == "user"
+        HStack {
+            if mine { Spacer(minLength: 40) }
+            Text(LocalizedStringKey(m.text))
+                .font(.callout)
+                .textSelection(.enabled)
+                .padding(10)
+                .background(mine ? Color.lime.opacity(0.18) : Color(white: 0.13))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            if !mine { Spacer(minLength: 24) }
+        }
+    }
+}
+
 // MARK: - Usage
 
 struct UsageRow: View {
@@ -365,17 +459,25 @@ struct UsageRow: View {
                 }
             }
             ForEach(u.windows, id: \.self) { w in
-                let left = max(0, 100 - w.usedPercent)
+                let used = min(100, max(0, w.usedPercent))
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
-                        Text("\(Int(left))% left · \(w.label)").font(.caption)
+                        Text("\(Int(used))% used · \(w.label)").font(.caption)
                         Spacer()
                         if let r = w.resetsAt, r > Date().timeIntervalSince1970 * 1000 {
                             Text("resets ") .font(.caption2).foregroundStyle(.secondary)
                             + Text(Date(timeIntervalSince1970: r / 1000), style: .relative).font(.caption2).foregroundStyle(.secondary)
                         }
                     }
-                    ProgressView(value: left, total: 100).tint(left < 15 ? .red : left < 40 ? .amber : .lime)
+                    // Fills from empty to full as the limit is used up.
+                    GeometryReader { g in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.black)
+                            Capsule().fill(Color.lime).frame(width: g.size.width * used / 100)
+                        }
+                    }
+                    .frame(height: 6)
+                    .accessibilityLabel("\(Int(used)) percent of the \(w.label) limit used")
                 }
             }
             if let note = u.note { Text(note).font(.caption).foregroundStyle(.secondary) }
