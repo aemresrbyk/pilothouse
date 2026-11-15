@@ -1,16 +1,19 @@
-// Phone remote: a small web page + JSON API so a phone can see every agent tab across projects and agents,
-// answer approval prompts and send messages. Listens only on this computer's Tailscale address: traffic is
-// WireGuard-encrypted and reachable only from your own tailnet devices. Never on the LAN, where plain HTTP
-// could be sniffed. Every remote action is appended to ~/.pilothouse/remote-audit.jsonl.
+// Phone remote: a JSON API (plus a small web page) so a phone can see every agent tab across projects and agents,
+// answer approval prompts, send messages, read diffs and open projects. Listens only on this computer's Tailscale
+// address: traffic is WireGuard-encrypted and reachable only from your own tailnet devices. Never on the LAN, where
+// plain HTTP could be sniffed. Each phone pairs once (QR code) and gets its own revocable token. Every remote
+// action is appended to ~/.pilothouse/remote-audit.jsonl.
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
+import { execFile } from 'child_process';
 import { stripAnsi } from './control';
-import { parseChoices } from '../src/utils/inbox';
+import { parseChoices, Choice } from '../src/utils/inbox';
 import type { ProjectItem, PtyStatus } from '../src/types';
 import { REMOTE_PAGE } from './remotePage';
+import { REMOTE_ICON_PNG } from './remoteIcon';
 
 export interface RemoteSession { id: string; cwd: string; status: PtyStatus; buf: string }
 export interface RemoteDeps {
@@ -40,7 +43,7 @@ export function tailscaleIp(): string | undefined {
   }
 }
 
-// Commands that can destroy work or leak it. A match makes the phone ask twice before approving.
+// Commands that can destroy work or leak it. A match makes the phone ask twice and blocks auto-approval.
 const DANGER_RE = [
   /\brm\s+(-\w*[rf]\w*\s+)+/, /\bgit\s+push\b.*(--force|\s-f\b)/, /\bgit\s+reset\s+--hard/, /\bgit\s+clean\s+-\w*f/,
   /\bdrop\s+(table|database|schema)\b/i, /\btruncate\s+table\b/i, /\b(curl|wget)\b[^|\n]*\|\s*(ba|z)?sh\b/,
@@ -55,6 +58,14 @@ export const isRefusal = (label: string) => /^no\b/i.test(label.trim());
 // Identifies the prompt the phone was shown, so a late tap cannot approve a newer, different prompt.
 export const promptSig = (text: string) => crypto.createHash('sha256').update(text).digest('hex').slice(0, 16);
 
+// The few lines above the options: what the agent wants to do. Used for notification text.
+export function promptSummary(text: string): string {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const firstOption = lines.findIndex(l => /^[\s│┃|❯›>●○*•]*1[.)]\s/.test(l));
+  const above = (firstOption > 0 ? lines.slice(0, firstOption) : lines).slice(-4);
+  return above.join(' · ').replace(/\s+/g, ' ').slice(0, 180);
+}
+
 export function sessionView(s: RemoteSession, projects: ProjectItem[]) {
   const text = stripAnsi(s.buf.slice(-12000)).slice(-4000);
   const waiting = s.status === 'waiting';
@@ -66,23 +77,74 @@ export function sessionView(s: RemoteSession, projects: ProjectItem[]) {
     tail: text.slice(-2500),
     choices: waiting ? parseChoices(text) : [],
     risk: waiting ? riskOf(prompt) : 'normal',
-    sig: waiting ? promptSig(prompt) : ''
+    sig: waiting ? promptSig(prompt) : '',
+    summary: waiting ? promptSummary(prompt) : ''
   };
 }
+export type SessionView = ReturnType<typeof sessionView>;
 
-export function remoteToken(reset = false): string {
-  if (!reset) {
-    try { const t = JSON.parse(fs.readFileSync(remoteFile(), 'utf-8')).token; if (typeof t === 'string' && t.length >= 32) return t; } catch {}
-  }
-  const token = crypto.randomBytes(24).toString('hex');
-  fs.mkdirSync(dir(), { recursive: true });
-  fs.writeFileSync(remoteFile(), JSON.stringify({ token }), { mode: 0o600 });
-  fs.chmodSync(remoteFile(), 0o600);
-  return token;
+// Auto-approval rules (Settings): plain phrases; if one appears in a prompt that is not risky, pick its first option.
+// shortcut: matches the terminal text near the prompt, so a phrase that also appears in the agent's own output can
+// match; the risky-command guard and the audit log bound the damage. Upgrade to agent hooks for exact tool names.
+export function autoChoice(v: SessionView, rules: string[]): Choice | null {
+  if (v.status !== 'waiting' || v.risk === 'danger' || v.choices.length < 2 || isRefusal(v.choices[0].label)) return null;
+  const prompt = v.tail.slice(-800).toLowerCase();
+  return rules.some(r => r.trim() && prompt.includes(r.trim().toLowerCase())) ? v.choices[0] : null;
 }
 
-const tokenOk = (header: string | undefined, token: string) => {
-  const a = Buffer.from(header || ''), b = Buffer.from(`Bearer ${token}`);
+// ---- Paired devices ----
+
+interface Device { id: string; name: string; hash: string; created: number; lastSeen?: number; apns?: string; sandbox?: boolean }
+interface RemoteState { pair: string; devices: Device[] }
+export interface DeviceInfo { id: string; name: string; created: number; lastSeen?: number; push: boolean }
+
+const hashOf = (t: string) => crypto.createHash('sha256').update(t).digest('hex');
+
+function saveState(s: RemoteState) {
+  fs.mkdirSync(dir(), { recursive: true });
+  fs.writeFileSync(remoteFile(), JSON.stringify(s), { mode: 0o600 });
+  fs.chmodSync(remoteFile(), 0o600);
+}
+
+export function remoteState(): RemoteState {
+  try {
+    const s = JSON.parse(fs.readFileSync(remoteFile(), 'utf-8'));
+    if (typeof s.pair === 'string' && Array.isArray(s.devices)) return s;
+  } catch {}
+  // First run, or the v1.4.0 single-token file: start over; old links must pair again.
+  const s = { pair: crypto.randomBytes(24).toString('hex'), devices: [] };
+  saveState(s);
+  return s;
+}
+
+export const pairingLink = (base: string) => `${base}#p=${remoteState().pair}`;
+
+// New pairing code: the old QR stops working. Phones already paired stay paired.
+export function resetPairCode() { const s = remoteState(); s.pair = crypto.randomBytes(24).toString('hex'); saveState(s); }
+
+export function revokeDevice(id: string) { const s = remoteState(); s.devices = s.devices.filter(d => d.id !== id); saveState(s); }
+
+export const listDevices = (): DeviceInfo[] =>
+  remoteState().devices.map(d => ({ id: d.id, name: d.name, created: d.created, lastSeen: d.lastSeen, push: !!d.apns }));
+
+export const pushTargets = () => remoteState().devices.filter(d => d.apns).map(d => ({ token: d.apns!, sandbox: d.sandbox }));
+
+export function forgetPushTokens(tokens: string[]) {
+  if (!tokens.length) return;
+  const s = remoteState();
+  for (const d of s.devices) if (d.apns && tokens.includes(d.apns)) delete d.apns;
+  saveState(s);
+}
+
+function deviceFor(header: string | undefined): Device | undefined {
+  const m = /^Bearer ([0-9a-f]{48})$/.exec(header || '');
+  if (!m) return;
+  const h = hashOf(m[1]);
+  return remoteState().devices.find(d => d.hash === h);
+}
+
+const secretOk = (given: unknown, secret: string) => {
+  const a = Buffer.from(String(given || '')), b = Buffer.from(secret);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 };
 
@@ -90,15 +152,34 @@ const tokenOk = (header: string | undefined, token: string) => {
 export const hostOk = (host: string | undefined, ip: string, port: number) =>
   !!host && (host === `${ip}:${port}` || (host.endsWith(`:${port}`) && host.slice(0, -`:${port}`.length).endsWith('.ts.net')));
 
-function audit(ip: string | undefined, action: string, project: string, detail: string) {
-  try { fs.appendFileSync(auditFile(), JSON.stringify({ t: new Date().toISOString(), from: ip, action, project, detail: detail.slice(0, 500) }) + '\n', { mode: 0o600 }); } catch {}
+export function audit(from: string | undefined, action: string, project: string, detail: string) {
+  try { fs.appendFileSync(auditFile(), JSON.stringify({ t: new Date().toISOString(), from, action, project, detail: detail.slice(0, 500) }) + '\n', { mode: 0o600 }); } catch {}
 }
+
+const git = (cwd: string, args: string[]) => new Promise<string>(resolve =>
+  execFile('git', args, { cwd, timeout: 8000, maxBuffer: 4_000_000 }, (err, out) => resolve(err ? '' : out)));
+
+// Uncommitted changes of the session's folder, for reviewing an agent's work before approving the next step.
+export async function projectDiff(cwd: string) {
+  const [stat, diff, untracked] = await Promise.all([
+    git(cwd, ['diff', 'HEAD', '--stat']),
+    git(cwd, ['diff', 'HEAD', '--no-color', '--no-ext-diff']),
+    git(cwd, ['ls-files', '--others', '--exclude-standard'])
+  ]);
+  return { stat, diff: diff.length > 200_000 ? diff.slice(0, 200_000) + '\n… (cut, open it on the computer)' : diff, untracked: untracked.split('\n').filter(Boolean).slice(0, 100) };
+}
+
+const MANIFEST = JSON.stringify({
+  name: 'Pilothouse', short_name: 'Pilothouse', start_url: '/', display: 'standalone',
+  background_color: '#0B0D10', theme_color: '#0B0D10', icons: [{ src: '/icon.png', sizes: '512x512', type: 'image/png' }]
+});
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// Resolves to the base URL; pairingLink(url) adds the current pairing code for the QR.
 export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = REMOTE_PORT): Promise<{ server: http.Server; url: string } | { error: string }> {
   if (!ip) return Promise.resolve({ error: 'Tailscale is not running on this computer. Install it from tailscale.com, sign in, then turn this on again.' });
-  const token = remoteToken();
+  remoteState();
 
   const server = http.createServer(async (req, res) => {
     const send = (code: number, body: unknown) => {
@@ -107,17 +188,20 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
     };
     if (!hostOk(req.headers.host, ip, (server.address() as any).port)) return send(421, { error: 'wrong host' });
     const url = new URL(req.url || '/', `http://${ip}`);
+    const route = `${req.method} ${url.pathname}`;
+    const from = req.socket.remoteAddress;
 
-    if (req.method === 'GET' && url.pathname === '/') {
+    if (route === 'GET /') {
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'no-store',
         'Referrer-Policy': 'no-referrer',
-        'Content-Security-Policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"
+        'Content-Security-Policy': "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; manifest-src 'self'; frame-ancestors 'none'"
       });
       return res.end(REMOTE_PAGE);
     }
-    if (!tokenOk(req.headers.authorization, token)) return send(401, { error: 'unauthorized' });
+    if (route === 'GET /icon.png') { res.writeHead(200, { 'Content-Type': 'image/png' }); return res.end(REMOTE_ICON_PNG); }
+    if (route === 'GET /manifest.json') { res.writeHead(200, { 'Content-Type': 'application/manifest+json' }); return res.end(MANIFEST); }
 
     let body: any = {};
     if (req.method === 'POST') {
@@ -125,13 +209,33 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
       for await (const chunk of req) { raw += chunk; if (raw.length > 20_000) return send(413, { error: 'too large' }); }
       try { body = raw ? JSON.parse(raw) : {}; } catch { return send(400, { error: 'bad json' }); }
     }
+
+    // Pairing: the QR code's one secret buys each phone its own token. Only the hash is stored.
+    if (route === 'POST /api/pair') {
+      const s = remoteState();
+      if (!secretOk(body.secret, s.pair)) { audit(from, 'pair-refused', '', ''); return send(401, { error: 'This code is no longer valid. Scan the new one in Pilothouse Settings.' }); }
+      const token = crypto.randomBytes(24).toString('hex');
+      const device: Device = { id: crypto.randomBytes(6).toString('hex'), name: String(body.name || 'Phone').slice(0, 60), hash: hashOf(token), created: Date.now() };
+      s.devices.push(device);
+      saveState(s);
+      audit(from, 'pair', '', device.name);
+      return send(200, { token, device: device.id });
+    }
+
+    const device = deviceFor(req.headers.authorization);
+    if (!device) return send(401, { error: 'unauthorized' });
+    if (!device.lastSeen || Date.now() - device.lastSeen > 60_000) {
+      const s = remoteState();
+      const d = s.devices.find(x => x.id === device.id);
+      if (d) { d.lastSeen = Date.now(); saveState(s); }
+    }
+    const who = `${from} ${device.name}`;
+
     const projects = deps.listProjects();
     const views = deps.sessions().map(s => sessionView(s, projects));
     const order = { waiting: 0, running: 1, idle: 2 };
-    const from = req.socket.remoteAddress;
 
     try {
-      const route = `${req.method} ${url.pathname}`;
       if (route === 'GET /api/sessions') return send(200, views.sort((a, b) => order[a.status] - order[b.status]));
       if (route === 'GET /api/projects') {
         const open = new Set(deps.sessions().map(s => s.cwd));
@@ -143,13 +247,31 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
         const p = projects.find(x => x.id === String(body.project));
         if (!p) return send(404, { error: 'project not found' });
         await deps.openTab(p.id);
-        audit(from, 'open', p.name, '');
+        audit(who, 'open', p.name, '');
+        return send(200, { ok: true });
+      }
+      // The phone hands over its APNs token so this computer can push "needs you" notifications.
+      if (route === 'POST /api/push-token') {
+        const token = String(body.token || '');
+        if (!/^[0-9a-f]{64,200}$/i.test(token)) return send(400, { error: 'bad token' });
+        const s = remoteState();
+        const d = s.devices.find(x => x.id === device.id);
+        if (d) { d.apns = token; d.sandbox = body.sandbox === true; saveState(s); }
+        return send(200, { ok: true });
+      }
+      if (route === 'POST /api/unpair') {
+        revokeDevice(device.id);
+        audit(who, 'unpair', '', '');
         return send(200, { ok: true });
       }
 
-      const v = views.find(x => x.id === String(body.id));
+      const v = views.find(x => x.id === String(body.id ?? url.searchParams.get('id')));
       if (!v) return send(404, { error: 'session not found' });
 
+      if (route === 'GET /api/diff') {
+        const s = deps.sessions().find(x => x.id === v.id)!;
+        return send(200, { project: v.project, ...(await projectDiff(s.cwd)) });
+      }
       if (route === 'POST /api/send') {
         const text = String(body.text || '').replace(/\r?\n/g, ' ').trim();
         if (!text) return send(400, { error: 'text required' });
@@ -157,7 +279,7 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
         // Enter separately, or agent TUIs treat it as part of a paste.
         await sleep(150);
         deps.write(v.id, '\r');
-        audit(from, 'send', v.project, text);
+        audit(who, 'send', v.project, text);
         return send(200, { ok: true });
       }
       if (route === 'POST /api/choose') {
@@ -166,12 +288,12 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
         if (!c) return send(400, { error: 'unknown choice' });
         if (v.risk === 'danger' && !isRefusal(c.label) && body.confirm !== true) return send(428, { error: 'confirm' });
         deps.write(v.id, c.key);
-        audit(from, 'choose', v.project, `${c.label} | ${v.tail.slice(-300)}`);
+        audit(who, 'choose', v.project, `${c.label} | ${v.tail.slice(-300)}`);
         return send(200, { ok: true });
       }
       if (route === 'POST /api/stop') {
         deps.write(v.id, '\x1b'); // Esc interrupts Claude Code, Codex and Gemini CLI
-        audit(from, 'stop', v.project, '');
+        audit(who, 'stop', v.project, '');
         return send(200, { ok: true });
       }
       return send(404, { error: 'unknown route' });
@@ -182,6 +304,6 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
 
   return new Promise(resolve => {
     server.once('error', (err: any) => resolve({ error: err.code === 'EADDRINUSE' ? `Port ${port} is in use by another app.` : err.message }));
-    server.listen(port, ip, () => resolve({ server, url: `http://${ip}:${(server.address() as any).port}/#t=${token}` }));
+    server.listen(port, ip, () => resolve({ server, url: `http://${ip}:${(server.address() as any).port}/` }));
   });
 }

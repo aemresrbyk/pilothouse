@@ -65,6 +65,7 @@ declare global {
       remoteInfo: () => Promise<RemoteInfo>;
       setRemote: (enabled: boolean) => Promise<RemoteInfo>;
       resetRemote: () => Promise<RemoteInfo>;
+      revokeRemoteDevice: (id: string) => Promise<RemoteInfo>;
       setupScan: () => Promise<{ agents: { id: string; path: string | null }[]; projects: SetupProject[] }>;
       addWorktree: (repoPath: string) => Promise<{ path?: string; error?: string }>;
       setBadge: (count: number) => void;
