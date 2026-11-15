@@ -41,6 +41,8 @@ export function stripAnsi(s: string): string {
     .replace(/\x1b\[\d*G/g, ' ')
     .replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '')
     .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, '')
+    // Character set switches (ESC ( B …) would otherwise leave a stray "(B".
+    .replace(/\x1b[()*+][0-9A-Za-z]/g, '')
     .replace(/\x1b[@-_]/g, '')
     .replace(/\r(?!\n)/g, '\n')
     .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '')

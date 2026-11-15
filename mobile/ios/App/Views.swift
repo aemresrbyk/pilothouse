@@ -117,6 +117,9 @@ struct HomeView: View {
                 if model.sessions.isEmpty && model.error == nil {
                     Section { Text("No agent tabs open. Open one from Projects below.").foregroundStyle(.secondary) }
                 }
+                if !model.usage.isEmpty {
+                    Section("Usage left") { ForEach(model.usage) { u in UsageRow(u: u) } }
+                }
                 if !model.projects.isEmpty {
                     Section {
                         ForEach(model.projects) { p in
@@ -128,9 +131,6 @@ struct HomeView: View {
                             }
                         }
                     } header: { Text("Projects") } footer: { Text("Tap a project for its to-dos.") }
-                }
-                if !model.usage.isEmpty {
-                    Section("Usage left") { ForEach(model.usage) { u in UsageRow(u: u) } }
                 }
             }
             .navigationTitle("Pilothouse")
@@ -177,7 +177,7 @@ struct SessionRow: View {
                     Text(statusLabel(s.status)).font(.caption).foregroundStyle(Color.status(s.status))
                 }
                 Text(s.agent).font(.caption2.bold()).foregroundStyle(Color.lime.opacity(0.8))
-                Text(s.waiting ? s.summary : s.lastLine).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                Text(s.waiting ? s.summary : s.preview).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
             Spacer()
             if s.waiting && s.risky { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red) }

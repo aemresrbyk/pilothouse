@@ -69,6 +69,16 @@ export function promptSummary(text: string): string {
   return above.join(' · ').replace(/\s+/g, ' ').slice(0, 180);
 }
 
+// TUI chrome that is not the agent talking: hints, scroll markers, borders, the prompt line.
+const CHROME_RE = /bypass permissions|shift\+tab|for shortcuts|esc to interrupt|ctrl\+|^\W*\d+ more\W*$|^[\s\W]{0,3}$|^[─━│┃╭╮╰╯>›❯↓↑\s\-=_*·.]+$/i;
+
+// One line for the list: the agent's last message (Claude marks them with ⏺/●), else the last real line.
+export function previewOf(text: string): string {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l && !CHROME_RE.test(l)).slice(-40);
+  const said = [...lines].reverse().find(l => /^[⏺●•]/.test(l));
+  return (said || lines[lines.length - 1] || '').replace(/^[⏺●•]\s*/, '').slice(0, 160);
+}
+
 export function sessionView(s: RemoteSession, projects: ProjectItem[]) {
   const text = stripAnsi(s.buf.slice(-12000)).slice(-4000);
   const waiting = s.status === 'waiting';
@@ -84,7 +94,8 @@ export function sessionView(s: RemoteSession, projects: ProjectItem[]) {
     choices: waiting ? parseChoices(text) : [],
     risk: waiting ? riskOf(prompt) : 'normal',
     sig: waiting ? promptSig(prompt) : '',
-    summary: waiting ? promptSummary(prompt) : ''
+    summary: waiting ? promptSummary(prompt) : '',
+    preview: previewOf(text)
   };
 }
 export type SessionView = ReturnType<typeof sessionView>;

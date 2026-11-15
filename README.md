@@ -21,7 +21,7 @@
 
 **Website:** [kitefoldgames.com/pilothouse-site](https://kitefoldgames.com/pilothouse-site/)
 
-Pilothouse keeps all your AI coding projects in one window: every project gets its own real terminal tab (`node-pty` + `xterm.js`) that starts your agent (`claude`, `codex`, `gemini` or `opencode`) with the flags you choose. You can switch between projects with `⌘1-9`, edit `CLAUDE.md`, browse files and send prompts without leaving the app.
+Pilothouse keeps all your AI coding projects in one window, and in your pocket: every project gets its own real terminal tab (`node-pty` + `xterm.js`) that starts your agent (`claude`, `codex`, `gemini` or `opencode`) with the flags you choose. You can switch between projects with `⌘1-9`, edit `CLAUDE.md`, browse files and send prompts without leaving the app, and answer your agents from your phone. Free and open source (MIT), no account, no data collected.
 
 ---
 
@@ -88,6 +88,46 @@ This puts the AppImage in `~/.local/bin` and adds Pilothouse to your app menu (U
 - **4 themes.** Pilothouse (default: near-black with one signal-lime accent, the logo's colours), OLED Black, Nord Frost and Paper.
 
 > All flags start **off**, including `--dangerously-skip-permissions` (shown in red when on: Claude then runs tools without asking first).
+- **Auto-approve rules.** Settings → Auto-approve: one phrase per line (`npm test`, `git status` …). When an agent asks for approval and the request contains one, Pilothouse answers with its first option. Risky commands (`rm -rf`, force-push, `git reset --hard`, deploy, `sudo`, `curl | sh`, `.env` …) are never auto-approved, whatever the rules say. Works for every agent; each one is logged.
+
+---
+
+## On your phone
+
+<p align="center"><em>iOS app (and any phone browser), over your own Tailscale network. No account, no server of ours.</em></p>
+
+- **Every agent, every project, one list.** What needs you is on top, with the agent each tab runs (Claude Code, Codex, Gemini …) and its last message.
+- **Approve from the phone, safely.** The agent's own options as buttons. Risky commands take two taps and Face ID. If the prompt changed since you looked, your tap is refused instead of approving something else.
+- **Lock-screen notifications** when an agent needs you or finishes, with Approve / Deny right on the notification (optional; for now in an iOS build you sign yourself, see [`mobile/ios`](mobile/ios)).
+- **Usage left.** Claude Code's 5-hour and weekly limits and Codex's limits, with reset times, read from files the CLIs keep on your computer. No provider calls, no tokens touched.
+- **Changes and to-dos.** A tab's uncommitted diff, coloured; a project's `TODO` / `FIXME` comments and open `- [ ]` checkboxes.
+- **Talk instead of typing.** Speak a message; recognised on the iPhone itself.
+- **Open any project's agent** from the phone, or stop a running one.
+- **Widgets.** Home screen (how many agents need you, and which) and lock screen.
+- **Audit log.** Every remote action goes to `~/.pilothouse/remote-audit.jsonl` on your computer.
+
+**Set up:** install [Tailscale](https://tailscale.com) (free for personal use) on the computer and the phone, sign in to the same account, then Pilothouse → Settings → **Phone remote** and scan the QR code with the Pilothouse iOS app (or the phone's camera, for the web version). Each phone gets its own key; remove one any time in Settings.
+
+**Security:** the remote listens only on the computer's Tailscale address (WireGuard-encrypted, reachable only from your own devices), never on your Wi-Fi network. It checks the `Host` header against DNS rebinding, stores only a hash of each phone's key, and keeps nothing on any server.
+
+The iOS app lives in [`mobile/ios`](mobile/ios) (SwiftUI + WidgetKit; generate the project with `xcodegen`).
+
+---
+
+## Privacy
+
+Pilothouse collects nothing. No accounts, no analytics, no telemetry, no crash reporting. Your code, prompts and terminal output stay on your computer and your own phone.
+
+What it talks to on the network, and why:
+
+| Where | When |
+|---|---|
+| GitHub Releases | update check |
+| Hugging Face | one-time voice model download, only if you turn voice on |
+| Your phone, over Tailscale | only if you turn Phone remote on |
+| Apple Push Notification service | only if notifications are set up: the notification text (project name, what the agent asks) goes through Apple to your phone |
+
+Your agents (Claude Code, Codex …) talk to their own providers as they always do; Pilothouse doesn't sit in between.
 
 ---
 

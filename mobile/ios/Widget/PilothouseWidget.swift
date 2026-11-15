@@ -10,9 +10,9 @@ struct Entry: TimelineEntry {
     var waiting: [Session] { sessions.filter(\.waiting) }
 
     static let sample = Entry(date: .now, sessions: [
-        Session(id: "1", project: "pilothouse", projectId: "", agent: "Claude Code", status: "waiting", tail: "", choices: [], risk: "normal", sig: "", summary: "Bash(npm test)"),
-        Session(id: "2", project: "api-server", projectId: "", agent: "Codex", status: "running", tail: "", choices: [], risk: "normal", sig: "", summary: ""),
-        Session(id: "3", project: "landing", projectId: "", agent: "Gemini CLI", status: "idle", tail: "", choices: [], risk: "normal", sig: "", summary: "")
+        Session(id: "1", project: "pilothouse", projectId: "", agent: "Claude Code", status: "waiting", tail: "", choices: [], risk: "normal", sig: "", summary: "Bash(npm test)", preview: ""),
+        Session(id: "2", project: "api-server", projectId: "", agent: "Codex", status: "running", tail: "", choices: [], risk: "normal", sig: "", summary: "", preview: ""),
+        Session(id: "3", project: "landing", projectId: "", agent: "Gemini CLI", status: "idle", tail: "", choices: [], risk: "normal", sig: "", summary: "", preview: "")
     ], note: nil)
 }
 

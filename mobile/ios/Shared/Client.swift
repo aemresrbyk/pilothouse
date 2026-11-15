@@ -20,11 +20,9 @@ struct Session: Codable, Identifiable, Hashable {
     let risk: String // danger | normal
     let sig: String
     let summary: String
+    let preview: String // the agent's last message, without TUI chrome
     var waiting: Bool { status == "waiting" }
     var risky: Bool { risk == "danger" }
-    var lastLine: String {
-        tail.split(separator: "\n").last { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.map(String.init) ?? ""
-    }
 }
 
 struct Project: Codable, Identifiable, Hashable { let id: String; let name: String }

@@ -525,6 +525,9 @@ if (bin && hasModel()) {
   assert.deepStrictEqual(todos.map(t => [t.file, t.line, t.kind]), [['plan.md', 2, 'task'], ['a.ts', 1, 'todo'], ['a.ts', 2, 'todo']]);
   delete process.env.PILOTHOUSE_DIR;
   console.log('usage + todos ok');
+  const { previewOf } = await import('../electron/remote');
+  assert.equal(previewOf('⏺ Tests pass, pushed the fix.\n\n↓ 2 more\n────\n❯ \n  ⏵⏵ bypass permissions on (shift+tab to cycle)\n'), 'Tests pass, pushed the fix.');
+  assert.equal(stripAnsi('\x1b(Bhello\x1b)0'), 'hello');
 }
 
 console.log('selfcheck ok');
