@@ -17,6 +17,8 @@ export interface RemoteDeps {
   listProjects: () => ProjectItem[];
   sessions: () => RemoteSession[];
   write: (id: string, data: string) => boolean;
+  // Opens the project's default agent in a new tab, as clicking it in the app would.
+  openTab: (projectId: string) => Promise<string>;
 }
 
 export const REMOTE_PORT = 4747;
@@ -131,6 +133,19 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
     try {
       const route = `${req.method} ${url.pathname}`;
       if (route === 'GET /api/sessions') return send(200, views.sort((a, b) => order[a.status] - order[b.status]));
+      if (route === 'GET /api/projects') {
+        const open = new Set(deps.sessions().map(s => s.cwd));
+        return send(200, projects.filter(p => !open.has(p.path))
+          .sort((a, b) => Number(b.isFavorite) - Number(a.isFavorite) || (b.lastLaunched || 0) - (a.lastLaunched || 0))
+          .map(p => ({ id: p.id, name: p.name })));
+      }
+      if (route === 'POST /api/open') {
+        const p = projects.find(x => x.id === String(body.project));
+        if (!p) return send(404, { error: 'project not found' });
+        await deps.openTab(p.id);
+        audit(from, 'open', p.name, '');
+        return send(200, { ok: true });
+      }
 
       const v = views.find(x => x.id === String(body.id));
       if (!v) return send(404, { error: 'session not found' });

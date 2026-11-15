@@ -98,7 +98,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
       }}
     >
       {/* Left: Window Traffic Lights Spacer + App Brand + Tab Reel */}
-      <div className="flex items-center gap-1.5 flex-1 min-w-0 titlebar-no-drag h-full pt-1">
+      <div className="flex items-center gap-1.5 flex-1 min-w-0 h-full pt-1">
         {/* Dedicated 80px space for macOS window buttons (other systems draw a normal title bar above) */}
         {isMac && <div className="w-20 flex-shrink-0 h-full pointer-events-none" />}
 
@@ -106,7 +106,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
         <div
           onClick={onOpenPalette}
           title={`Pilothouse (${keyLabel('P')})`}
-          className="flex items-center gap-1.5 mr-2 px-1.5 py-1 rounded-md cursor-pointer hover:bg-black/10 transition-colors flex-shrink-0"
+          className="titlebar-no-drag flex items-center gap-1.5 mr-2 px-1.5 py-1 rounded-md cursor-pointer hover:bg-black/10 transition-colors flex-shrink-0"
         >
           <AppLogo className="w-4 h-4" />
           <span className="font-bold text-[11px] tracking-wide hidden lg:inline" style={{ color: themeConfig.textPrimary }}>
@@ -134,7 +134,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
                   onSelectTab(tab.id);
                 }}
                 title={project?.path}
-                className="group relative flex items-center gap-2 px-3 py-1.5 rounded-t-lg transition-all cursor-pointer max-w-[200px] min-w-[110px] text-xs font-mono border-t border-x flex-shrink-0"
+                className="titlebar-no-drag group relative flex items-center gap-2 px-3 py-1.5 rounded-t-lg transition-all cursor-pointer max-w-[200px] min-w-[110px] text-xs font-mono border-t border-x flex-shrink-0"
                 style={{
                   backgroundColor: isActive ? themeConfig.bgTabActive : 'transparent',
                   borderColor: isActive ? themeConfig.border : 'transparent',
@@ -196,7 +196,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
           })}
 
           {/* New Tab Actions (+) & Folder Pick */}
-          <div className="flex items-center gap-0.5 mb-1 flex-shrink-0">
+          <div className="titlebar-no-drag flex items-center gap-0.5 mb-1 flex-shrink-0">
             {/* Open / Create New Tab Button */}
             <button
               type="button"

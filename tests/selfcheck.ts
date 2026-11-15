@@ -376,12 +376,13 @@ if (bin && hasModel()) {
   assert.equal(riskOf('Bash(npm test)\nDo you want to proceed?'), 'normal');
 
   process.env.PILOTHOUSE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-remote-'));
-  const writes: string[] = [];
+  const writes: string[] = [], opened: string[] = [];
   let tail = 'Bash(npm test)\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n';
   const r = await startRemoteServer({
-    listProjects: () => [{ id: 'p', name: 'demo', path: '/tmp/demo' } as any],
+    listProjects: () => [{ id: 'p', name: 'demo', path: '/tmp/demo' } as any, { id: 'q', name: 'other', path: '/tmp/other' } as any],
     sessions: () => [{ id: 't1', cwd: '/tmp/demo', status: 'waiting', buf: tail }],
-    write: (_id, d) => { writes.push(d); return true; }
+    write: (_id, d) => { writes.push(d); return true; },
+    openTab: async (pid) => { opened.push(pid); return 'tab'; }
   }, '127.0.0.1', 0);
   assert.ok('server' in r);
   const port = (r.server.address() as any).port;
@@ -397,6 +398,9 @@ if (bin && hasModel()) {
   assert.ok(String((await call('/')).body).includes('textContent'));
   const [s] = (await call('/api/sessions')).body;
   assert.equal(s.project, 'demo');
+  assert.deepStrictEqual((await call('/api/projects')).body, [{ id: 'q', name: 'other' }]); // open ones are cards already
+  assert.equal((await call('/api/open', { project: 'q' })).status, 200);
+  assert.deepStrictEqual(opened, ['q']);
   assert.deepStrictEqual(s.choices.map((c: any) => c.key), ['1', '2']);
   assert.equal((await call('/api/choose', { id: 't1', key: '1', sig: 'stale' })).status, 409);
   assert.equal((await call('/api/choose', { id: 't1', key: '1', sig: s.sig })).status, 200);
@@ -407,13 +411,13 @@ if (bin && hasModel()) {
   assert.equal((await call('/api/choose', { id: 't1', key: '1', sig: d.sig })).status, 428);
   assert.equal((await call('/api/choose', { id: 't1', key: '2', sig: d.sig })).status, 200); // No: one tap
   assert.equal((await call('/api/choose', { id: 't1', key: '1', sig: d.sig, confirm: true })).status, 200);
-  assert.equal(fs.readFileSync(auditFile(), 'utf-8').trim().split('\n').length, 3);
+  assert.equal(fs.readFileSync(auditFile(), 'utf-8').trim().split('\n').length, 4);
   assert.equal(fs.statSync(auditFile()).mode & 0o777, 0o600);
   r.server.close();
   delete process.env.PILOTHOUSE_DIR;
 
   // Without Tailscale it refuses to start rather than falling back to the LAN.
-  const off = await startRemoteServer({ listProjects: () => [], sessions: () => [], write: () => true }, '');
+  const off = await startRemoteServer({ listProjects: () => [], sessions: () => [], write: () => true, openTab: async () => '' }, '');
   assert.ok('error' in off);
   console.log('remote ok');
 }
