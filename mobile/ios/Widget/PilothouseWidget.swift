@@ -10,9 +10,9 @@ struct Entry: TimelineEntry {
     var waiting: [Session] { sessions.filter(\.waiting) }
 
     static let sample = Entry(date: .now, sessions: [
-        Session(id: "1", project: "pilothouse", status: "waiting", tail: "", choices: [], risk: "normal", sig: "", summary: "Bash(npm test)"),
-        Session(id: "2", project: "api-server", status: "running", tail: "", choices: [], risk: "normal", sig: "", summary: ""),
-        Session(id: "3", project: "landing", status: "idle", tail: "", choices: [], risk: "normal", sig: "", summary: "")
+        Session(id: "1", project: "pilothouse", projectId: "", agent: "Claude Code", status: "waiting", tail: "", choices: [], risk: "normal", sig: "", summary: "Bash(npm test)"),
+        Session(id: "2", project: "api-server", projectId: "", agent: "Codex", status: "running", tail: "", choices: [], risk: "normal", sig: "", summary: ""),
+        Session(id: "3", project: "landing", projectId: "", agent: "Gemini CLI", status: "idle", tail: "", choices: [], risk: "normal", sig: "", summary: "")
     ], note: nil)
 }
 
@@ -112,6 +112,7 @@ struct WidgetView: View {
                         HStack(spacing: 8) {
                             Circle().fill(Color.status(s.status)).frame(width: 7, height: 7)
                             Text(s.project).font(.caption.bold()).foregroundStyle(.white).lineLimit(1)
+                            Text(s.agent).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                             Spacer()
                             Text(statusLabel(s.status)).font(.caption2).foregroundStyle(Color.status(s.status))
                         }

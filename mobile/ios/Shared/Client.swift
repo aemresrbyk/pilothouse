@@ -12,6 +12,8 @@ struct Choice: Codable, Hashable { let key: String; let label: String }
 struct Session: Codable, Identifiable, Hashable {
     let id: String
     let project: String
+    let projectId: String
+    let agent: String // "Claude Code", "Codex", … or "Terminal"
     let status: String // waiting | running | idle
     let tail: String
     let choices: [Choice]
@@ -26,6 +28,19 @@ struct Session: Codable, Identifiable, Hashable {
 }
 
 struct Project: Codable, Identifiable, Hashable { let id: String; let name: String }
+
+struct UsageWindow: Codable, Hashable { let label: String; let usedPercent: Double; let resetsAt: Double? }
+struct AgentUsage: Codable, Identifiable, Hashable {
+    let agent: String
+    let windows: [UsageWindow]
+    let plan: String?
+    let updatedAt: Double?
+    let note: String?
+    var id: String { agent }
+}
+
+struct TodoItem: Codable, Hashable { let file: String; let line: Int; let text: String; let kind: String }
+struct TodoList: Codable { let project: String; let items: [TodoItem] }
 struct DiffResult: Codable { let project: String; let stat: String; let diff: String; let untracked: [String] }
 
 enum PilotError: LocalizedError {
@@ -116,6 +131,10 @@ final class Client {
 
     func sessions() async throws -> [Session] { try await send("GET", "/api/sessions") }
     func projects() async throws -> [Project] { try await send("GET", "/api/projects") }
+    func usage() async throws -> [AgentUsage] { try await send("GET", "/api/usage") }
+    func todos(_ projectId: String) async throws -> TodoList {
+        try await send("GET", "/api/todos?project=\(projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId)")
+    }
     func diff(_ id: String) async throws -> DiffResult {
         try await send("GET", "/api/diff?id=\(id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? id)")
     }

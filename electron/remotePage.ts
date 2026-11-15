@@ -105,7 +105,7 @@ export const REMOTE_PAGE = `<!doctype html>
     go.onclick = sendIt;
     input.onkeydown = function (e) { if (e.key === 'Enter') sendIt(); };
     row.appendChild(input); row.appendChild(go);
-    var diffBtn = el('button', null, 'Diff');
+    var diffBtn = el('button', null, 'Changes');
     var diffBox = el('pre'); diffBox.hidden = true;
     diffBtn.onclick = function () {
       if (!diffBox.hidden) { diffBox.hidden = true; diffOpen = false; return; }

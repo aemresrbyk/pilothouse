@@ -12,6 +12,7 @@ import { startControlServer, CONTROL_FILE, stripAnsi } from './control';
 import { Activity, newActivity, noteOutput, nextStatus, hitLimit } from './activity';
 import { startRemoteServer, pairingLink, resetPairCode, revokeDevice, listDevices, pushTargets, forgetPushTokens, sessionView, autoChoice, isRefusal, audit } from './remote';
 import { apnsConfig, sendPush } from './push';
+import { agentOfCommand, withClaudeStatus, ensureClaudeStatusHook } from './usage';
 import http from 'http';
 import { writeHandoff } from './handoff';
 import { detectAgents, scanProjects } from './setup';
@@ -31,7 +32,7 @@ let win: BrowserWindow | null = null;
 let storage: StorageManager;
 const ptySessions = new Map<string, pty.IPty>();
 // cwd + recent output per PTY, so the control API can tell which project a terminal belongs to and read it back.
-const ptyMeta = new Map<string, { cwd: string; buf: string; act: Activity; sender: Electron.WebContents; limited?: boolean }>();
+const ptyMeta = new Map<string, { cwd: string; buf: string; act: Activity; sender: Electron.WebContents; limited?: boolean; agent?: string }>();
 const OUTPUT_KEEP = 60_000;
 const pendingOpens = new Map<string, (tabId: string) => void>();
 
@@ -152,6 +153,7 @@ app.whenReady().then(() => {
   // terminal and app keys. Text editing keys still work there without a menu; macOS needs its menu for them.
   if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
   storage = new StorageManager();
+  try { ensureClaudeStatusHook(); } catch (err: any) { console.error('Claude status hook:', err.message); }
   registerIpcHandlers();
   createWindow();
   applyVoiceHotkey(storage.getSettings());
@@ -205,7 +207,7 @@ async function applyRemote(enabled: boolean) {
   if (!enabled) return;
   const r = await startRemoteServer({
     listProjects: () => storage.listStoredProjects(),
-    sessions: () => [...ptyMeta.entries()].filter(([id]) => ptySessions.has(id)).map(([id, m]) => ({ id, cwd: m.cwd, status: m.act.status, buf: m.buf })),
+    sessions: () => [...ptyMeta.entries()].filter(([id]) => ptySessions.has(id)).map(([id, m]) => ({ id, cwd: m.cwd, status: m.act.status, buf: m.buf, agent: m.agent, limited: m.limited })),
     write: (id, data) => { const p = ptySessions.get(id); const m = ptyMeta.get(id); if (!p) return false; if (m) m.act.lastInput = Date.now(); p.write(data); return true; },
     openTab: (projectId) => openTabViaRenderer(projectId)
   });
@@ -586,7 +588,9 @@ function registerIpcHandlers() {
 
       // On POSIX the command is handed to the shell directly (typing it in after a fixed delay lost
       // characters while slow rc files were still loading); an interactive shell takes over when it exits.
-      const cmd = initialCommand?.trim();
+      const agent = initialCommand ? agentOfCommand(initialCommand) : undefined;
+      // Claude tabs get a silent status line that saves plan usage for the phone (see usage.ts).
+      const cmd = agent === 'claude' && !isWin ? withClaudeStatus(initialCommand!.trim()) : initialCommand?.trim();
       // Exit code 127 = command not found; usually means Claude Code isn't installed (fish has no $?, so it gets no hint).
       // Any other non-zero exit is reported with an invisible OSC 7777 marker, so the Inbox can list the tab as failed.
       // shortcut: POSIX shells only (not fish, not Windows cmd/PowerShell, which get the command typed in); add a
@@ -603,7 +607,7 @@ function registerIpcHandlers() {
       });
 
       ptySessions.set(id, ptyProcess);
-      const meta = { cwd: targetCwd, buf: '', act: newActivity(Date.now()), sender: event.sender };
+      const meta = { cwd: targetCwd, buf: '', act: newActivity(Date.now()), sender: event.sender, agent };
       ptyMeta.set(id, meta);
 
       // A replaced/killed session must not touch the map entry or UI of its successor (same id).

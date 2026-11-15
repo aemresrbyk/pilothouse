@@ -474,4 +474,57 @@ if (bin && hasModel()) {
   console.log('remote ok');
 }
 
+{
+  // Usage per agent from local files only, which agent a tab runs, and project to-dos.
+  const u = await import('../electron/usage');
+  assert.equal(u.agentOfCommand('claude --dangerously-skip-permissions'), 'claude');
+  assert.equal(u.agentOfCommand('"/Users/x/My Tools/codex" resume 1'), 'codex');
+  assert.equal(u.agentOfCommand('/opt/homebrew/bin/agy -i "hi"'), 'antigravity');
+  assert.equal(u.agentOfCommand('npm run dev'), undefined);
+  assert.equal(u.withClaudeStatus('claude --model opus'), 'claude --settings "$HOME/.pilothouse/claude-settings.json" --model opus');
+  assert.equal(u.withClaudeStatus('"/a b/claude" -c'), '"/a b/claude" --settings "$HOME/.pilothouse/claude-settings.json" -c');
+  assert.equal(u.withClaudeStatus('claude --settings x.json'), 'claude --settings x.json');
+
+  process.env.PILOTHOUSE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-usage-'));
+  const claudeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-claude-'));
+  u.ensureClaudeStatusHook(claudeHome);
+  const hookSettings = JSON.parse(fs.readFileSync(path.join(process.env.PILOTHOUSE_DIR, 'claude-settings.json'), 'utf-8'));
+  assert.ok(hookSettings.statusLine.command.includes('claude-statusline.sh'));
+  // The script saves what Claude Code pipes in.
+  const status = { rate_limits: { five_hour: { used_percentage: 42.4, resets_at: 4102444800 }, seven_day: { used_percentage: 10, resets_at: '2000-01-01T00:00:00Z' } } };
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-home-'));
+  fs.mkdirSync(path.join(fakeHome, '.pilothouse'));
+  const printed = execFileSync('sh', [path.join(process.env.PILOTHOUSE_DIR, 'claude-statusline.sh')], { input: JSON.stringify(status), env: { ...process.env, HOME: fakeHome } }).toString();
+  assert.equal(printed, '');
+  fs.copyFileSync(path.join(fakeHome, '.pilothouse', 'claude-status.json'), path.join(process.env.PILOTHOUSE_DIR, 'claude-status.json'));
+  const cu = u.claudeUsage()!;
+  assert.deepStrictEqual(cu.windows.map(w => [w.label, w.usedPercent]), [['5 hours', 42], ['week', 0]]); // past reset → 0
+  // A user with their own status line keeps it.
+  fs.writeFileSync(path.join(claudeHome, 'settings.json'), JSON.stringify({ statusLine: { type: 'command', command: 'mine' } }));
+  u.ensureClaudeStatusHook(claudeHome);
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(process.env.PILOTHOUSE_DIR, 'claude-settings.json'), 'utf-8')), {});
+
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-codex-'));
+  const day = path.join(codexHome, 'sessions', '2026', '11', '03');
+  fs.mkdirSync(day, { recursive: true });
+  fs.writeFileSync(path.join(day, 'rollout-a.jsonl'), [
+    JSON.stringify({ type: 'event_msg', payload: { type: 'token_count', rate_limits: { primary: { used_percent: 5, window_minutes: 300, resets_at: 4102444800 }, secondary: { used_percent: 61.6, window_minutes: 10080, resets_at: 4102444800 }, plan_type: 'plus' } } }),
+    JSON.stringify({ type: 'other' })
+  ].join('\n'));
+  const xu = u.codexUsage(codexHome)!;
+  assert.deepStrictEqual(xu.windows.map(w => [w.label, w.usedPercent]), [['5 hours', 5], ['week', 62]]);
+  assert.equal(xu.plan, 'plus');
+  assert.equal(u.codexUsage(fs.mkdtempSync(path.join(os.tmpdir(), 'ph-nocodex-'))), null);
+
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-todo-'));
+  execFileSync('git', ['init', '-q'], { cwd: repo });
+  fs.writeFileSync(path.join(repo, 'a.ts'), 'const x = 1; // TODO: handle errors\n// FIXME later\nconst todos = 2;\n');
+  fs.writeFileSync(path.join(repo, 'plan.md'), '- [x] done\n- [ ] write tests\n');
+  execFileSync('git', ['add', '.'], { cwd: repo });
+  const todos = await u.projectTodos(repo);
+  assert.deepStrictEqual(todos.map(t => [t.file, t.line, t.kind]), [['plan.md', 2, 'task'], ['a.ts', 1, 'todo'], ['a.ts', 2, 'todo']]);
+  delete process.env.PILOTHOUSE_DIR;
+  console.log('usage + todos ok');
+}
+
 console.log('selfcheck ok');

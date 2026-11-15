@@ -118,17 +118,19 @@ struct HomeView: View {
                     Section { Text("No agent tabs open. Open one from Projects below.").foregroundStyle(.secondary) }
                 }
                 if !model.projects.isEmpty {
-                    Section("Projects") {
+                    Section {
                         ForEach(model.projects) { p in
                             HStack {
-                                Text(p.name)
-                                Spacer()
+                                NavigationLink { TodosView(projectId: p.id, name: p.name) } label: { Text(p.name) }
                                 if opening == p.id { ProgressView() } else {
                                     Button("Open agent") { open(p) }.buttonStyle(.bordered).disabled(opening != nil)
                                 }
                             }
                         }
-                    }
+                    } header: { Text("Projects") } footer: { Text("Tap a project for its to-dos.") }
+                }
+                if !model.usage.isEmpty {
+                    Section("Usage left") { ForEach(model.usage) { u in UsageRow(u: u) } }
                 }
             }
             .navigationTitle("Pilothouse")
@@ -139,9 +141,11 @@ struct HomeView: View {
         // On the stack, not the list: the list disappears when a session is pushed, and polling must go on.
         .task(id: phase) {
             guard phase == .active else { return }
-            await model.refreshProjects()
+            var tick = 0
             while !Task.isCancelled {
+                if tick % 15 == 0 { await model.refreshProjects() } // projects and usage change slowly
                 await model.refresh()
+                tick += 1
                 try? await Task.sleep(for: .seconds(2))
             }
         }
@@ -172,6 +176,7 @@ struct SessionRow: View {
                     Text(s.project).font(.headline)
                     Text(statusLabel(s.status)).font(.caption).foregroundStyle(Color.status(s.status))
                 }
+                Text(s.agent).font(.caption2.bold()).foregroundStyle(Color.lime.opacity(0.8))
                 Text(s.waiting ? s.summary : s.lastLine).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
             Spacer()
@@ -215,7 +220,11 @@ struct SessionView: View {
                 if session?.status == "running" {
                     Button("Stop", role: .destructive) { Task { try? await Client.shared.stop(id) } }
                 }
-                NavigationLink { DiffView(id: id) } label: { Text("Diff") }
+                NavigationLink { DiffView(id: id) } label: { Text("Changes") }
+                if let s = session, !s.projectId.isEmpty {
+                    NavigationLink { TodosView(projectId: s.projectId, name: s.project) } label: { Image(systemName: "checklist") }
+                        .accessibilityLabel("To-dos")
+                }
             }
         }
         .onChange(of: speech.text) { _, t in if !t.isEmpty { text = t } }
@@ -319,7 +328,7 @@ struct DiffView: View {
             .padding(10)
         }
         .background(Color.black)
-        .navigationTitle(result.map { "Diff · \($0.project)" } ?? "Diff")
+        .navigationTitle(result.map { "Changes · \($0.project)" } ?? "Changes")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             do { result = try await Client.shared.diff(id) } catch { self.error = error.localizedDescription }
@@ -338,6 +347,86 @@ struct DiffLine: View {
             .foregroundStyle(added ? Color.green : removed ? Color.red : hunk ? Color.cyan : Color(white: 0.75))
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(added ? Color.green.opacity(0.12) : removed ? Color.red.opacity(0.12) : Color.clear)
+    }
+}
+
+// MARK: - Usage
+
+struct UsageRow: View {
+    let u: AgentUsage
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(u.agent).font(.headline)
+                if let plan = u.plan { Text(plan).font(.caption).foregroundStyle(.secondary) }
+                Spacer()
+                if let t = u.updatedAt {
+                    Text(Date(timeIntervalSince1970: t / 1000), style: .relative).font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            ForEach(u.windows, id: \.self) { w in
+                let left = max(0, 100 - w.usedPercent)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text("\(Int(left))% left · \(w.label)").font(.caption)
+                        Spacer()
+                        if let r = w.resetsAt, r > Date().timeIntervalSince1970 * 1000 {
+                            Text("resets ") .font(.caption2).foregroundStyle(.secondary)
+                            + Text(Date(timeIntervalSince1970: r / 1000), style: .relative).font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                    ProgressView(value: left, total: 100).tint(left < 15 ? .red : left < 40 ? .amber : .lime)
+                }
+            }
+            if let note = u.note { Text(note).font(.caption).foregroundStyle(.secondary) }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+// MARK: - To-dos
+
+struct TodosView: View {
+    let projectId: String
+    let name: String
+    @State private var list: TodoList?
+    @State private var error: String?
+
+    var body: some View {
+        List {
+            if let list {
+                if list.items.isEmpty {
+                    Text("No TODO, FIXME or open checkboxes in this project.").foregroundStyle(.secondary)
+                }
+                let tasks = list.items.filter { $0.kind == "task" }
+                let todos = list.items.filter { $0.kind == "todo" }
+                if !tasks.isEmpty {
+                    Section("Open tasks (Markdown)") { ForEach(tasks, id: \.self) { TodoRow(item: $0) } }
+                }
+                if !todos.isEmpty {
+                    Section("In the code") { ForEach(todos, id: \.self) { TodoRow(item: $0) } }
+                }
+            } else if let error {
+                Text(error).foregroundStyle(.orange)
+            } else {
+                ProgressView()
+            }
+        }
+        .navigationTitle("To-dos · \(name)")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            do { list = try await Client.shared.todos(projectId) } catch { self.error = error.localizedDescription }
+        }
+    }
+}
+
+struct TodoRow: View {
+    let item: TodoItem
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(item.text.replacingOccurrences(of: "- [ ] ", with: "")).font(.callout)
+            Text("\(item.file):\(item.line)").font(.caption2.monospaced()).foregroundStyle(.secondary)
+        }
     }
 }
 

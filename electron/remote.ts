@@ -14,8 +14,11 @@ import { parseChoices, Choice } from '../src/utils/inbox';
 import type { ProjectItem, PtyStatus } from '../src/types';
 import { REMOTE_PAGE } from './remotePage';
 import { REMOTE_ICON_PNG } from './remoteIcon';
+import { claudeUsage, codexUsage, projectTodos, AgentUsage } from './usage';
+import { AGENTS } from '../src/types';
 
-export interface RemoteSession { id: string; cwd: string; status: PtyStatus; buf: string }
+// agent: AGENTS id from the tab's command; limited: the tab printed a usage-limit message.
+export interface RemoteSession { id: string; cwd: string; status: PtyStatus; buf: string; agent?: string; limited?: boolean }
 export interface RemoteDeps {
   listProjects: () => ProjectItem[];
   sessions: () => RemoteSession[];
@@ -70,9 +73,12 @@ export function sessionView(s: RemoteSession, projects: ProjectItem[]) {
   const text = stripAnsi(s.buf.slice(-12000)).slice(-4000);
   const waiting = s.status === 'waiting';
   const prompt = waiting ? text.slice(-1500) : '';
+  const p = projects.find(x => x.path === s.cwd);
   return {
     id: s.id,
-    project: projects.find(p => p.path === s.cwd)?.name || path.basename(s.cwd),
+    project: p?.name || path.basename(s.cwd),
+    projectId: p?.id || '',
+    agent: AGENTS.find(a => a.id === s.agent)?.name || 'Terminal',
     status: s.status,
     tail: text.slice(-2500),
     choices: waiting ? parseChoices(text) : [],
@@ -242,6 +248,25 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
         return send(200, projects.filter(p => !open.has(p.path))
           .sort((a, b) => Number(b.isFavorite) - Number(a.isFavorite) || (b.lastLaunched || 0) - (a.lastLaunched || 0))
           .map(p => ({ id: p.id, name: p.name })));
+      }
+      if (route === 'GET /api/usage') {
+        const open = deps.sessions();
+        const limited = (id: string) => open.some(s => s.agent === id && s.limited);
+        const out: AgentUsage[] = [
+          claudeUsage() || { agent: 'Claude Code', windows: [], note: 'Shows up after a Claude tab opened from Pilothouse has run once.' },
+          codexUsage() || { agent: 'Codex', windows: [], note: 'No Codex sessions on this computer yet.' }
+        ];
+        if (limited('claude')) out[0].note = 'Limit reached in an open tab.';
+        if (limited('codex')) out[1].note = 'Limit reached in an open tab.';
+        for (const a of AGENTS.filter(a => a.id !== 'claude' && a.id !== 'codex' && open.some(s => s.agent === a.id))) {
+          out.push({ agent: a.name, windows: [], note: limited(a.id) ? 'Limit reached in an open tab.' : 'This CLI does not report its limits; Pilothouse warns when a tab hits one.' });
+        }
+        return send(200, out);
+      }
+      if (route === 'GET /api/todos') {
+        const p = projects.find(x => x.id === url.searchParams.get('project'));
+        if (!p) return send(404, { error: 'project not found' });
+        return send(200, { project: p.name, items: await projectTodos(p.path) });
       }
       if (route === 'POST /api/open') {
         const p = projects.find(x => x.id === String(body.project));
