@@ -8,6 +8,9 @@ export const REMOTE_PAGE = `<!doctype html>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0B0D10">
 <title>Pilothouse</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon.png">
+<meta name="apple-mobile-web-app-title" content="Pilothouse">
 <style>
   :root { --bg:#0B0D10; --card:#12161f; --line:#232a3a; --text:#e4e7ee; --dim:#7b8496; --lime:#C8FF2E; --red:#ff5c5c; --amber:#ffc24a; }
   * { box-sizing: border-box; }
@@ -44,13 +47,15 @@ export const REMOTE_PAGE = `<!doctype html>
 <div id="projects"></div>
 <script>
 (function () {
-  var KEY = 'pilothouse-token';
-  var m = /#t=([0-9a-f]+)/.exec(location.hash);
-  if (m) { try { localStorage.setItem(KEY, m[1]); } catch (e) {} history.replaceState(null, '', location.pathname); }
-  var token = m ? m[1] : (function () { try { return localStorage.getItem(KEY); } catch (e) { return null; } })();
+  var KEY = 'pilothouse-device-token';
+  var token = (function () { try { return localStorage.getItem(KEY); } catch (e) { return null; } })();
+  // The QR carries a pairing code; trade it once for this browser's own token, then drop it from the address bar.
+  var pair = /#p=([0-9a-f]+)/.exec(location.hash);
+  history.replaceState(null, '', location.pathname);
   var msg = document.getElementById('msg'), list = document.getElementById('list');
   var armed = {}; // session id -> choice key armed for a risky approval
   var last = '', lastProj = '';
+  var diffOpen = false; // re-rendering would close the diff being read
   var plist = document.getElementById('projects'), ptitle = document.getElementById('ptitle');
 
   function api(method, path, body) {
@@ -100,15 +105,34 @@ export const REMOTE_PAGE = `<!doctype html>
     go.onclick = sendIt;
     input.onkeydown = function (e) { if (e.key === 'Enter') sendIt(); };
     row.appendChild(input); row.appendChild(go);
+    var diffBtn = el('button', null, 'Changes');
+    var diffBox = el('pre'); diffBox.hidden = true;
+    diffBtn.onclick = function () {
+      if (!diffBox.hidden) { diffBox.hidden = true; diffOpen = false; return; }
+      api('GET', '/api/diff?id=' + encodeURIComponent(s.id)).then(function (r) {
+        diffBox.replaceChildren();
+        var text = (r.body.stat || '') + (r.body.untracked && r.body.untracked.length ? '\nNew files: ' + r.body.untracked.join(', ') + '\n' : '') + '\n' + (r.body.diff || 'No changes.');
+        text.split('\n').forEach(function (line) {
+          var span = el('span', null, line + '\n');
+          if (/^\+(?!\+\+)/.test(line)) span.style.color = '#7ee787';
+          else if (/^-(?!--)/.test(line)) span.style.color = '#ff7b72';
+          else if (/^@@/.test(line)) span.style.color = '#79c0ff';
+          diffBox.appendChild(span);
+        });
+        diffBox.hidden = false; diffOpen = true;
+      });
+    };
+    row.appendChild(diffBtn);
     if (s.status === 'running') { var stop = el('button', null, 'Stop'); stop.onclick = function () { api('POST', '/api/stop', { id: s.id }).then(load); }; row.appendChild(stop); }
     c.appendChild(row);
+    c.appendChild(diffBox);
     return c;
   }
 
   function load() {
     if (!token) { msg.textContent = 'Open the link from Pilothouse → Settings → Phone remote on this phone.'; return; }
     // Re-rendering would wipe what the user is typing.
-    if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+    if (diffOpen || (document.activeElement && document.activeElement.tagName === 'INPUT')) return;
     api('GET', '/api/sessions').then(function (r) {
       if (r.status === 401) { msg.textContent = 'This link was revoked. Scan the new QR code in Pilothouse Settings.'; return; }
       var key = JSON.stringify(r.body) + JSON.stringify(armed);
@@ -144,11 +168,19 @@ export const REMOTE_PAGE = `<!doctype html>
       }));
     }).catch(function () {});
   }
-  loadProjects();
-  setInterval(loadProjects, 10000);
-  load();
-  // shortcut: polling every 2 s; switch to server-sent events if many phones or battery use become a problem.
-  setInterval(load, 2000);
+  function start() {
+    loadProjects();
+    setInterval(loadProjects, 10000);
+    load();
+    setInterval(load, 2000);
+  }
+  if (pair && !token) {
+    fetch('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: pair[1], name: 'Browser · ' + (navigator.platform || 'phone') }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (j.token) { token = j.token; try { localStorage.setItem(KEY, token); } catch (e) {} } else msg.textContent = j.error; start(); })
+      .catch(function () { msg.textContent = 'Pairing failed. Is Tailscale on?'; });
+  } else start();
+  // shortcut: polling every 2 s (start()); switch to server-sent events if many phones or battery use become a problem.
 })();
 </script>
 </body>

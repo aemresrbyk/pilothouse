@@ -68,7 +68,7 @@ const RemoteField: React.FC = () => {
         <span>
           <span className="text-xs text-zinc-300 block">Phone remote</span>
           <span className="text-[10px] text-zinc-600">
-            See every agent tab on your phone, answer approval prompts and send messages. Works over Tailscale (encrypted, only your own devices). Risky commands need two taps; every action is logged to ~/.pilothouse/remote-audit.jsonl.
+            See every agent tab on your phone (Pilothouse iOS app or any browser), answer approval prompts, send messages and read diffs. Works over Tailscale (encrypted, only your own devices). Risky commands need two taps; every action is logged to ~/.pilothouse/remote-audit.jsonl.
           </span>
         </span>
       </label>
@@ -77,11 +77,28 @@ const RemoteField: React.FC = () => {
         <div className="ml-5 flex items-start gap-3">
           {qr && <img src={qr} alt="QR code to open Pilothouse on your phone" width={120} height={120} className="rounded bg-white" />}
           <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] text-zinc-500">Scan with a phone signed in to the same Tailscale account. Anyone with this code can control your terminals.</span>
+            <span className="text-[10px] text-zinc-500">Scan with a phone signed in to the same Tailscale account. Anyone with this code can pair and control your terminals.</span>
             <button type="button" onClick={async () => setInfo(await window.electronAPI.resetRemote())} className="self-start px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300">
-              New code (signs out phones)
+              New code
             </button>
+            <span className="text-[10px] text-zinc-600">{info.push ? 'Notifications: on (APNs key found).' : 'Notifications: off (no APNs key in ~/.pilothouse/apns.json).'}</span>
           </div>
+        </div>
+      )}
+      {!!info?.devices?.length && (
+        <div className="ml-5 flex flex-col gap-1">
+          <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Paired devices</span>
+          {info.devices.map((d) => (
+            <div key={d.id} className="flex items-center justify-between gap-2 text-xs text-zinc-300">
+              <span className="truncate">
+                {d.name}
+                <span className="text-[10px] text-zinc-600"> · {d.lastSeen ? `seen ${new Date(d.lastSeen).toLocaleString()}` : 'never used'}{d.push ? ' · notifications' : ''}</span>
+              </span>
+              <button type="button" onClick={async () => setInfo(await window.electronAPI.revokeRemoteDevice(d.id))} className="px-2 py-0.5 rounded border border-zinc-700 text-[11px] text-zinc-400 flex-shrink-0">
+                Remove
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -107,12 +124,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const presetList = toList(presetsText);
   const defaultAgent = formData.defaultAgent || 'claude';
   const [quickText, setQuickText] = useState('');
+  const [rulesText, setRulesText] = useState('');
 
   useEffect(() => {
     setFormData(settings);
     setPresetsByAgent(Object.fromEntries(AGENTS.map((a) => [a.id, agentFlagPresets(settings, a.id).join('\n')])));
     setEditAgent(settings.defaultAgent || 'claude');
     setQuickText((settings.quickCommands ?? DEFAULT_QUICK_COMMANDS).join('\n'));
+    setRulesText((settings.autoApproveRules ?? []).join('\n'));
     if (isOpen) {
       window.electronAPI.getTerminals().then(setTerminals);
     }
@@ -138,6 +157,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       agentFlagPresets: agentPresets,
       // Unchanged built-ins stay unset so future default updates still reach the user.
       quickCommands: toList(quickText).join('\n') === DEFAULT_QUICK_COMMANDS.join('\n') ? undefined : toList(quickText),
+      autoApproveRules: toList(rulesText),
       defaultFlags: formData.defaultFlags.filter((f) => agentPresets[defaultAgent].includes(f))
     });
     setIsSaved(true);
@@ -371,6 +391,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             />
             <p className="text-[10px] text-zinc-600 mt-1">
               One per line: a prompt or a slash command. They appear in the toolbar's … menu and are sent to the agent with one click.
+            </p>
+          </div>
+
+          {/* Auto-approval rules */}
+          <div>
+            <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block mb-1.5">AUTO-APPROVE</label>
+            <textarea
+              value={rulesText}
+              onChange={(e) => setRulesText(e.target.value)}
+              rows={3}
+              spellCheck={false}
+              placeholder={'npm test\ngit status\nRead('}
+              className="w-full bg-[#10131c] border border-[#1b2233] focus:border-[#C8FF2E] text-xs text-zinc-200 rounded px-2.5 py-1.5 outline-none font-mono resize-y"
+            />
+            <p className="text-[10px] text-zinc-600 mt-1">
+              One phrase per line. When an agent asks for approval and the request contains one, Pilothouse answers with its first option (Yes). Risky commands (rm -rf, force-push, deploy, sudo, .env …) are never auto-approved. Works for every agent; each one is logged.
             </p>
           </div>
 

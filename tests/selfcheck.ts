@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import http from 'http';
+import crypto from 'crypto';
 import { detectRunCommands, getCodexSessions, readTranscript, searchHistory } from '../electron/scanner';
 import { findProject, stripAnsi } from '../electron/control';
 import { Endpointer } from '../src/utils/voice';
@@ -366,8 +367,8 @@ if (bin && hasModel()) {
 }
 
 {
-  // Phone remote: Tailscale-only, Host check, token, stale-prompt guard, two-tap risky approvals, audit log.
-  const { isTailscaleIp, hostOk, riskOf, startRemoteServer, auditFile } = await import('../electron/remote');
+  // Phone remote: Tailscale-only, Host check, per-device pairing, stale-prompt guard, two-tap risky approvals, audit log.
+  const { isTailscaleIp, hostOk, riskOf, startRemoteServer, auditFile, pairingLink, listDevices, pushTargets, sessionView, autoChoice, promptSummary, projectDiff } = await import('../electron/remote');
   assert.ok(isTailscaleIp('100.101.2.3') && !isTailscaleIp('100.128.0.1') && !isTailscaleIp('192.168.1.5'));
   assert.ok(hostOk('100.64.0.1:4747', '100.64.0.1', 4747) && hostOk('mac.tail1234.ts.net:4747', '100.64.0.1', 4747));
   assert.ok(!hostOk('evil.com:4747', '100.64.0.1', 4747) && !hostOk(undefined, '100.64.0.1', 4747));
@@ -386,13 +387,18 @@ if (bin && hasModel()) {
   }, '127.0.0.1', 0);
   assert.ok('server' in r);
   const port = (r.server.address() as any).port;
-  const token = /#t=(\w+)/.exec(r.url)![1];
+  const secret = /#p=(\w+)/.exec(pairingLink(r.url))![1];
+  let token = '';
   const call = (p: string, body?: unknown, auth = token, host = `127.0.0.1:${port}`) => new Promise<{ status: number; body: any }>((res, rej) => {
     const req = http.request({ port, path: p, method: body ? 'POST' : 'GET', headers: { host, authorization: `Bearer ${auth}`, 'content-type': 'application/json' } }, (resp) => {
       let raw = ''; resp.on('data', (c) => raw += c); resp.on('end', () => res({ status: resp.statusCode!, body: raw.startsWith('<') ? raw : JSON.parse(raw) }));
     });
     req.on('error', rej); req.end(body ? JSON.stringify(body) : undefined);
   });
+  assert.equal((await call('/api/pair', { secret: 'wrong', name: 'x' })).status, 401);
+  token = (await call('/api/pair', { secret, name: 'iPhone' })).body.token;
+  assert.match(token, /^[0-9a-f]{48}$/);
+  assert.ok(!fs.readFileSync(path.join(process.env.PILOTHOUSE_DIR!, 'remote.json'), 'utf-8').includes(token)); // only the hash is kept
   assert.equal((await call('/api/sessions', undefined, 'nope')).status, 401);
   assert.equal((await call('/api/sessions', undefined, token, 'evil.com')).status, 421);
   assert.ok(String((await call('/')).body).includes('textContent'));
@@ -411,15 +417,117 @@ if (bin && hasModel()) {
   assert.equal((await call('/api/choose', { id: 't1', key: '1', sig: d.sig })).status, 428);
   assert.equal((await call('/api/choose', { id: 't1', key: '2', sig: d.sig })).status, 200); // No: one tap
   assert.equal((await call('/api/choose', { id: 't1', key: '1', sig: d.sig, confirm: true })).status, 200);
-  assert.equal(fs.readFileSync(auditFile(), 'utf-8').trim().split('\n').length, 4);
+  assert.equal(fs.readFileSync(auditFile(), 'utf-8').trim().split('\n').length, 6); // refused pair, pair, open, 3 chooses
+
+  // Push token registration, and revoking one device leaves the others working.
+  assert.equal((await call('/api/push-token', { token: 'ab'.repeat(32), sandbox: true })).status, 200);
+  assert.deepStrictEqual(pushTargets(), [{ token: 'ab'.repeat(32), sandbox: true }]);
+  const other = (await call('/api/pair', { secret, name: 'iPad' })).body.token;
+  assert.equal((await call('/api/unpair', {}, other)).status, 200);
+  assert.equal((await call('/api/sessions', undefined, other)).status, 401);
+  assert.equal((await call('/api/sessions')).status, 200);
+  assert.deepStrictEqual(listDevices().map(d => d.name), ['iPhone']);
+  assert.equal((await call('/manifest.json')).status, 200);
   assert.equal(fs.statSync(auditFile()).mode & 0o777, 0o600);
   r.server.close();
   delete process.env.PILOTHOUSE_DIR;
+
+  // Auto-approval: only non-risky prompts that contain a rule phrase, always the first option.
+  const view = (buf: string) => sessionView({ id: 'x', cwd: '/tmp/demo', status: 'waiting', buf }, []);
+  const safe = view('Bash(npm test)\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n');
+  assert.equal(autoChoice(safe, ['npm test'])?.key, '1');
+  assert.equal(autoChoice(safe, ['cargo build']), null);
+  assert.equal(autoChoice(view('Bash(rm -rf dist && npm test)\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n'), ['npm test']), null);
+  assert.equal(promptSummary(safe.tail), 'Bash(npm test) · Do you want to proceed?');
+
+  // Diff of a real repo: changed and new files.
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-diff-'));
+  execFileSync('git', ['init', '-q'], { cwd: repo });
+  fs.writeFileSync(path.join(repo, 'a.txt'), 'one\n');
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qam', 'x', '--allow-empty'], { cwd: repo });
+  execFileSync('git', ['add', 'a.txt'], { cwd: repo });
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'a'], { cwd: repo });
+  fs.writeFileSync(path.join(repo, 'a.txt'), 'two\n');
+  fs.writeFileSync(path.join(repo, 'b.txt'), 'new\n');
+  const pd = await projectDiff(repo);
+  assert.ok(pd.diff.includes('-one') && pd.diff.includes('+two') && pd.stat.includes('a.txt'));
+  assert.deepStrictEqual(pd.untracked, ['b.txt']);
+
+  // APNs: ES256 token that verifies with the key's public half, and the payload shape the iOS app reads.
+  const { apnsJwt, apnsPayload } = await import('../electron/push');
+  const { privateKey, publicKey } = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const keyPath = path.join(os.tmpdir(), `ph-apns-${process.pid}.p8`);
+  fs.writeFileSync(keyPath, privateKey.export({ type: 'pkcs8', format: 'pem' }));
+  const jwt = apnsJwt({ keyPath, keyId: 'KEY123', teamId: 'TEAM', bundleId: 'x' }, 1_000_000);
+  const [h, c, sig] = jwt.split('.');
+  assert.deepStrictEqual(JSON.parse(Buffer.from(h, 'base64url').toString()), { alg: 'ES256', kid: 'KEY123' });
+  assert.equal(JSON.parse(Buffer.from(c, 'base64url').toString()).iss, 'TEAM');
+  assert.ok(crypto.verify('sha256', Buffer.from(`${h}.${c}`), { key: publicKey, dsaEncoding: 'ieee-p1363' }, Buffer.from(sig, 'base64url')));
+  const pl: any = apnsPayload({ title: 'demo', body: 'b', category: 'APPROVAL', data: { sid: 't1', sig: 's', approve: '1', deny: '2' } });
+  assert.equal(pl.aps.category, 'APPROVAL');
+  assert.equal(pl.sid, 't1');
+  fs.rmSync(keyPath);
 
   // Without Tailscale it refuses to start rather than falling back to the LAN.
   const off = await startRemoteServer({ listProjects: () => [], sessions: () => [], write: () => true, openTab: async () => '' }, '');
   assert.ok('error' in off);
   console.log('remote ok');
+}
+
+{
+  // Usage per agent from local files only, which agent a tab runs, and project to-dos.
+  const u = await import('../electron/usage');
+  assert.equal(u.agentOfCommand('claude --dangerously-skip-permissions'), 'claude');
+  assert.equal(u.agentOfCommand('"/Users/x/My Tools/codex" resume 1'), 'codex');
+  assert.equal(u.agentOfCommand('/opt/homebrew/bin/agy -i "hi"'), 'antigravity');
+  assert.equal(u.agentOfCommand('npm run dev'), undefined);
+  assert.equal(u.withClaudeStatus('claude --model opus'), 'claude --settings "$HOME/.pilothouse/claude-settings.json" --model opus');
+  assert.equal(u.withClaudeStatus('"/a b/claude" -c'), '"/a b/claude" --settings "$HOME/.pilothouse/claude-settings.json" -c');
+  assert.equal(u.withClaudeStatus('claude --settings x.json'), 'claude --settings x.json');
+
+  process.env.PILOTHOUSE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-usage-'));
+  const claudeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-claude-'));
+  u.ensureClaudeStatusHook(claudeHome);
+  const hookSettings = JSON.parse(fs.readFileSync(path.join(process.env.PILOTHOUSE_DIR, 'claude-settings.json'), 'utf-8'));
+  assert.ok(hookSettings.statusLine.command.includes('claude-statusline.sh'));
+  // The script saves what Claude Code pipes in.
+  const status = { rate_limits: { five_hour: { used_percentage: 42.4, resets_at: 4102444800 }, seven_day: { used_percentage: 10, resets_at: '2000-01-01T00:00:00Z' } } };
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-home-'));
+  fs.mkdirSync(path.join(fakeHome, '.pilothouse'));
+  const printed = execFileSync('sh', [path.join(process.env.PILOTHOUSE_DIR, 'claude-statusline.sh')], { input: JSON.stringify(status), env: { ...process.env, HOME: fakeHome } }).toString();
+  assert.equal(printed, '');
+  fs.copyFileSync(path.join(fakeHome, '.pilothouse', 'claude-status.json'), path.join(process.env.PILOTHOUSE_DIR, 'claude-status.json'));
+  const cu = u.claudeUsage()!;
+  assert.deepStrictEqual(cu.windows.map(w => [w.label, w.usedPercent]), [['5 hours', 42], ['week', 0]]); // past reset → 0
+  // A user with their own status line keeps it.
+  fs.writeFileSync(path.join(claudeHome, 'settings.json'), JSON.stringify({ statusLine: { type: 'command', command: 'mine' } }));
+  u.ensureClaudeStatusHook(claudeHome);
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(process.env.PILOTHOUSE_DIR, 'claude-settings.json'), 'utf-8')), {});
+
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-codex-'));
+  const day = path.join(codexHome, 'sessions', '2026', '11', '03');
+  fs.mkdirSync(day, { recursive: true });
+  fs.writeFileSync(path.join(day, 'rollout-a.jsonl'), [
+    JSON.stringify({ type: 'event_msg', payload: { type: 'token_count', rate_limits: { primary: { used_percent: 5, window_minutes: 300, resets_at: 4102444800 }, secondary: { used_percent: 61.6, window_minutes: 10080, resets_at: 4102444800 }, plan_type: 'plus' } } }),
+    JSON.stringify({ type: 'other' })
+  ].join('\n'));
+  const xu = u.codexUsage(codexHome)!;
+  assert.deepStrictEqual(xu.windows.map(w => [w.label, w.usedPercent]), [['5 hours', 5], ['week', 62]]);
+  assert.equal(xu.plan, 'plus');
+  assert.equal(u.codexUsage(fs.mkdtempSync(path.join(os.tmpdir(), 'ph-nocodex-'))), null);
+
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-todo-'));
+  execFileSync('git', ['init', '-q'], { cwd: repo });
+  fs.writeFileSync(path.join(repo, 'a.ts'), 'const x = 1; // TODO: handle errors\n// FIXME later\nconst todos = 2;\n');
+  fs.writeFileSync(path.join(repo, 'plan.md'), '- [x] done\n- [ ] write tests\n');
+  execFileSync('git', ['add', '.'], { cwd: repo });
+  const todos = await u.projectTodos(repo);
+  assert.deepStrictEqual(todos.map(t => [t.file, t.line, t.kind]), [['plan.md', 2, 'task'], ['a.ts', 1, 'todo'], ['a.ts', 2, 'todo']]);
+  delete process.env.PILOTHOUSE_DIR;
+  console.log('usage + todos ok');
+  const { previewOf } = await import('../electron/remote');
+  assert.equal(previewOf('⏺ Tests pass, pushed the fix.\n\n↓ 2 more\n────\n❯ \n  ⏵⏵ bypass permissions on (shift+tab to cycle)\n'), 'Tests pass, pushed the fix.');
+  assert.equal(stripAnsi('\x1b(Bhello\x1b)0'), 'hello');
 }
 
 console.log('selfcheck ok');

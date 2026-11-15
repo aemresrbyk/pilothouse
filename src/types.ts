@@ -207,7 +207,8 @@ export const DEFAULT_QUICK_COMMANDS = [
 ];
 
 // url carries the pairing token, so it is only shown inside Settings.
-export interface RemoteInfo { enabled: boolean; url?: string; error?: string }
+export interface RemoteDevice { id: string; name: string; created: number; lastSeen?: number; push: boolean }
+export interface RemoteInfo { enabled: boolean; url?: string; error?: string; devices?: RemoteDevice[]; push?: boolean }
 
 export interface AppSettings {
   theme?: AppTheme;
@@ -222,6 +223,7 @@ export interface AppSettings {
   autoDetectOnStartup: boolean;
   controlApiEnabled?: boolean;
   remoteEnabled?: boolean; // phone remote over Tailscale, toggled live from Settings
+  autoApproveRules?: string[]; // phrases; a non-risky approval prompt containing one is answered with its first option
   notificationsEnabled?: boolean;
   voiceEnabled?: boolean;
   voiceHotkey?: string; // Electron accelerator, default CommandOrControl+Shift+Space
