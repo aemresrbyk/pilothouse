@@ -226,7 +226,9 @@ const remoteInfo = () => ({
 });
 
 // Auto-approval rules (every tab, phone or not) and phone notifications when an agent needs you or finishes.
+const DEBUG = !!process.env.PILOTHOUSE_DEBUG;
 function onAgentStatus(id: string, m: { cwd: string; buf: string; act: Activity }, prev: PtyStatus, status: PtyStatus) {
+  if (DEBUG) console.log(`[status] ${path.basename(m.cwd)} ${prev} → ${status} remote=${!!remote} targets=${remote ? pushTargets().length : 0}`);
   if (status !== 'waiting' && !(status === 'idle' && prev === 'running')) return;
   const v = sessionView({ id, cwd: m.cwd, status, buf: m.buf }, storage.listStoredProjects());
   if (status === 'waiting') {
@@ -238,6 +240,8 @@ function onAgentStatus(id: string, m: { cwd: string; buf: string; act: Activity 
       return;
     }
   }
+  // A tab that never got a message only replayed its startup (a resumed session): nothing finished for you.
+  if (status === 'idle' && !m.act.lastInput) return;
   const targets = remote ? pushTargets() : [];
   if (!targets.length) return;
   const deny = v.choices.find(c => isRefusal(c.label)) || v.choices[v.choices.length - 1];
@@ -249,6 +253,7 @@ function onAgentStatus(id: string, m: { cwd: string; buf: string; act: Activity 
         data: { sid: id, sig: v.sig, approve: v.choices[0]?.key, deny: deny?.key }
       }
     : { title: v.project, body: 'Finished. Your turn.', data: { sid: id } };
+  if (DEBUG) console.log(`[push] ${msg.title}: ${msg.body}`);
   sendPush(targets, msg).then(forgetPushTokens).catch((err) => console.error('Push failed:', err.message));
 }
 
