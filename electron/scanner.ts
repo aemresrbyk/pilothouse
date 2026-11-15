@@ -145,6 +145,36 @@ export function getCodexSessions(projectPath: string, codexHome = path.join(os.h
   return sessions.sort((a, b) => b.modifiedAt - a.modifiedAt);
 }
 
+// Claude Code and Codex conversations touched since `since`, in any folder and any terminal (Pilothouse or not),
+// newest first. The phone lists them so you can follow a session running elsewhere.
+export interface RecentSession extends ClaudeSession { cwd: string }
+export function recentSessions(since: number, homes = { claude: path.join(os.homedir(), '.claude'), codex: path.join(os.homedir(), '.codex') }, limit = 30): RecentSession[] {
+  const out: RecentSession[] = [];
+  const add = (file: string, agent: string, id: string, cwdOf: (head: string) => string | undefined, title?: string) => {
+    try {
+      const stat = fs.statSync(file);
+      if (stat.mtimeMs < since) return;
+      const cwd = cwdOf(codexHead(file));
+      if (!cwd) return;
+      out.push({ id, agent, cwd, file, modifiedAt: stat.mtimeMs, sizeBytes: stat.size, formattedSize: '', dateStr: '', title: title ?? getSessionTitle(file) });
+    } catch {}
+  };
+  const root = path.join(homes.claude, 'projects');
+  try {
+    for (const dir of fs.readdirSync(root)) {
+      let files: string[] = [];
+      try { files = fs.readdirSync(path.join(root, dir)).filter(f => f.endsWith('.jsonl')); } catch {}
+      for (const f of files) add(path.join(root, dir, f), 'claude', f.replace('.jsonl', ''), codexCwd);
+    }
+  } catch {}
+  for (const f of codexSessionFiles(homes.codex)) {
+    const head = (() => { try { return codexHead(f); } catch { return ''; } })();
+    const first = head.match(/"type":"user_message","message":"((?:[^"\\]|\\.){1,200})/)?.[1];
+    add(f, 'codex', path.basename(f, '.jsonl').slice(-36), codexCwd, first ? first.replace(/\\n/g, ' ').trim() : undefined);
+  }
+  return out.sort((a, b) => b.modifiedAt - a.modifiedAt).slice(0, limit);
+}
+
 // Only Claude Code / Codex session logs may be read through the history IPC.
 export function isSessionFile(file: string): boolean {
   const home = os.homedir();

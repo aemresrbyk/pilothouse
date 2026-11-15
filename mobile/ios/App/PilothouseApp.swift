@@ -28,6 +28,7 @@ final class Model: ObservableObject {
     @Published var sessions: [Session] = []
     @Published var projects: [Project] = []
     @Published var usage: [AgentUsage] = []
+    @Published var conversations: [Conversation] = []
     @Published var error: String?
     @Published var openSession: String?
     private var lastWaiting = -1
@@ -51,6 +52,7 @@ final class Model: ObservableObject {
     func refreshProjects() async {
         if let p = try? await Client.shared.projects() { projects = p }
         if let u = try? await Client.shared.usage() { usage = u }
+        if let c = try? await Client.shared.conversations() { conversations = c }
     }
 }
 

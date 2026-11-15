@@ -16,6 +16,7 @@ import { REMOTE_PAGE } from './remotePage';
 import { REMOTE_ICON_PNG } from './remoteIcon';
 import { claudeUsage, codexUsage, projectTodos, AgentUsage } from './usage';
 import { AGENTS } from '../src/types';
+import { recentSessions, readTranscript } from './scanner';
 
 // agent: AGENTS id from the tab's command; limited: the tab printed a usage-limit message.
 export interface RemoteSession { id: string; cwd: string; status: PtyStatus; buf: string; agent?: string; limited?: boolean }
@@ -25,6 +26,8 @@ export interface RemoteDeps {
   write: (id: string, data: string) => boolean;
   // Opens the project's default agent in a new tab, as clicking it in the app would.
   openTab: (projectId: string) => Promise<string>;
+  // Opens a tab that resumes an agent conversation (claude --resume <id>, codex resume <id>).
+  resume: (projectId: string, agentId: string, sessionId: string) => Promise<string>;
 }
 
 export const REMOTE_PORT = 4747;
@@ -70,13 +73,18 @@ export function promptSummary(text: string): string {
 }
 
 // TUI chrome that is not the agent talking: hints, scroll markers, borders, the prompt line.
-const CHROME_RE = /bypass permissions|shift\+tab|for shortcuts|esc to interrupt|ctrl\+|^\W*\d+ more\W*$|^[\s\W]{0,3}$|^[─━│┃╭╮╰╯>›❯↓↑\s\-=_*·.]+$/i;
+// Spinner lines (✻ Thinking… (3s · …), ✻ Baked for 3s) and plugin status bars count as chrome too.
+const CHROME_RE = /bypass permissions|shift\+tab|for shortcuts|esc to interrupt|ctrl\+|^\W*\d+ more\W*$|^[\s\W]{0,3}$|^[─━│┃╭╮╰╯>›❯↓↑\s\-=_*·.]+$|^[✻✶✳✢✽·*]\s|…\s*\(|\$\d+\.\d\d|\btokens\b|\bhooks…/i;
 
 // One line for the list: the agent's last message (Claude marks them with ⏺/●), else the last real line.
 export function previewOf(text: string): string {
   const lines = text.split('\n').map(l => l.trim()).filter(l => l && !CHROME_RE.test(l)).slice(-40);
-  const said = [...lines].reverse().find(l => /^[⏺●•]/.test(l));
-  return (said || lines[lines.length - 1] || '').replace(/^[⏺●•]\s*/, '').slice(0, 160);
+  let at = -1;
+  for (let i = lines.length - 1; i >= 0 && at < 0; i--) if (/^[⏺●•]/.test(lines[i])) at = i;
+  if (at < 0) return (lines[lines.length - 1] || '').slice(0, 160);
+  // A bullet on its own line: the message text follows it.
+  const said = lines[at].replace(/^[⏺●•]\s*/, '') || lines[at + 1] || '';
+  return said.slice(0, 160);
 }
 
 export function sessionView(s: RemoteSession, projects: ProjectItem[]) {
@@ -274,6 +282,42 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
           out.push({ agent: a.name, windows: [], note: limited(a.id) ? 'Limit reached in an open tab.' : 'This CLI does not report its limits; Pilothouse warns when a tab hits one.' });
         }
         return send(200, out);
+      }
+      // Claude Code / Codex conversations from any terminal, including ones Pilothouse did not start.
+      if (route === 'GET /api/conversations') {
+        const now = Date.now();
+        return send(200, recentSessions(now - 3 * 86_400_000).map(c => {
+          const p = projects.find(x => x.path === c.cwd);
+          return {
+            key: `${c.agent}:${c.id}`,
+            agent: AGENTS.find(a => a.id === c.agent)?.name || c.agent,
+            project: p?.name || path.basename(c.cwd),
+            projectId: p?.id || '',
+            title: (c.title || '').slice(0, 140),
+            updatedAt: c.modifiedAt,
+            live: now - c.modifiedAt < 90_000
+          };
+        }));
+      }
+      const conversation = () => {
+        const [agent, id] = String(url.searchParams.get('key') ?? body.key ?? '').split(':');
+        return recentSessions(Date.now() - 30 * 86_400_000, undefined, 300).find(c => c.agent === agent && c.id === id);
+      };
+      if (route === 'GET /api/conversation') {
+        const c = conversation();
+        if (!c) return send(404, { error: 'conversation not found' });
+        // shortcut: parses the whole transcript on every poll; cache by mtime if long sessions get slow.
+        const messages = readTranscript(c.file!).slice(-80).map(m => ({ ...m, text: m.text.length > 6000 ? m.text.slice(0, 6000) + ' …' : m.text }));
+        return send(200, { messages, live: Date.now() - c.modifiedAt < 90_000 });
+      }
+      if (route === 'POST /api/resume') {
+        const c = conversation();
+        if (!c) return send(404, { error: 'conversation not found' });
+        const p = projects.find(x => x.path === c.cwd);
+        if (!p) return send(400, { error: 'Add this folder to Pilothouse first, then you can continue it here.' });
+        await deps.resume(p.id, c.agent || 'claude', c.id);
+        audit(who, 'resume', p.name, c.id);
+        return send(200, { ok: true });
       }
       if (route === 'GET /api/todos') {
         const p = projects.find(x => x.id === url.searchParams.get('project'));

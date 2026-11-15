@@ -20,7 +20,7 @@ import { agentOptions } from './agentOptions';
 import { geminiKeyStatus, setGeminiApiKey } from './geminiKey';
 import { processUsage } from './resources';
 import { whisperBinary, hasModel, downloadModel, transcribe, speak, stopSpeaking, MODEL_BYTES } from './voice';
-import { ProjectItem, AppSettings, ClaudeSession, PtyStatus, agentById, agentBinary } from '../src/types';
+import { ProjectItem, AppSettings, ClaudeSession, PtyStatus, agentById, agentBinary, buildAgentCommand } from '../src/types';
 
 // The built directory structure
 process.env.DIST = path.join(__dirname, '../dist');
@@ -209,7 +209,11 @@ async function applyRemote(enabled: boolean) {
     listProjects: () => storage.listStoredProjects(),
     sessions: () => [...ptyMeta.entries()].filter(([id]) => ptySessions.has(id)).map(([id, m]) => ({ id, cwd: m.cwd, status: m.act.status, buf: m.buf, agent: m.agent, limited: m.limited })),
     write: (id, data) => { const p = ptySessions.get(id); const m = ptyMeta.get(id); if (!p) return false; if (m) m.act.lastInput = Date.now(); p.write(data); return true; },
-    openTab: (projectId) => openTabViaRenderer(projectId)
+    openTab: (projectId) => openTabViaRenderer(projectId),
+    resume: (projectId, agentId, sessionId) => {
+      const agent = agentById(agentId);
+      return openTabViaRenderer(projectId, buildAgentCommand(agent, agentBinary(agent, storage.getSettings()), [], undefined, sessionId));
+    }
   });
   if ('error' in r) remoteError = r.error; else remote = r;
 }
