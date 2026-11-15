@@ -1,6 +1,6 @@
 import type { SetupProject } from '../electron/setup';
 import type { AgentOptions } from '../electron/agentOptions';
-import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile, PtyStatus, TranscriptMessage, HistoryHit } from './types';
+import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile, PtyStatus, TranscriptMessage, HistoryHit, RemoteInfo } from './types';
 
 declare module '*.css';
 declare module '*.svg' {
@@ -62,6 +62,9 @@ declare global {
       agentOptions: (agentId: string) => Promise<AgentOptions>;
       geminiKeyStatus: () => Promise<{ hasKey: boolean; last4?: string }>;
       setGeminiKey: (key: string) => Promise<{ ok?: true; error?: string }>;
+      remoteInfo: () => Promise<RemoteInfo>;
+      setRemote: (enabled: boolean) => Promise<RemoteInfo>;
+      resetRemote: () => Promise<RemoteInfo>;
       setupScan: () => Promise<{ agents: { id: string; path: string | null }[]; projects: SetupProject[] }>;
       addWorktree: (repoPath: string) => Promise<{ path?: string; error?: string }>;
       setBadge: (count: number) => void;

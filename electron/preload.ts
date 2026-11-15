@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { SetupProject } from './setup';
 import type { AgentOptions } from './agentOptions';
-import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile, PtyStatus, TranscriptMessage, HistoryHit } from '../src/types';
+import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile, PtyStatus, TranscriptMessage, HistoryHit, RemoteInfo } from '../src/types';
 
 export const electronAPI = {
   getProjects: (): Promise<ProjectItem[]> => ipcRenderer.invoke('projects:get'),
@@ -124,6 +124,9 @@ export const electronAPI = {
   agentOptions: (agentId: string): Promise<AgentOptions> => ipcRenderer.invoke('agent:options', agentId),
   geminiKeyStatus: (): Promise<{ hasKey: boolean; last4?: string }> => ipcRenderer.invoke('gemini:key-status'),
   setGeminiKey: (key: string): Promise<{ ok?: true; error?: string }> => ipcRenderer.invoke('gemini:set-key', key),
+  remoteInfo: (): Promise<RemoteInfo> => ipcRenderer.invoke('remote:info'),
+  setRemote: (enabled: boolean): Promise<RemoteInfo> => ipcRenderer.invoke('remote:set', enabled),
+  resetRemote: (): Promise<RemoteInfo> => ipcRenderer.invoke('remote:reset'),
   setupScan: (): Promise<{ agents: { id: string; path: string | null }[]; projects: SetupProject[] }> => ipcRenderer.invoke('setup:scan'),
   addWorktree: (repoPath: string): Promise<{ path?: string; error?: string }> => ipcRenderer.invoke('git:worktree-add', repoPath),
   setBadge: (count: number): void => ipcRenderer.send('app:badge', count),
