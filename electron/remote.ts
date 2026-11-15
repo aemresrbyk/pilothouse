@@ -16,7 +16,7 @@ import { REMOTE_PAGE } from './remotePage';
 import { REMOTE_ICON_PNG } from './remoteIcon';
 import { claudeUsage, codexUsage, projectTodos, AgentUsage } from './usage';
 import { AGENTS } from '../src/types';
-import { recentSessions, readTranscript } from './scanner';
+import { recentSessions, readTranscript, getProjectSessions, getCodexSessions } from './scanner';
 
 // agent: AGENTS id from the tab's command; limited: the tab printed a usage-limit message.
 export interface RemoteSession { id: string; cwd: string; status: PtyStatus; buf: string; agent?: string; limited?: boolean }
@@ -74,7 +74,13 @@ export function promptSummary(text: string): string {
 
 // TUI chrome that is not the agent talking: hints, scroll markers, borders, the prompt line.
 // Spinner lines (✻ Thinking… (3s · …), ✻ Baked for 3s) and plugin status bars count as chrome too.
-const CHROME_RE = /bypass permissions|shift\+tab|for shortcuts|esc to interrupt|ctrl\+|^\W*\d+ more\W*$|^[\s\W]{0,3}$|^[─━│┃╭╮╰╯>›❯↓↑\s\-=_*·.]+$|^[✻✶✳✢✽·*]\s|…\s*\(|\$\d+\.\d\d|\btokens\b|\bhooks…/i;
+// Also leftovers of the spinner animation: single letters with spaces ("o n", "r v") and stray "thinking" fragments.
+const CHROME_RE = /bypass permissions|shift\+tab|for shortcuts|esc to interrupt|ctrl\+|for agents|^\W*\d+ more\W*$|^[\s\W]{0,3}$|^[─━│┃╭╮╰╯>›❯↓↑\s\-=_*·.]+$|^[✻✶✳✢✽·*+]\s|…\s*\(|\$\d+\.\d\d|\btokens\b|\bhooks…|^(\S\s+){1,4}\S?$|thinking\)?$|^\(?\d+s\b/i;
+
+// The terminal text without TUI chrome, for reading on a small screen.
+export function cleanTail(text: string): string {
+  return text.split('\n').map(l => l.trimEnd()).filter(l => !l.trim() || !CHROME_RE.test(l.trim())).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
 
 // One line for the list: the agent's last message (Claude marks them with ⏺/●), else the last real line.
 export function previewOf(text: string): string {
@@ -98,7 +104,7 @@ export function sessionView(s: RemoteSession, projects: ProjectItem[]) {
     projectId: p?.id || '',
     agent: AGENTS.find(a => a.id === s.agent)?.name || 'Terminal',
     status: s.status,
-    tail: text.slice(-2500),
+    tail: cleanTail(text).slice(-2500),
     choices: waiting ? parseChoices(text) : [],
     risk: waiting ? riskOf(prompt) : 'normal',
     sig: waiting ? promptSig(prompt) : '',
@@ -353,6 +359,15 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
       const v = views.find(x => x.id === String(body.id ?? url.searchParams.get('id')));
       if (!v) return send(404, { error: 'session not found' });
 
+      // The conversation behind a Claude Code / Codex tab, read from the agent's own transcript: far easier to
+      // follow on a phone than the terminal. 404 for other agents, so the app shows the terminal instead.
+      if (route === 'GET /api/tab-chat') {
+        const s = deps.sessions().find(x => x.id === v.id)!;
+        const file = s.agent === 'claude' ? getProjectSessions(s.cwd)[0]?.file : s.agent === 'codex' ? getCodexSessions(s.cwd)[0]?.file : undefined;
+        if (!file) return send(404, { error: 'no transcript for this tab' });
+        const messages = readTranscript(file).slice(-60).map(m => ({ ...m, text: m.text.length > 6000 ? m.text.slice(0, 6000) + ' …' : m.text }));
+        return send(200, { messages, live: v.status === 'running' });
+      }
       if (route === 'GET /api/diff') {
         const s = deps.sessions().find(x => x.id === v.id)!;
         return send(200, { project: v.project, ...(await projectDiff(s.cwd)) });
