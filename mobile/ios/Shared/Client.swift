@@ -148,6 +148,9 @@ final class Client {
     func conversation(_ key: String) async throws -> ChatLog {
         try await send("GET", "/api/conversation?key=\(key.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? key)")
     }
+    func tabChat(_ id: String) async throws -> ChatLog {
+        try await send("GET", "/api/tab-chat?id=\(id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? id)")
+    }
     func resume(_ key: String) async throws { let _: OK = try await send("POST", "/api/resume", ["key": key]) }
     func todos(_ projectId: String) async throws -> TodoList {
         try await send("GET", "/api/todos?project=\(projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId)")

@@ -202,22 +202,56 @@ struct SessionView: View {
     @State private var text = ""
     @State private var error: String?
     @State private var busy = false
+    @State private var chat: ChatLog?
+    @State private var showTerminal = false
+    @FocusState private var typing: Bool
 
     private var session: Session? { model.sessions.first { $0.id == id } }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                Text(session?.tail ?? "This tab was closed on the computer.")
-                    .font(.system(size: 11, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-                    .padding(10)
-                Color.clear.frame(height: 1).id("end")
+        VStack(spacing: 0) {
+            // Claude Code / Codex tabs read as a chat (from the agent's transcript); the terminal stays one tap away.
+            if chat != nil {
+                Picker("View", selection: $showTerminal) {
+                    Text("Chat").tag(false)
+                    Text("Terminal").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
             }
-            .background(Color.black)
-            .onAppear { proxy.scrollTo("end", anchor: .bottom) }
-            .onChange(of: session?.tail) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    if let chat, !showTerminal {
+                        LazyVStack(alignment: .leading, spacing: 10) {
+                            ForEach(Array(chat.messages.enumerated()), id: \.offset) { _, m in Bubble(m: m) }
+                            if session?.status == "running" {
+                                HStack(spacing: 6) { ProgressView(); Text("Working…").font(.caption).foregroundStyle(.secondary) }
+                            }
+                        }
+                        .padding(12)
+                    } else {
+                        Text(session?.tail ?? "This tab was closed on the computer.")
+                            .font(.system(size: 12, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .padding(12)
+                    }
+                    Color.clear.frame(height: 1).id("end")
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .onTapGesture { typing = false }
+                .onAppear { proxy.scrollTo("end", anchor: .bottom) }
+                .onChange(of: session?.tail) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
+                .onChange(of: chat?.messages.count) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
+                .onChange(of: showTerminal) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
+            }
+        }
+        .task {
+            while !Task.isCancelled {
+                chat = try? await Client.shared.tabChat(id)
+                try? await Task.sleep(for: .seconds(2))
+            }
         }
         .safeAreaInset(edge: .bottom) { controls.padding(12).background(.bar) }
         .navigationTitle(session?.project ?? "")
@@ -241,8 +275,15 @@ struct SessionView: View {
     @ViewBuilder private var controls: some View {
         VStack(spacing: 8) {
             if let s = session, s.waiting, !s.choices.isEmpty {
+                // What the agent asks, on its own: the chat above does not show approval prompts.
+                Text(s.summary.isEmpty ? "The agent asks for approval." : s.summary)
+                    .font(.system(size: 13, design: .monospaced))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(Color.amber.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 if s.risky {
-                    Label("Risky command: deletes, force-pushes, deploys, sudo or secrets. Read it in full above.", systemImage: "exclamationmark.triangle.fill")
+                    Label("Risky command: deletes, force-pushes, deploys, sudo or secrets. Check it before approving.", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 ForEach(Array(s.choices.enumerated()), id: \.element) { i, c in
@@ -263,6 +304,7 @@ struct SessionView: View {
                 TextField(speech.listening ? "Listening…" : "Message the agent", text: $text, axis: .vertical)
                     .lineLimit(1...4)
                     .textFieldStyle(.roundedBorder)
+                    .focused($typing)
                 Button { speech.toggle() } label: {
                     Image(systemName: speech.listening ? "stop.circle.fill" : "mic.circle").font(.title2)
                 }
@@ -293,6 +335,7 @@ struct SessionView: View {
 
     private func send() {
         speech.stop()
+        typing = false
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         Task {
             busy = true

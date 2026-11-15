@@ -569,7 +569,8 @@ if (bin && hasModel()) {
   fs.utimesSync(path.join(homes.claude, 'projects', '-x-app', 'old.jsonl'), new Date(0), new Date(0));
   const rs = recentSessions(Date.now() - 60_000, homes);
   assert.deepStrictEqual(rs.map(r => [r.agent, r.id, r.cwd]), [['claude', 'abc', '/x/app']]);
-  const { previewOf } = await import('../electron/remote');
+  const { previewOf, cleanTail } = await import('../electron/remote');
+  assert.equal(cleanTail('❯ do it\n✻ Grooving…\n o n\n   o i\n✻ r v\n  Contemplating…\n                 (2s · thinking)\n  n m thinking\n⏺ Done.\n'), '❯ do it\n  Contemplating…\n⏺ Done.');
   assert.equal(previewOf('⏺ Tests pass, pushed the fix.\n\n↓ 2 more\n────\n❯ \n  ⏵⏵ bypass permissions on (shift+tab to cycle)\n'), 'Tests pass, pushed the fix.');
   assert.equal(stripAnsi('\x1b(Bhello\x1b)0'), 'hello');
   assert.equal(previewOf('❯ say it\n✻ Contemplating… (2s · thinking)\n⏺\n  Bildirim testi tamam.\n  Contemplating… running Stop hooks… 1/2\n✻ Baked for 3s · done 17:14\n❯ \noff $0.00 0s Review Audit Board Details [-]\n'), 'Bildirim testi tamam.');
