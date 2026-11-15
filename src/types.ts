@@ -208,7 +208,7 @@ export const DEFAULT_QUICK_COMMANDS = [
 
 // url carries the pairing token, so it is only shown inside Settings.
 export interface RemoteDevice { id: string; name: string; created: number; lastSeen?: number; push: boolean }
-export interface RemoteInfo { enabled: boolean; url?: string; error?: string; devices?: RemoteDevice[]; push?: boolean }
+export interface RemoteInfo { enabled: boolean; url?: string; error?: string; devices?: RemoteDevice[]; push?: 'direct' | 'relay' }
 
 export interface AppSettings {
   theme?: AppTheme;
