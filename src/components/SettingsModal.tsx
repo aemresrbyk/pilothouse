@@ -81,7 +81,7 @@ const RemoteField: React.FC = () => {
             <button type="button" onClick={async () => setInfo(await window.electronAPI.resetRemote())} className="self-start px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300">
               New code
             </button>
-            <span className="text-[10px] text-zinc-600">{info.push ? 'Notifications: on (APNs key found).' : 'Notifications: off (no APNs key in ~/.pilothouse/apns.json).'}</span>
+            <span className="text-[10px] text-zinc-600">{info.push === 'direct' ? 'Notifications: sent straight to Apple with your APNs key.' : 'Notifications: end-to-end encrypted through the Pilothouse relay (it cannot read them).'}</span>
           </div>
         </div>
       )}

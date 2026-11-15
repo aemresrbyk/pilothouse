@@ -119,6 +119,7 @@ final class Client {
 
     func forget() {
         Keychain.set(nil, for: "token")
+        Keychain.set(nil, for: "pushKey")
         defaults.removeObject(forKey: "base")
     }
 
@@ -142,7 +143,10 @@ final class Client {
     func message(_ id: String, _ text: String) async throws { let _: OK = try await send("POST", "/api/send", ["id": id, "text": text]) }
     func stop(_ id: String) async throws { let _: OK = try await send("POST", "/api/stop", ["id": id]) }
     func open(_ projectId: String) async throws { let _: OK = try await send("POST", "/api/open", ["project": projectId]) }
+    private struct PushRegistered: Decodable { let pushKey: String? }
+    // The computer answers with this phone's notification key; the extension decrypts pushes with it.
     func registerPush(token: String, sandbox: Bool) async throws {
-        let _: OK = try await send("POST", "/api/push-token", ["token": token, "sandbox": sandbox])
+        let res: PushRegistered = try await send("POST", "/api/push-token", ["token": token, "sandbox": sandbox])
+        if let key = res.pushKey { Keychain.set(key, for: "pushKey") }
     }
 }

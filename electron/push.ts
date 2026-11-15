@@ -1,7 +1,8 @@
-// Sends push notifications to paired iPhones straight from this computer through Apple's APNs (token auth,
-// HTTP/2). Needs an APNs key in ~/.pilothouse/apns.json: { keyPath, keyId, teamId, bundleId }.
-// shortcut: the key belongs to whoever builds the iOS app, so this only works for your own build; a hosted
-// relay that holds the key is the upgrade when the app ships to other people.
+// Push notifications to paired iPhones, two ways:
+//  - Relay (default, App Store app): the text is encrypted here with the phone's own key (AES-256-GCM) and sent
+//    through Pilothouse's relay (relay/worker.js), which holds the app's APNs key but cannot read the text.
+//  - Direct (your own build): with an APNs key in ~/.pilothouse/apns.json ({ keyPath, keyId, teamId, bundleId })
+//    this computer talks to Apple itself (token auth, HTTP/2).
 import http2 from 'http2';
 import fs from 'fs';
 import path from 'path';
@@ -9,7 +10,7 @@ import os from 'os';
 import crypto from 'crypto';
 
 export interface ApnsConfig { keyPath: string; keyId: string; teamId: string; bundleId: string }
-export interface PushTarget { token: string; sandbox?: boolean }
+export interface PushTarget { token: string; sandbox?: boolean; key?: string } // key: base64 AES-256 key the phone holds
 export interface PushMessage {
   title: string;
   body: string;
@@ -50,10 +51,40 @@ export function apnsPayload(m: PushMessage) {
   };
 }
 
+export const RELAY_URL = process.env.PILOTHOUSE_RELAY || 'https://pilothouse-push.aemresrbyk.workers.dev/push';
+
+// nonce (12) | ciphertext | tag (16), base64: the layout CryptoKit's AES.GCM.SealedBox(combined:) reads.
+export function seal(keyB64: string, data: unknown): string {
+  const nonce = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(keyB64, 'base64'), nonce);
+  const ct = Buffer.concat([cipher.update(JSON.stringify(data)), cipher.final()]);
+  return Buffer.concat([nonce, ct, cipher.getAuthTag()]).toString('base64');
+}
+
+const relayKind = (m: PushMessage) => m.category === 'APPROVAL_RISKY' ? 'risky' : m.category === 'APPROVAL' ? 'approval' : 'done';
+
+async function sendViaRelay(targets: PushTarget[], m: PushMessage): Promise<string[]> {
+  const dead: string[] = [];
+  await Promise.all(targets.filter(t => t.key).map(async t => {
+    try {
+      const res = await fetch(RELAY_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: t.token, sandbox: !!t.sandbox, kind: relayKind(m), enc: seal(t.key!, { title: m.title, body: m.body, ...m.data }) }),
+        signal: AbortSignal.timeout(10_000)
+      });
+      if (res.status === 410) dead.push(t.token);
+      else if (!res.ok) console.error('Push relay', res.status, await res.text().catch(() => ''));
+    } catch (err: any) { console.error('Push relay:', err.message); }
+  }));
+  return dead;
+}
+
 // Resolves to the device tokens APNs says are dead, so the caller can forget them.
 export async function sendPush(targets: PushTarget[], m: PushMessage): Promise<string[]> {
+  if (!targets.length) return [];
   const c = apnsConfig();
-  if (!c || !targets.length) return [];
+  if (!c) return sendViaRelay(targets, m);
   const dead: string[] = [];
   const body = JSON.stringify(apnsPayload(m));
   for (const sandbox of [true, false]) {

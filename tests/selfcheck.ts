@@ -420,8 +420,10 @@ if (bin && hasModel()) {
   assert.equal(fs.readFileSync(auditFile(), 'utf-8').trim().split('\n').length, 6); // refused pair, pair, open, 3 chooses
 
   // Push token registration, and revoking one device leaves the others working.
-  assert.equal((await call('/api/push-token', { token: 'ab'.repeat(32), sandbox: true })).status, 200);
-  assert.deepStrictEqual(pushTargets(), [{ token: 'ab'.repeat(32), sandbox: true }]);
+  const reg = await call('/api/push-token', { token: 'ab'.repeat(32), sandbox: true });
+  assert.equal(Buffer.from(reg.body.pushKey, 'base64').length, 32);
+  assert.deepStrictEqual(pushTargets(), [{ token: 'ab'.repeat(32), sandbox: true, key: reg.body.pushKey }]);
+  assert.equal((await call('/api/push-token', { token: 'cd'.repeat(32) })).body.pushKey, reg.body.pushKey); // stable per phone
   const other = (await call('/api/pair', { secret, name: 'iPad' })).body.token;
   assert.equal((await call('/api/unpair', {}, other)).status, 200);
   assert.equal((await call('/api/sessions', undefined, other)).status, 401);
@@ -467,6 +469,37 @@ if (bin && hasModel()) {
   assert.equal(pl.aps.category, 'APPROVAL');
   assert.equal(pl.sid, 't1');
   fs.rmSync(keyPath);
+
+  // Relay mode: the sealed text opens with the phone's key and nothing else.
+  const { seal } = await import('../electron/push');
+  const k = crypto.randomBytes(32).toString('base64');
+  const box = Buffer.from(seal(k, { title: 'demo', sid: 't1' }), 'base64');
+  const d2 = crypto.createDecipheriv('aes-256-gcm', Buffer.from(k, 'base64'), box.subarray(0, 12));
+  d2.setAuthTag(box.subarray(box.length - 16));
+  assert.deepStrictEqual(JSON.parse(Buffer.concat([d2.update(box.subarray(12, box.length - 16)), d2.final()]).toString()), { title: 'demo', sid: 't1' });
+
+  // The relay itself: validates input, signs for APNs, forwards only ciphertext, maps dead tokens to 410.
+  const worker = (await import('../relay/worker.js')).default;
+  const env = { APNS_KEY: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(), APNS_KEY_ID: 'K1', APNS_TEAM_ID: 'T1', APNS_TOPIC: 'com.x' };
+  const realFetch = globalThis.fetch;
+  const sent: any[] = [];
+  let reply = new Response('', { status: 200 });
+  (globalThis as any).fetch = async (url: string, init: any) => { sent.push({ url, init }); return reply; };
+  const post = (b: unknown) => worker.fetch(new Request('https://relay/push', { method: 'POST', body: JSON.stringify(b) }), env);
+  assert.equal((await post({ token: 'zz', kind: 'done', enc: 'x' })).status, 400);
+  const enc = seal(k, { title: 'secret project' });
+  assert.equal((await post({ token: 'ab'.repeat(32), kind: 'risky', enc, sandbox: true })).status, 200);
+  assert.equal(sent[0].url, `https://api.sandbox.push.apple.com/3/device/${'ab'.repeat(32)}`);
+  assert.equal(sent[0].init.headers['apns-topic'], 'com.x');
+  const fwd = JSON.parse(sent[0].init.body);
+  assert.equal(fwd.aps.category, 'APPROVAL_RISKY');
+  assert.equal(fwd.enc, enc);
+  assert.ok(!sent[0].init.body.includes('secret project'));
+  const [jh, jc, js] = sent[0].init.headers.authorization.slice(7).split('.');
+  assert.ok(crypto.verify('sha256', Buffer.from(`${jh}.${jc}`), { key: publicKey, dsaEncoding: 'ieee-p1363' }, Buffer.from(js, 'base64url')));
+  reply = new Response(JSON.stringify({ reason: 'BadDeviceToken' }), { status: 400 });
+  assert.equal((await post({ token: 'ab'.repeat(32), kind: 'done', enc })).status, 410);
+  globalThis.fetch = realFetch;
 
   // Without Tailscale it refuses to start rather than falling back to the LAN.
   const off = await startRemoteServer({ listProjects: () => [], sessions: () => [], write: () => true, openTab: async () => '' }, '');

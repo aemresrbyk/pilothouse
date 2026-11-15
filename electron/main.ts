@@ -218,7 +218,7 @@ const remoteInfo = () => ({
   url: remote ? pairingLink(remote.url) : undefined,
   error: remoteError || undefined,
   devices: listDevices(),
-  push: !!apnsConfig()
+  push: apnsConfig() ? 'direct' as const : 'relay' as const
 });
 
 // Auto-approval rules (every tab, phone or not) and phone notifications when an agent needs you or finishes.

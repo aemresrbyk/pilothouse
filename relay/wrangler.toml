@@ -1,0 +1,16 @@
+name = "pilothouse-push"
+main = "worker.js"
+compatibility_date = "2026-11-01"
+
+# No logs: the relay keeps nothing about who sends what.
+[observability]
+enabled = false
+
+[vars]
+APNS_TOPIC = "com.aemresrbyk.pilothouse.mobile"
+
+# Per-IP rate limit (free on Workers): 60 pushes a minute from one computer is plenty.
+[[ratelimits]]
+name = "LIMITER"
+namespace_id = "1001"
+simple = { limit = 60, period = 60 }

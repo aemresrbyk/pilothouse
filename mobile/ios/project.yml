@@ -47,6 +47,7 @@ targets:
         keychain-access-groups: ["$(AppIdentifierPrefix)com.aemresrbyk.pilothouse.shared"]
     dependencies:
       - target: PilothouseWidget
+      - target: PilothouseNotifications
   PilothouseWidget:
     type: app-extension
     platform: iOS
@@ -64,6 +65,25 @@ targets:
           NSAllowsArbitraryLoads: true
     entitlements:
       path: Widget/PilothouseWidget.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.aemresrbyk.pilothouse]
+        keychain-access-groups: ["$(AppIdentifierPrefix)com.aemresrbyk.pilothouse.shared"]
+  PilothouseNotifications:
+    type: app-extension
+    platform: iOS
+    sources: [Notifications, Shared]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aemresrbyk.pilothouse.mobile.notifications
+    info:
+      path: Notifications/Info.plist
+      properties:
+        CFBundleDisplayName: Pilothouse
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+    entitlements:
+      path: Notifications/PilothouseNotifications.entitlements
       properties:
         com.apple.security.application-groups: [group.com.aemresrbyk.pilothouse]
         keychain-access-groups: ["$(AppIdentifierPrefix)com.aemresrbyk.pilothouse.shared"]

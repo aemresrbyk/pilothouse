@@ -98,7 +98,7 @@ This puts the AppImage in `~/.local/bin` and adds Pilothouse to your app menu (U
 
 - **Every agent, every project, one list.** What needs you is on top, with the agent each tab runs (Claude Code, Codex, Gemini …) and its last message.
 - **Approve from the phone, safely.** The agent's own options as buttons. Risky commands take two taps and Face ID. If the prompt changed since you looked, your tap is refused instead of approving something else.
-- **Lock-screen notifications** when an agent needs you or finishes, with Approve / Deny right on the notification (optional; for now in an iOS build you sign yourself, see [`mobile/ios`](mobile/ios)).
+- **Lock-screen notifications** when an agent needs you or finishes, with Approve / Deny right on the notification. End-to-end encrypted: they pass through a tiny [relay](relay) that cannot read them and keeps nothing.
 - **Usage left.** Claude Code's 5-hour and weekly limits and Codex's limits, with reset times, read from files the CLIs keep on your computer. No provider calls, no tokens touched.
 - **Changes and to-dos.** A tab's uncommitted diff, coloured; a project's `TODO` / `FIXME` comments and open `- [ ]` checkboxes.
 - **Talk instead of typing.** Speak a message; recognised on the iPhone itself.
@@ -125,7 +125,7 @@ What it talks to on the network, and why:
 | GitHub Releases | update check |
 | Hugging Face | one-time voice model download, only if you turn voice on |
 | Your phone, over Tailscale | only if you turn Phone remote on |
-| Apple Push Notification service | only if notifications are set up: the notification text (project name, what the agent asks) goes through Apple to your phone |
+| Pilothouse push relay (Cloudflare) → Apple Push Notification service | only if you allow notifications on the phone: an encrypted blob only your phone can open, plus the phone's push address. The relay keeps no logs |
 
 Your agents (Claude Code, Codex …) talk to their own providers as they always do; Pilothouse doesn't sit in between.
 
