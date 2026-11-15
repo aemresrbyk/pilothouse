@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Settings, Terminal, Code2, Sliders, Check, Palette } from 'lucide-react';
-import { AppSettings, TerminalOption, AppTheme, isDangerFlag, DEFAULT_QUICK_COMMANDS, AGENTS, agentFlagPresets } from '../types';
+import QRCode from 'qrcode';
+import { AppSettings, TerminalOption, AppTheme, isDangerFlag, DEFAULT_QUICK_COMMANDS, AGENTS, agentFlagPresets, RemoteInfo } from '../types';
 import { THEMES, themeOrDefault } from '../theme';
 import { playClickSound } from '../utils/audio';
 
@@ -42,6 +43,47 @@ const GeminiKeyField: React.FC = () => {
       <span className="text-[10px] text-zinc-600">
         {msg || 'For Gemini CLI. Stored in ~/.gemini/.env (only you can read it). With a Google account, use the Antigravity agent instead.'}
       </span>
+    </div>
+  );
+};
+
+// Phone remote: applied live (not on SAVE), so the QR code shows up right away.
+const RemoteField: React.FC = () => {
+  const [info, setInfo] = useState<RemoteInfo | null>(null);
+  const [qr, setQr] = useState('');
+  useEffect(() => { window.electronAPI.remoteInfo().then(setInfo).catch(() => {}); }, []);
+  useEffect(() => {
+    setQr('');
+    if (info?.url) QRCode.toDataURL(info.url, { margin: 1, width: 180 }).then(setQr).catch(() => {});
+  }, [info?.url]);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="flex items-start gap-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={!!info?.enabled}
+          onChange={async (e) => setInfo(await window.electronAPI.setRemote(e.target.checked))}
+          className="mt-0.5 w-3.5 h-3.5 rounded bg-zinc-900 border-[#2a344a] accent-[#C8FF2E] cursor-pointer"
+        />
+        <span>
+          <span className="text-xs text-zinc-300 block">Phone remote</span>
+          <span className="text-[10px] text-zinc-600">
+            See every agent tab on your phone, answer approval prompts and send messages. Works over Tailscale (encrypted, only your own devices). Risky commands need two taps; every action is logged to ~/.pilothouse/remote-audit.jsonl.
+          </span>
+        </span>
+      </label>
+      {info?.error && <span className="text-[10px] text-red-400 ml-5">{info.error}</span>}
+      {info?.url && (
+        <div className="ml-5 flex items-start gap-3">
+          {qr && <img src={qr} alt="QR code to open Pilothouse on your phone" width={120} height={120} className="rounded bg-white" />}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] text-zinc-500">Scan with a phone signed in to the same Tailscale account. Anyone with this code can control your terminals.</span>
+            <button type="button" onClick={async () => setInfo(await window.electronAPI.resetRemote())} className="self-start px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300">
+              New code (signs out phones)
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -89,8 +131,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     playClickSound();
     // Drop defaults whose toolbar toggle was removed.
     const agentPresets = Object.fromEntries(AGENTS.map((a) => [a.id, toList(presetsByAgent[a.id] ?? '')]));
+    // remoteEnabled is set live by RemoteField; a stale copy here would undo it.
+    const { remoteEnabled: _live, ...rest } = formData;
     onSaveSettings({
-      ...formData,
+      ...rest,
       agentFlagPresets: agentPresets,
       // Unchanged built-ins stay unset so future default updates still reach the user.
       quickCommands: toList(quickText).join('\n') === DEFAULT_QUICK_COMMANDS.join('\n') ? undefined : toList(quickText),
@@ -452,6 +496,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </span>
             </span>
           </label>
+
+          <RemoteField />
         </div>
 
         {/* Footer */}

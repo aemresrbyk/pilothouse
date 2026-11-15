@@ -206,6 +206,9 @@ export const DEFAULT_QUICK_COMMANDS = [
   'Write unit tests for the recent changes in this project'
 ];
 
+// url carries the pairing token, so it is only shown inside Settings.
+export interface RemoteInfo { enabled: boolean; url?: string; error?: string }
+
 export interface AppSettings {
   theme?: AppTheme;
   defaultTerminal: string;
@@ -218,6 +221,7 @@ export interface AppSettings {
   setupDone?: boolean; // the first-run setup wizard was finished or skipped
   autoDetectOnStartup: boolean;
   controlApiEnabled?: boolean;
+  remoteEnabled?: boolean; // phone remote over Tailscale, toggled live from Settings
   notificationsEnabled?: boolean;
   voiceEnabled?: boolean;
   voiceHotkey?: string; // Electron accelerator, default CommandOrControl+Shift+Space

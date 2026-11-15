@@ -3,6 +3,7 @@ import assert from 'assert';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import http from 'http';
 import { detectRunCommands, getCodexSessions, readTranscript, searchHistory } from '../electron/scanner';
 import { findProject, stripAnsi } from '../electron/control';
 import { Endpointer } from '../src/utils/voice';
@@ -362,6 +363,59 @@ if (bin && hasModel()) {
   r = await run([H('explain the router'), H('actually just list the files')], ['idle', 'idle'], { reply: 'The router is long. '.repeat(10), bargeAt: 2 });
   assert.deepStrictEqual(r.sent, ['explain the router', 'actually just list the files']);
   console.log('conversation ok');
+}
+
+{
+  // Phone remote: Tailscale-only, Host check, token, stale-prompt guard, two-tap risky approvals, audit log.
+  const { isTailscaleIp, hostOk, riskOf, startRemoteServer, auditFile } = await import('../electron/remote');
+  assert.ok(isTailscaleIp('100.101.2.3') && !isTailscaleIp('100.128.0.1') && !isTailscaleIp('192.168.1.5'));
+  assert.ok(hostOk('100.64.0.1:4747', '100.64.0.1', 4747) && hostOk('mac.tail1234.ts.net:4747', '100.64.0.1', 4747));
+  assert.ok(!hostOk('evil.com:4747', '100.64.0.1', 4747) && !hostOk(undefined, '100.64.0.1', 4747));
+  assert.equal(riskOf('Bash(rm -rf build)\nDo you want to proceed?'), 'danger');
+  assert.equal(riskOf('git push --force origin main'), 'danger');
+  assert.equal(riskOf('Bash(npm test)\nDo you want to proceed?'), 'normal');
+
+  process.env.PILOTHOUSE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-remote-'));
+  const writes: string[] = [];
+  let tail = 'Bash(npm test)\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n';
+  const r = await startRemoteServer({
+    listProjects: () => [{ id: 'p', name: 'demo', path: '/tmp/demo' } as any],
+    sessions: () => [{ id: 't1', cwd: '/tmp/demo', status: 'waiting', buf: tail }],
+    write: (_id, d) => { writes.push(d); return true; }
+  }, '127.0.0.1', 0);
+  assert.ok('server' in r);
+  const port = (r.server.address() as any).port;
+  const token = /#t=(\w+)/.exec(r.url)![1];
+  const call = (p: string, body?: unknown, auth = token, host = `127.0.0.1:${port}`) => new Promise<{ status: number; body: any }>((res, rej) => {
+    const req = http.request({ port, path: p, method: body ? 'POST' : 'GET', headers: { host, authorization: `Bearer ${auth}`, 'content-type': 'application/json' } }, (resp) => {
+      let raw = ''; resp.on('data', (c) => raw += c); resp.on('end', () => res({ status: resp.statusCode!, body: raw.startsWith('<') ? raw : JSON.parse(raw) }));
+    });
+    req.on('error', rej); req.end(body ? JSON.stringify(body) : undefined);
+  });
+  assert.equal((await call('/api/sessions', undefined, 'nope')).status, 401);
+  assert.equal((await call('/api/sessions', undefined, token, 'evil.com')).status, 421);
+  assert.ok(String((await call('/')).body).includes('textContent'));
+  const [s] = (await call('/api/sessions')).body;
+  assert.equal(s.project, 'demo');
+  assert.deepStrictEqual(s.choices.map((c: any) => c.key), ['1', '2']);
+  assert.equal((await call('/api/choose', { id: 't1', key: '1', sig: 'stale' })).status, 409);
+  assert.equal((await call('/api/choose', { id: 't1', key: '1', sig: s.sig })).status, 200);
+  assert.deepStrictEqual(writes, ['1']);
+  tail = 'Bash(rm -rf dist)\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n';
+  const [d] = (await call('/api/sessions')).body;
+  assert.equal(d.risk, 'danger');
+  assert.equal((await call('/api/choose', { id: 't1', key: '1', sig: d.sig })).status, 428);
+  assert.equal((await call('/api/choose', { id: 't1', key: '2', sig: d.sig })).status, 200); // No: one tap
+  assert.equal((await call('/api/choose', { id: 't1', key: '1', sig: d.sig, confirm: true })).status, 200);
+  assert.equal(fs.readFileSync(auditFile(), 'utf-8').trim().split('\n').length, 3);
+  assert.equal(fs.statSync(auditFile()).mode & 0o777, 0o600);
+  r.server.close();
+  delete process.env.PILOTHOUSE_DIR;
+
+  // Without Tailscale it refuses to start rather than falling back to the LAN.
+  const off = await startRemoteServer({ listProjects: () => [], sessions: () => [], write: () => true }, '');
+  assert.ok('error' in off);
+  console.log('remote ok');
 }
 
 console.log('selfcheck ok');

@@ -10,6 +10,8 @@ import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './t
 import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions, readTranscript, searchHistory, isSessionFile, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
 import { startControlServer, CONTROL_FILE, stripAnsi } from './control';
 import { Activity, newActivity, noteOutput, nextStatus, hitLimit } from './activity';
+import { startRemoteServer, remoteToken } from './remote';
+import http from 'http';
 import { writeHandoff } from './handoff';
 import { detectAgents, scanProjects } from './setup';
 import { agentOptions } from './agentOptions';
@@ -187,7 +189,25 @@ app.whenReady().then(() => {
     output: (id) => ptyMeta.get(id)?.buf || '',
     commands: (p) => [...(p.customRunCommands || []), ...detectRunCommands(p.path)]
   }, focusWindow);
+  if (storage.getSettings().remoteEnabled) applyRemote(true);
 });
+
+// Phone remote (Settings → Phone remote). Started and stopped live; the link carries the token.
+let remote: { server: http.Server; url: string } | null = null;
+let remoteError = '';
+async function applyRemote(enabled: boolean) {
+  remote?.server.close();
+  remote = null;
+  remoteError = '';
+  if (!enabled) return;
+  const r = await startRemoteServer({
+    listProjects: () => storage.listStoredProjects(),
+    sessions: () => [...ptyMeta.entries()].filter(([id]) => ptySessions.has(id)).map(([id, m]) => ({ id, cwd: m.cwd, status: m.act.status, buf: m.buf })),
+    write: (id, data) => { const p = ptySessions.get(id); const m = ptyMeta.get(id); if (!p) return false; if (m) m.act.lastInput = Date.now(); p.write(data); return true; }
+  });
+  if ('error' in r) remoteError = r.error; else remote = r;
+}
+const remoteInfo = () => ({ enabled: !!storage.getSettings().remoteEnabled, url: remote?.url, error: remoteError || undefined });
 
 // Voice hotkey works system-wide, so you can talk to the agent while another app is in front.
 const DEFAULT_VOICE_HOTKEY = 'CommandOrControl+Shift+Space';
@@ -262,6 +282,19 @@ function registerIpcHandlers() {
 
   ipcMain.handle('projects:sync', async () => {
     return storage.syncFromClaude();
+  });
+
+  ipcMain.handle('remote:info', async () => remoteInfo());
+  ipcMain.handle('remote:set', async (_e, enabled: boolean) => {
+    storage.updateSettings({ remoteEnabled: !!enabled });
+    await applyRemote(!!enabled);
+    return remoteInfo();
+  });
+  // New token: every paired phone is signed out.
+  ipcMain.handle('remote:reset', async () => {
+    remoteToken(true);
+    await applyRemote(!!storage.getSettings().remoteEnabled);
+    return remoteInfo();
   });
 
   ipcMain.handle('settings:get', async () => {
