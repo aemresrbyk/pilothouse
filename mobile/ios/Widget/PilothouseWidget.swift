@@ -11,9 +11,9 @@ struct Entry: TimelineEntry {
     var waiting: [Session] { sessions.filter(\.waiting) }
 
     static let sample = Entry(date: .now, sessions: [
-        Session(id: "1", project: "pilothouse", projectId: "", agent: "Claude Code", status: "waiting", tail: "", choices: [], risk: "normal", sig: "", summary: "Bash(npm test)", preview: ""),
-        Session(id: "2", project: "api-server", projectId: "", agent: "Codex", status: "running", tail: "", choices: [], risk: "normal", sig: "", summary: "", preview: ""),
-        Session(id: "3", project: "landing", projectId: "", agent: "Gemini CLI", status: "idle", tail: "", choices: [], risk: "normal", sig: "", summary: "", preview: "")
+        Session(sid: "1", project: "pilothouse", projectId: "", agent: "Claude Code", status: "waiting", tail: "", choices: [], risk: "normal", sig: "", summary: "Bash(npm test)", preview: ""),
+        Session(sid: "2", project: "api-server", projectId: "", agent: "Codex", status: "running", tail: "", choices: [], risk: "normal", sig: "", summary: "", preview: ""),
+        Session(sid: "3", project: "landing", projectId: "", agent: "Gemini CLI", status: "idle", tail: "", choices: [], risk: "normal", sig: "", summary: "", preview: "")
     ], note: nil)
 }
 
@@ -33,9 +33,13 @@ struct Provider: TimelineProvider {
     }
 
     private func load() async -> Entry {
-        guard Client.shared.paired else { return Entry(date: .now, sessions: [], note: "Open the app to pair") }
-        do { return Entry(date: .now, sessions: try await Client.shared.sessions(), note: nil) }
-        catch { return Entry(date: .now, sessions: [], note: "Computer offline") }
+        guard Client.anyPaired else { return Entry(date: .now, sessions: [], note: "Open the app to pair") }
+        // Every paired computer; the widget shows whichever answer.
+        var all: [Session] = []
+        var failed = 0
+        for c in Client.all { if let list = try? await c.sessions() { all += list } else { failed += 1 } }
+        if failed == Client.all.count { return Entry(date: .now, sessions: [], note: "Computer offline") }
+        return Entry(date: .now, sessions: all.sorted { ($0.waiting ? 0 : 1) < ($1.waiting ? 0 : 1) }, note: nil)
     }
 }
 

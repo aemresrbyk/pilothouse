@@ -25,7 +25,7 @@ struct PilothouseApp: App {
 
 @MainActor
 final class Model: ObservableObject {
-    @Published var paired = Client.shared.paired
+    @Published var paired = Client.anyPaired
     @Published var sessions: [Session] = []
     @Published var projects: [Project] = []
     @Published var usage: [AgentUsage] = []
@@ -34,28 +34,43 @@ final class Model: ObservableObject {
     @Published var openSession: String?
     private var lastWaiting = -1
 
+    // Every paired computer at once; one that does not answer is named, the others still show.
     func refresh() async {
-        do {
-            sessions = try await Client.shared.sessions()
-            error = nil
-            // Keep the home-screen widget in step while the app is open.
-            let waiting = sessions.filter(\.waiting).count
-            if waiting != lastWaiting { lastWaiting = waiting; WidgetCenter.shared.reloadAllTimelines() }
-            Live.update(needsYou: waiting, working: sessions.filter { $0.status == "running" }.count)
-        } catch PilotError.server(let code, _) where code == 401 {
-            // This phone was removed in Pilothouse Settings.
-            Client.shared.forget()
-            paired = false
-        } catch {
-            self.error = "Cannot reach your computer. Is it awake, with Pilothouse open and Remote control on?"
+        let computers = Client.all
+        var all: [Session] = [], down: [String] = []
+        await withTaskGroup(of: (Client, Result<[Session], Error>).self) { group in
+            for c in computers { group.addTask { do { return (c, .success(try await c.sessions())) } catch { return (c, .failure(error)) } } }
+            for await (c, r) in group {
+                switch r {
+                case .success(let list): all += list
+                case .failure(PilotError.server(401, _)): c.forget() // this phone was removed in that computer's Settings
+                case .failure: down.append(c.name)
+                }
+            }
         }
+        let order = ["waiting": 0, "running": 1, "idle": 2]
+        sessions = all.sorted { (order[$0.status] ?? 3, $0.computerName, $0.project) < (order[$1.status] ?? 3, $1.computerName, $1.project) }
+        paired = Client.anyPaired
+        error = down.isEmpty ? nil : (computers.count > 1
+            ? "Cannot reach \(down.joined(separator: ", ")). Is it awake, with Pilothouse open and Remote control on?"
+            : "Cannot reach your computer. Is it awake, with Pilothouse open and Remote control on?")
+        // Keep the home-screen widget and the Live Activity in step while the app is open.
+        let waiting = sessions.filter(\.waiting).count
+        if waiting != lastWaiting { lastWaiting = waiting; WidgetCenter.shared.reloadAllTimelines() }
+        Live.update(needsYou: waiting, working: sessions.filter { $0.status == "running" }.count)
     }
 
     func refreshProjects() async {
-        if let p = try? await Client.shared.projects() { projects = p }
-        if let u = try? await Client.shared.usage() { usage = u }
-        if let c = try? await Client.shared.conversations() { conversations = c }
+        var p: [Project] = [], u: [AgentUsage] = [], cv: [Conversation] = []
+        for c in Client.all {
+            p += (try? await c.projects()) ?? []
+            u += (try? await c.usage()) ?? []
+            cv += (try? await c.conversations()) ?? []
+        }
+        projects = p; usage = u
+        conversations = cv.sorted { $0.updatedAt > $1.updatedAt }
     }
+    var severalComputers: Bool { Client.all.count > 1 }
 }
 
 enum Push {
@@ -93,7 +108,7 @@ enum Live {
         Task {
             for await token in activity.pushTokenUpdates {
                 let hex = token.map { String(format: "%02x", $0) }.joined()
-                try? await Client.shared.registerActivity(token: hex, sandbox: Push.sandbox)
+                for c in Client.all { try? await c.registerActivity(token: hex, sandbox: Push.sandbox) }
             }
         }
     }
@@ -119,13 +134,13 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
             UNNotificationCategory(identifier: "APPROVAL", actions: [approve, deny], intentIdentifiers: []),
             UNNotificationCategory(identifier: "APPROVAL_RISKY", actions: [approveRisky, deny], intentIdentifiers: [])
         ])
-        if Client.shared.paired { Push.enable() }
+        if Client.anyPaired { Push.enable() }
         return true
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let hex = deviceToken.map { String(format: "%02x", $0) }.joined()
-        Task { try? await Client.shared.registerPush(token: hex, sandbox: Push.sandbox) }
+        Task { for c in Client.all { try? await c.registerPush(token: hex, sandbox: Push.sandbox) } }
     }
 
     // Silent part of every push: refresh the widget.
@@ -144,13 +159,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         let info = response.notification.request.content.userInfo
         guard let sid = info["sid"] as? String else { return }
         let sig = info["sig"] as? String ?? ""
+        // The notification extension notes which computer sent it (the one whose key opened it).
+        let client = Client.of(info["computer"] as? String ?? "")
         switch response.actionIdentifier {
         case "APPROVE":
-            if let key = info["approve"] as? String { try? await Client.shared.choose(sid, key: key, sig: sig, confirm: true) }
+            if let key = info["approve"] as? String { try? await client.choose(sid, key: key, sig: sig, confirm: true) }
         case "DENY":
-            if let key = info["deny"] as? String { try? await Client.shared.choose(sid, key: key, sig: sig, confirm: false) }
+            if let key = info["deny"] as? String { try? await client.choose(sid, key: key, sig: sig, confirm: false) }
         default:
-            if let url = URL(string: "pilothouse://session/\(sid)") { await UIApplication.shared.open(url) }
+            if let url = URL(string: "pilothouse://session/\(client.id)~\(sid)") { await UIApplication.shared.open(url) }
         }
         WidgetCenter.shared.reloadAllTimelines()
     }

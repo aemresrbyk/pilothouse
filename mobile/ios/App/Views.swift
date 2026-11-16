@@ -11,7 +11,10 @@ struct RootView: View {
 // MARK: - Pairing
 
 struct PairView: View {
+    // adding: pushed from Settings to pair one more computer (otherwise it is the first-run screen).
+    var adding = false
     @EnvironmentObject var model: Model
+    @Environment(\.dismiss) private var dismiss
     @State private var scanning = false
     @State private var link = ""
     @State private var error: String?
@@ -50,9 +53,11 @@ struct PairView: View {
         Task {
             defer { busy = false }
             do {
-                try await Client.shared.pair(link: code, name: UIDevice.current.name)
-                Push.enable()
+                try await Client.pair(link: code, name: UIDevice.current.name)
+                Push.enable() // registers the push token with the new computer too
                 model.paired = true
+                await model.refresh()
+                if adding { dismiss() }
             } catch {
                 self.error = error.localizedDescription
             }
@@ -164,7 +169,7 @@ struct HomeView: View {
     private func open(_ p: Project) {
         opening = p.id
         Task {
-            try? await Client.shared.open(p.id)
+            try? await Client.of(p.computer).open(p.pid)
             try? await Task.sleep(for: .seconds(2))
             await model.refresh()
             await model.refreshProjects()
@@ -183,7 +188,7 @@ struct SessionRow: View {
                     Text(s.project).font(.headline)
                     Text(statusLabel(s.status)).font(.caption).foregroundStyle(Color.status(s.status))
                 }
-                Text(s.agent).font(.caption2.bold()).foregroundStyle(Color.lime.opacity(0.8))
+                Text(Client.all.count > 1 ? "\(s.agent) · \(s.computerName)" : s.agent).font(.caption2.bold()).foregroundStyle(Color.lime.opacity(0.8))
                 Text(s.waiting ? s.summary : s.preview).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
             Spacer()
@@ -249,7 +254,7 @@ struct SessionView: View {
         }
         .task {
             while !Task.isCancelled {
-                chat = try? await Client.shared.tabChat(id)
+                chat = try? await route(id).client.tabChat(route(id).sid)
                 try? await Task.sleep(for: .seconds(2))
             }
         }
@@ -259,11 +264,11 @@ struct SessionView: View {
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if session?.status == "running" {
-                    Button("Stop", role: .destructive) { Task { try? await Client.shared.stop(id) } }
+                    Button("Stop", role: .destructive) { Task { try? await route(id).client.stop(route(id).sid) } }
                 }
                 NavigationLink { DiffView(id: id) } label: { Text("Changes") }
                 if let s = session, !s.projectId.isEmpty {
-                    NavigationLink { TodosView(projectId: s.projectId, name: s.project) } label: { Image(systemName: "checklist") }
+                    NavigationLink { TodosView(projectId: "\(s.computer)~\(s.projectId)", name: s.project) } label: { Image(systemName: "checklist") }
                         .accessibilityLabel("To-dos")
                 }
             }
@@ -328,7 +333,7 @@ struct SessionView: View {
             busy = true
             defer { busy = false }
             do {
-                try await Client.shared.choose(s.id, key: c.key, sig: s.sig, confirm: needsConfirm)
+                try await route(s.id).client.choose(s.sid, key: c.key, sig: s.sig, confirm: needsConfirm)
                 error = nil
                 await model.refresh()
             } catch { self.error = error.localizedDescription }
@@ -343,7 +348,7 @@ struct SessionView: View {
             busy = true
             defer { busy = false }
             do {
-                try await Client.shared.message(id, t)
+                try await route(id).client.message(route(id).sid, t)
                 text = ""
                 error = nil
                 await model.refresh()
@@ -380,7 +385,7 @@ struct TerminalScreen: View {
         .accessibilityLabel("Terminal screen")
         .task {
             while !Task.isCancelled {
-                if let s = try? await Client.shared.screen(id), s != snap { snap = s }
+                if let s = try? await route(id).client.screen(route(id).sid), s != snap { snap = s }
                 try? await Task.sleep(for: .milliseconds(700))
             }
         }
@@ -420,7 +425,7 @@ struct KeyBar: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 ForEach(keys, id: \.0) { k in
-                    Button(k.0) { Task { try? await Client.shared.keys(id, k.1) } }
+                    Button(k.0) { Task { try? await route(id).client.keys(route(id).sid, k.1) } }
                         .font(.system(size: 13, design: .monospaced))
                         .buttonStyle(.bordered)
                         .accessibilityLabel(k.0 == "↑" ? "Up arrow" : k.0 == "↓" ? "Down arrow" : k.0 == "←" ? "Left arrow" : k.0 == "→" ? "Right arrow" : k.0)
@@ -452,7 +457,7 @@ struct ChangesPeek: View {
                 }
             }
         }
-        .task { result = try? await Client.shared.diff(id) }
+        .task { result = try? await route(id).client.diff(route(id).sid) }
     }
     private func summary(_ r: DiffResult) -> String {
         let last = r.stat.split(separator: "\n").last.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
@@ -490,7 +495,7 @@ struct DiffView: View {
         .navigationTitle(result.map { "Changes · \($0.project)" } ?? "Changes")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            do { result = try await Client.shared.diff(id) } catch { self.error = error.localizedDescription }
+            do { result = try await route(id).client.diff(route(id).sid) } catch { self.error = error.localizedDescription }
         }
     }
 }
@@ -563,7 +568,7 @@ struct ConversationView: View {
         .confirmationDialog("Continue this conversation in a Pilothouse tab?", isPresented: $confirmResume, titleVisibility: .visible) {
             Button("Open in Pilothouse") {
                 Task {
-                    do { try await Client.shared.resume(c.key); resumed = true } catch { self.error = error.localizedDescription }
+                    do { try await route(c.id).client.resume(c.key); resumed = true } catch { self.error = error.localizedDescription }
                 }
             }
         } message: {
@@ -572,7 +577,7 @@ struct ConversationView: View {
         // Follows a live session: polls while this screen is open.
         .task {
             while !Task.isCancelled {
-                do { log = try await Client.shared.conversation(c.key); error = nil } catch { if log == nil { self.error = error.localizedDescription } }
+                do { log = try await route(c.id).client.conversation(c.key); error = nil } catch { if log == nil { self.error = error.localizedDescription } }
                 try? await Task.sleep(for: .seconds(3))
             }
         }
@@ -669,7 +674,7 @@ struct TodosView: View {
         .navigationTitle("To-dos · \(name)")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            do { list = try await Client.shared.todos(projectId) } catch { self.error = error.localizedDescription }
+            do { list = try await route(projectId).client.todos(route(projectId).sid) } catch { self.error = error.localizedDescription }
         }
     }
 }
@@ -689,15 +694,24 @@ struct TodoRow: View {
 struct SettingsView: View {
     @EnvironmentObject var model: Model
     @State private var language = Speech.language
+    @State private var computers = Client.all
 
     var body: some View {
         List {
-            Section("Computer") {
-                Text(Client.shared.connection).font(.system(.body, design: .monospaced))
-                Button("Unpair this iPhone", role: .destructive) {
-                    Task { await Client.shared.unpair(); model.paired = false }
+            Section {
+                ForEach(computers, id: \.id) { c in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(c.name).font(.headline)
+                        Text(c.connection).font(.caption).foregroundStyle(.secondary)
+                    }
+                    .swipeActions {
+                        Button("Unpair", role: .destructive) {
+                            Task { await c.unpair(); computers = Client.all; model.paired = Client.anyPaired; await model.refresh() }
+                        }
+                    }
                 }
-            }
+                NavigationLink("Add a computer") { PairView(adding: true) }
+            } header: { Text("Computers") } footer: { Text("Swipe left to unpair one. All their agents show up in one list.") }
             Section("Voice") {
                 Picker("Language", selection: $language) {
                     Text("Türkçe").tag("tr-TR")
@@ -711,5 +725,6 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .onAppear { computers = Client.all }
     }
 }
