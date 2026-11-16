@@ -143,16 +143,24 @@ export interface DeviceInfo { id: string; name: string; created: number; lastSee
 
 const hashOf = (t: string) => crypto.createHash('sha256').update(t).digest('hex');
 
+// remote.json is read on every request (phones poll every second or two), so the parsed copy is kept while the
+// file is unchanged on disk; saving goes through saveState, which refreshes it.
+let cache: { file: string; mtime: number; state: RemoteState } | null = null;
+
 function saveState(s: RemoteState) {
   fs.mkdirSync(dir(), { recursive: true });
   fs.writeFileSync(remoteFile(), JSON.stringify(s), { mode: 0o600 });
   fs.chmodSync(remoteFile(), 0o600);
+  cache = { file: remoteFile(), mtime: fs.statSync(remoteFile()).mtimeMs, state: s };
 }
 
 export function remoteState(): RemoteState {
   try {
-    const s = JSON.parse(fs.readFileSync(remoteFile(), 'utf-8'));
-    if (typeof s.pair === 'string' && Array.isArray(s.devices)) return s;
+    const file = remoteFile(), mtime = fs.statSync(file).mtimeMs;
+    // A copy, so callers that change it and then decide not to save leave the cache alone.
+    if (cache && cache.file === file && cache.mtime === mtime) return structuredClone(cache.state);
+    const s = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    if (typeof s.pair === 'string' && Array.isArray(s.devices)) { cache = { file, mtime, state: s }; return structuredClone(s); }
   } catch {}
   // First run, or the v1.4.0 single-token file: start over; old links must pair again.
   const s: RemoteState = { pair: newCode(), pairAt: Date.now(), devices: [] };

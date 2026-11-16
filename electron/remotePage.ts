@@ -240,7 +240,7 @@ export const REMOTE_PAGE = `<!doctype html>
     document.getElementById('tkeys').appendChild(b);
   });
   function drawScreen() {
-    if (!termId) return;
+    if (!termId || document.hidden) return;
     api('GET', '/api/screen?id=' + encodeURIComponent(termId), null, termC).then(function (r) {
       if (r.status !== 200) { msg.textContent = r.body.error || 'Terminal closed'; return closeTerm(); }
       var key = JSON.stringify(r.body);
@@ -297,7 +297,8 @@ export const REMOTE_PAGE = `<!doctype html>
     if (relayMode ? !comps.length : !token) { msg.textContent = relayMode ? '' : 'Open the link from Pilothouse → Settings → Remote control on this phone.'; return; }
     // Re-rendering would wipe what the user is typing.
     var tag = document.activeElement && document.activeElement.tagName;
-    if (diffOpen || termId || tag === 'INPUT' || tag === 'TEXTAREA') return;
+    // Not while you type or read, and not while the page is in the background (battery): it catches up on return.
+    if (document.hidden || diffOpen || termId || tag === 'INPUT' || tag === 'TEXTAREA') return;
     fetchAll('/api/sessions').then(function (results) {
       var all = [], notes = [];
       results.forEach(function (x) {
@@ -398,6 +399,7 @@ export const REMOTE_PAGE = `<!doctype html>
       }).catch(function (e) { msg.textContent = 'Notifications: ' + e.message; });
     };
   }
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { last = ''; load(); drawScreen(); } });
   function start() {
     setupNotify();
     loadProjects();
