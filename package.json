@@ -130,7 +130,7 @@
   "bugs": {
     "url": "https://github.com/aemresrbyk/pilothouse/issues"
   },
-  "homepage": "https://github.com/aemresrbyk/pilothouse#readme",
+  "homepage": "https://usepilothouse.com",
   "license": "MIT",
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
