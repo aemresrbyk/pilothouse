@@ -93,3 +93,7 @@
 .titlebar-no-drag {
   -webkit-app-region: no-drag;
 }
+
+/* Scrolls sideways (wheel or trackpad) without a visible bar: tab strip and tab toolbar. */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
