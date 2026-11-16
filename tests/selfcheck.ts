@@ -7,6 +7,7 @@ import http from 'http';
 import crypto from 'crypto';
 import { detectRunCommands, getCodexSessions, readTranscript, searchHistory } from '../electron/scanner';
 import { findProject, stripAnsi } from '../electron/control';
+import { Screen, paletteColor } from '../electron/screen';
 import { Endpointer } from '../src/utils/voice';
 import { pcmToWav, cleanTranscript, transcribe, whisperBinary, hasModel } from '../electron/voice';
 import { toFlagList, buildAgentCommand, agentById } from '../src/types';
@@ -383,6 +384,7 @@ if (bin && hasModel()) {
     listProjects: () => [{ id: 'p', name: 'demo', path: '/tmp/demo' } as any, { id: 'q', name: 'other', path: '/tmp/other' } as any],
     sessions: () => [{ id: 't1', cwd: '/tmp/demo', status: 'waiting', buf: tail }],
     write: (_id, d) => { writes.push(d); return true; },
+    screen: (id) => id === 't1' ? new Screen(20, 3, 'hi \x1b[31mred\x1b[0m').snapshot() : null,
     openTab: async (pid) => { opened.push(pid); return 'tab'; },
     resume: async () => 'tab'
   }, '127.0.0.1', 0);
@@ -403,6 +405,10 @@ if (bin && hasModel()) {
   assert.equal((await call('/api/sessions', undefined, 'nope')).status, 401);
   assert.equal((await call('/api/sessions', undefined, token, 'evil.com')).status, 421);
   assert.ok(String((await call('/')).body).includes('textContent'));
+  // The page's script must parse: one bad escape inside the template string silently kills the whole web remote.
+  const page = String((await call('/')).body);
+  new Function(page.split('<script>')[1].split('</script>')[0]);
+  assert.ok(!/[\x00-\x08\x1b]/.test(page), 'no raw control characters in the page');
   const [s] = (await call('/api/sessions')).body;
   assert.equal(s.project, 'demo');
   assert.deepStrictEqual((await call('/api/projects')).body, [{ id: 'q', name: 'other' }]); // open ones are cards already
@@ -437,6 +443,16 @@ if (bin && hasModel()) {
   assert.notEqual(/#p=(\w+)/.exec(pairingLink(r.url))![1], fresh); // Settings shows a new one
   const other = (await call('/api/pair', { secret: /#p=(\w+)/.exec(pairingLink(r.url))![1], name: 'iPad' })).body.token;
   assert.match(other, /^[0-9a-f]{48}$/);
+  // Live terminal: the screen with colours and cursor; raw keys go through, their content stays out of the audit log.
+  const scr = (await call('/api/screen?id=t1')).body;
+  assert.deepStrictEqual(scr.lines[0], [['hi ', ''], ['red', '#ef6b6b']]);
+  assert.deepStrictEqual([scr.cols, scr.rows, scr.cursor], [20, 3, { x: 6, y: 0 }]);
+  assert.equal((await call('/api/screen?id=nope')).status, 404);
+  writes.length = 0;
+  assert.equal((await call('/api/keys', { id: 't1', data: '\x1b[A' })).status, 200);
+  assert.deepStrictEqual(writes, ['\x1b[A']);
+  assert.equal((await call('/api/keys', { id: 't1', data: '' })).status, 400);
+  assert.ok(!fs.readFileSync(auditFile(), 'utf-8').includes('\\u001b[A'));
   // Hostile input: oversized and broken bodies, tokens of the wrong shape.
   assert.equal((await call('/api/send', { id: 't1', text: 'x'.repeat(30_000) })).status, 413);
   assert.equal((await call('/api/sessions', undefined, token + '0')).status, 401);
@@ -454,6 +470,15 @@ if (bin && hasModel()) {
   assert.equal(fs.statSync(auditFile()).mode & 0o777, 0o600);
   r.server.close();
   delete process.env.PILOTHOUSE_DIR;
+
+  // Screen: cursor-drawn TUIs come out as the desktop shows them; 256-colour palette maths.
+  const sc = new Screen(10, 2, 'abc\x1b[1;1HX\x1b[2;3H\x1b[1;38;2;255;0;0mR');
+  const sn = await sc.snapshot();
+  assert.deepStrictEqual(sn.lines, [[['Xbc', '']], [['  ', ''], ['R', '#ff0000', true]]]);
+  assert.deepStrictEqual(sn.cursor, { x: 3, y: 1 });
+  sc.resize(12, 3); assert.equal((await sc.snapshot()).cols, 12);
+  sc.dispose();
+  assert.deepStrictEqual([paletteColor(1), paletteColor(16), paletteColor(231), paletteColor(232), paletteColor(255)], ['#ef6b6b', '#000000', '#ffffff', '#080808', '#eeeeee']);
 
   // Messages keep their line breaks only where the program understands bracketed paste.
   const { pasteText } = await import('../electron/control');

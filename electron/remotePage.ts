@@ -37,6 +37,13 @@ export const REMOTE_PAGE = `<!doctype html>
   h2 { font-size:14px; color:var(--dim); margin:20px 0 8px; font-weight:600; }
   .proj { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0 6px 12px; }
   details summary { color:var(--dim); font-size:13px; margin-top:8px; }
+  #term { position:fixed; inset:0; background:var(--bg); display:flex; flex-direction:column; padding:calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)); z-index:10; }
+  #term[hidden] { display:none; }
+  #term .head { margin-bottom:8px; }
+  #scr { flex:1; margin:0; max-height:none; white-space:pre; overflow:auto; line-height:1.25; }
+  #scr .cur { background:var(--lime); color:#0B0D10; }
+  .keys { display:flex; gap:6px; overflow-x:auto; margin-top:8px; padding-bottom:2px; }
+  .keys button { flex-shrink:0; min-width:48px; text-align:center; font:13px ui-monospace, Menlo, monospace; padding:8px 10px; }
 </style>
 </head>
 <body>
@@ -45,6 +52,12 @@ export const REMOTE_PAGE = `<!doctype html>
 <div id="list"></div>
 <h2 id="ptitle" hidden>Projects</h2>
 <div id="projects"></div>
+<div id="term" hidden>
+  <div class="head"><span class="name" id="tname"></span><button id="tclose">Close</button></div>
+  <pre id="scr"></pre>
+  <div class="keys" id="tkeys"></div>
+  <div class="row"><textarea id="tin" rows="1" placeholder="Type, then Send (Shift+Enter: new line)"></textarea><button id="tsend">Send</button></div>
+</div>
 <script>
 (function () {
   var KEY = 'pilothouse-device-token';
@@ -112,10 +125,10 @@ export const REMOTE_PAGE = `<!doctype html>
       if (!diffBox.hidden) { diffBox.hidden = true; diffOpen = false; return; }
       api('GET', '/api/diff?id=' + encodeURIComponent(s.id)).then(function (r) {
         diffBox.replaceChildren();
-        var text = (r.body.stat || '') + (r.body.untracked && r.body.untracked.length ? '\nNew files: ' + r.body.untracked.join(', ') + '\n' : '') + '\n' + (r.body.diff || 'No changes.');
-        text.split('\n').forEach(function (line) {
-          var span = el('span', null, line + '\n');
-          if (/^\+(?!\+\+)/.test(line)) span.style.color = '#7ee787';
+        var text = (r.body.stat || '') + (r.body.untracked && r.body.untracked.length ? '\\nNew files: ' + r.body.untracked.join(', ') + '\\n' : '') + '\\n' + (r.body.diff || 'No changes.');
+        text.split('\\n').forEach(function (line) {
+          var span = el('span', null, line + '\\n');
+          if (/^\\+(?!\\+\\+)/.test(line)) span.style.color = '#7ee787';
           else if (/^-(?!--)/.test(line)) span.style.color = '#ff7b72';
           else if (/^@@/.test(line)) span.style.color = '#79c0ff';
           diffBox.appendChild(span);
@@ -124,18 +137,73 @@ export const REMOTE_PAGE = `<!doctype html>
       });
     };
     row.appendChild(diffBtn);
+    var termBtn = el('button', null, 'Terminal'); termBtn.onclick = function () { openTerm(s); }; row.appendChild(termBtn);
     if (s.status === 'running') { var stop = el('button', null, 'Stop'); stop.onclick = function () { api('POST', '/api/stop', { id: s.id }).then(load); }; row.appendChild(stop); }
     c.appendChild(row);
     c.appendChild(diffBox);
     return c;
   }
 
+  // Live terminal: the screen exactly as the desktop shows it, refreshed while open, plus the keys a TUI needs.
+  var termId = null, termTimer = null, lastScreen = '';
+  var term = document.getElementById('term'), scr = document.getElementById('scr'), tin = document.getElementById('tin');
+  var KEYS = [['Esc', '\\x1b'], ['Tab', '\\t'], ['↑', '\\x1b[A'], ['↓', '\\x1b[B'], ['←', '\\x1b[D'], ['→', '\\x1b[C'], ['Enter', '\\r'], ['Ctrl+C', '\\x03'], ['1', '1'], ['2', '2'], ['3', '3'], ['y', 'y'], ['n', 'n']];
+  KEYS.forEach(function (k) {
+    var b = el('button', null, k[0]);
+    b.onclick = function () { api('POST', '/api/keys', { id: termId, data: k[1] }).then(drawScreen); };
+    document.getElementById('tkeys').appendChild(b);
+  });
+  function drawScreen() {
+    if (!termId) return;
+    api('GET', '/api/screen?id=' + encodeURIComponent(termId)).then(function (r) {
+      if (r.status !== 200) { msg.textContent = r.body.error || 'Terminal closed'; return closeTerm(); }
+      var key = JSON.stringify(r.body);
+      if (key === lastScreen) return;
+      lastScreen = key;
+      // Fit the terminal's width to the screen (monospace glyphs are ~0.6 em wide).
+      scr.style.fontSize = Math.max(6, Math.min(13, (scr.clientWidth - 16) / (r.body.cols * 0.6))) + 'px';
+      var frag = document.createDocumentFragment();
+      r.body.lines.forEach(function (runs, y) {
+        var col = 0;
+        runs.forEach(function (run) {
+          var text = run[0];
+          var at = y === r.body.cursor.y ? r.body.cursor.x - col : -1;
+          col += text.length;
+          if (at >= 0 && at < text.length) {
+            if (at) frag.appendChild(span(text.slice(0, at), run));
+            var c = span(text[at], run); c.className = 'cur'; frag.appendChild(c);
+            if (at + 1 < text.length) frag.appendChild(span(text.slice(at + 1), run));
+          } else frag.appendChild(span(text, run));
+        });
+        if (y === r.body.cursor.y && r.body.cursor.x >= col) { frag.appendChild(document.createTextNode(' '.repeat(r.body.cursor.x - col))); var c = el('span', 'cur', ' '); frag.appendChild(c); }
+        frag.appendChild(document.createTextNode('\\n'));
+      });
+      scr.replaceChildren(frag);
+    }).catch(function () {});
+  }
+  function span(text, run) { var e = el('span', null, text); if (run[1]) e.style.color = run[1]; if (run[2]) e.style.fontWeight = '700'; return e; }
+  function openTerm(s) {
+    termId = s.id; lastScreen = '';
+    document.getElementById('tname').textContent = s.project + ' · ' + s.agent;
+    term.hidden = false; scr.replaceChildren();
+    drawScreen(); termTimer = setInterval(drawScreen, 700);
+  }
+  function closeTerm() { termId = null; clearInterval(termTimer); term.hidden = true; last = ''; load(); }
+  document.getElementById('tclose').onclick = closeTerm;
+  function sendTerm() {
+    var t = tin.value.trim(); if (!t || !termId) return;
+    api('POST', '/api/send', { id: termId, text: t }).then(function (r) { if (r.status !== 200) msg.textContent = r.body.error; tin.value = ''; drawScreen(); });
+  }
+  document.getElementById('tsend').onclick = sendTerm;
+  tin.onkeydown = function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTerm(); } };
+
   function load() {
     if (!token) { msg.textContent = 'Open the link from Pilothouse → Settings → Phone remote on this phone.'; return; }
     // Re-rendering would wipe what the user is typing.
-    if (diffOpen || (document.activeElement && document.activeElement.tagName === 'INPUT')) return;
+    var tag = document.activeElement && document.activeElement.tagName;
+    if (diffOpen || termId || tag === 'INPUT' || tag === 'TEXTAREA') return;
     api('GET', '/api/sessions').then(function (r) {
-      if (r.status === 401) { msg.textContent = 'This link was revoked. Scan the new QR code in Pilothouse Settings.'; return; }
+      if (r.status === 401) { msg.textContent = 'This browser is no longer paired. Scan the QR code in Pilothouse Settings.'; list.replaceChildren(); plist.replaceChildren(); ptitle.hidden = true; last = ''; return; }
       var key = JSON.stringify(r.body) + JSON.stringify(armed);
       if (key === last) return;
       last = key;
@@ -175,7 +243,8 @@ export const REMOTE_PAGE = `<!doctype html>
     load();
     setInterval(load, 2000);
   }
-  if (pair && !token) {
+  // A fresh QR link always pairs, even over an old token (that one may have been revoked or be from another computer).
+  if (pair) {
     fetch('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: pair[1], name: 'Browser · ' + (navigator.platform || 'phone') }) })
       .then(function (r) { return r.json(); })
       .then(function (j) { if (j.token) { token = j.token; try { localStorage.setItem(KEY, token); } catch (e) {} } else msg.textContent = j.error; start(); })

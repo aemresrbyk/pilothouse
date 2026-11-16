@@ -231,11 +231,11 @@ struct SessionView: View {
                         }
                         .padding(12)
                     } else {
-                        Text(session?.tail ?? "This tab was closed on the computer.")
-                            .font(.system(size: 12, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .textSelection(.enabled)
-                            .padding(12)
+                        if session == nil {
+                            Text("This tab was closed on the computer.").foregroundStyle(.secondary).padding(12)
+                        } else {
+                            TerminalScreen(id: id).padding(8)
+                        }
                     }
                     Color.clear.frame(height: 1).id("end")
                 }
@@ -299,6 +299,8 @@ struct SessionView: View {
                     .disabled(busy)
                 }
             }
+            if let s = session, s.waiting, !s.choices.isEmpty { ChangesPeek(id: s.id) }
+            if chat == nil || showTerminal { KeyBar(id: id) }
             if let e = error ?? speech.problem { Text(e).font(.caption).foregroundStyle(.orange) }
             HStack(alignment: .bottom) {
                 TextField(speech.listening ? "Listening…" : "Message the agent", text: $text, axis: .vertical)
@@ -351,6 +353,113 @@ struct SessionView: View {
 }
 
 // MARK: - Diff
+
+// The tab's screen exactly as the desktop shows it, refreshed while visible and scaled to fit the phone's width.
+struct TerminalScreen: View {
+    let id: String
+    @State private var snap: ScreenSnapshot?
+    @State private var width: CGFloat = 360
+
+    var body: some View {
+        let size = snap.map { max(5, min(12, (width - 4) / (CGFloat($0.cols) * 0.6))) } ?? 12
+        VStack(alignment: .leading, spacing: 0) {
+            if let snap {
+                ForEach(Array(snap.lines.enumerated()), id: \.offset) { y, runs in
+                    Text(line(runs, cursorAt: y == snap.cursor.y ? snap.cursor.x : nil))
+                        .font(.system(size: size, design: .monospaced))
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+            } else {
+                ProgressView().frame(maxWidth: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(GeometryReader { g in Color.clear.onAppear { width = g.size.width }.onChange(of: g.size.width) { _, w in width = w } })
+        .textSelection(.enabled)
+        .accessibilityLabel("Terminal screen")
+        .task {
+            while !Task.isCancelled {
+                if let s = try? await Client.shared.screen(id), s != snap { snap = s }
+                try? await Task.sleep(for: .milliseconds(700))
+            }
+        }
+    }
+
+    private func line(_ runs: [ScreenRun], cursorAt cx: Int?) -> AttributedString {
+        var out = AttributedString()
+        var col = 0
+        for r in runs {
+            var piece = AttributedString(r.text)
+            piece.foregroundColor = r.color.isEmpty ? Color(white: 0.82) : Color(hex: r.color)
+            if r.bold { piece.inlinePresentationIntent = .stronglyEmphasized }
+            if let cx, cx >= col, cx < col + r.text.count {
+                let start = piece.index(piece.startIndex, offsetByCharacters: cx - col)
+                let end = piece.index(start, offsetByCharacters: 1)
+                piece[start..<end].backgroundColor = .lime
+                piece[start..<end].foregroundColor = .ink
+            }
+            col += r.text.count
+            out += piece
+        }
+        if let cx, cx >= col {
+            out += AttributedString(String(repeating: " ", count: cx - col))
+            var cur = AttributedString(" ")
+            cur.backgroundColor = .lime
+            out += cur
+        }
+        return out.characters.isEmpty ? AttributedString(" ") : out
+    }
+}
+
+// Keys a terminal UI needs that the phone keyboard lacks.
+struct KeyBar: View {
+    let id: String
+    private let keys: [(String, String)] = [("Esc", "\u{1b}"), ("Tab", "\t"), ("↑", "\u{1b}[A"), ("↓", "\u{1b}[B"), ("←", "\u{1b}[D"), ("→", "\u{1b}[C"), ("Enter", "\r"), ("Ctrl+C", "\u{03}"), ("1", "1"), ("2", "2"), ("3", "3"), ("y", "y"), ("n", "n")]
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(keys, id: \.0) { k in
+                    Button(k.0) { Task { try? await Client.shared.keys(id, k.1) } }
+                        .font(.system(size: 13, design: .monospaced))
+                        .buttonStyle(.bordered)
+                        .accessibilityLabel(k.0 == "↑" ? "Up arrow" : k.0 == "↓" ? "Down arrow" : k.0 == "←" ? "Left arrow" : k.0 == "→" ? "Right arrow" : k.0)
+                }
+            }
+        }
+    }
+}
+
+// Under an approval prompt: what the agent changed so far, so you can judge before saying yes.
+struct ChangesPeek: View {
+    let id: String
+    @State private var result: DiffResult?
+    @State private var open = false
+    var body: some View {
+        Group {
+            if let r = result, !(r.stat.isEmpty && r.untracked.isEmpty) {
+                DisclosureGroup(isExpanded: $open) {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(Array(r.diff.split(separator: "\n", omittingEmptySubsequences: false).prefix(400).enumerated()), id: \.offset) { _, line in
+                                DiffLine(line: String(line))
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 260)
+                } label: {
+                    Text(summary(r)).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .task { result = try? await Client.shared.diff(id) }
+    }
+    private func summary(_ r: DiffResult) -> String {
+        let last = r.stat.split(separator: "\n").last.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
+        let added = r.untracked.isEmpty ? "" : " · \(r.untracked.count) new"
+        return "What changed: " + (last.isEmpty ? "new files" : last) + added
+    }
+}
 
 struct DiffView: View {
     let id: String
