@@ -37,6 +37,9 @@ export const AGENTS: AgentProfile[] = [
   { id: 'opencode', name: 'opencode', command: 'opencode', instructionsFile: 'AGENTS.md', flagPresets: [], promptArgs: '--prompt {p}', modelArgs: '-m {m}' }
 ];
 
+// Agents with a read-only one-shot mode, so they can take part in a debate (electron/debate.ts).
+export const DEBATE_AGENTS = ['claude', 'codex', 'gemini', 'opencode'];
+
 export const agentById = (id?: string): AgentProfile => AGENTS.find((a) => a.id === id) || AGENTS[0];
 
 export function agentFlagPresets(settings: Pick<AppSettings, 'agentFlagPresets'>, agentId?: string): string[] {

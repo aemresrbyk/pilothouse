@@ -36,6 +36,7 @@ import { EmbeddedTerminal } from './EmbeddedTerminal';
 import { FilesView } from './FilesView';
 import { HistoryView } from './HistoryView';
 import { InstructionsView } from './InstructionsView';
+import { DebateView } from './DebateView';
 import { isAppShortcut, isMac } from '../utils/platform';
 import { playClickSound, playToggleSound, playLaunchSound } from '../utils/audio';
 
@@ -114,6 +115,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
 
   // Scratchpad state
   const [isScratchpadOpen, setIsScratchpadOpen] = useState(false);
+  const [isDebateOpen, setIsDebateOpen] = useState(false);
   const [scratchpadText, setScratchpadText] = useState(() => {
     return localStorage.getItem(`scratchpad-${project.id}`) || '';
   });
@@ -792,6 +794,15 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
               </button>
             </div>
 
+            {isDebateOpen ? (
+              <DebateView
+                project={project}
+                themeConfig={themeConfig}
+                initialTopic={scratchpadText}
+                onClose={() => setIsDebateOpen(false)}
+                onUseDecision={(text) => { setScratchpadText(text); setIsDebateOpen(false); }}
+              />
+            ) : (<>
             <div className="flex-1 p-2 flex flex-col min-h-0">
               <textarea
                 value={scratchpadText}
@@ -855,6 +866,14 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
                   Copy
                 </button>
                 <button
+                  onClick={() => { playClickSound(); setIsDebateOpen(true); }}
+                  title="Let two or more agents debate this question in turns (read-only), then write a decision"
+                  className="px-2 py-1 rounded text-[10px] border"
+                  style={{ backgroundColor: themeConfig.bgTabActive, borderColor: themeConfig.border, color: themeConfig.textSecondary }}
+                >
+                  Debate
+                </button>
+                <button
                   onClick={() => { if (!scratchpadText.trim()) return; playClickSound(); onOpenWorktree(scratchpadText); setScratchpadText(''); }}
                   disabled={!scratchpadText.trim()}
                   title="Run this task in parallel: a new git worktree (its own branch and folder) and a new tab whose agent starts on it"
@@ -883,6 +902,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
                 </button>
               </div>
             </div>
+            </>)}
           </div>
         )}
 

@@ -130,6 +130,14 @@ export const electronAPI = {
   writeHandoff: (projectPath: string, fromAgent: string, sessionFile?: string): Promise<{ path?: string; error?: string }> =>
     ipcRenderer.invoke('handoff:write', projectPath, fromAgent, sessionFile),
   pickFile: (title: string): Promise<string | null> => ipcRenderer.invoke('dialog:pick-file', title),
+  debateStart: (projectPath: string, topic: string, agents: string[], rounds: number): Promise<{ ok?: true; error?: string }> =>
+    ipcRenderer.invoke('debate:start', projectPath, topic, agents, rounds),
+  debateStop: (projectPath: string): Promise<void> => ipcRenderer.invoke('debate:stop', projectPath),
+  onDebateUpdate: (callback: (u: { projectPath: string; markdown?: string; done?: boolean; error?: string }) => void): (() => void) => {
+    const listener = (_e: any, u: any) => callback(u);
+    ipcRenderer.on('debate:update', listener);
+    return () => { ipcRenderer.removeListener('debate:update', listener); };
+  },
   agentOptions: (agentId: string): Promise<AgentOptions> => ipcRenderer.invoke('agent:options', agentId),
   geminiKeyStatus: (): Promise<{ hasKey: boolean; last4?: string }> => ipcRenderer.invoke('gemini:key-status'),
   setGeminiKey: (key: string): Promise<{ ok?: true; error?: string }> => ipcRenderer.invoke('gemini:set-key', key),

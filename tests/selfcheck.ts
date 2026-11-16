@@ -22,6 +22,7 @@ import { promptArgs, handoffPrompt, AGENTS } from '../src/types';
 import { execFileSync } from 'child_process';
 import { mergeProjects } from '../electron/setup';
 import { setGeminiApiKey, geminiKeyStatus } from '../electron/geminiKey';
+import { runDebate, allAgree, debatePrompt, DEBATE_FILE } from '../electron/debate';
 
 {
   // Gemini API key: owner-only .env, other lines kept, auth type switched, broken settings never overwritten.
@@ -723,6 +724,26 @@ if (bin && hasModel()) {
   assert.equal(previewOf('⏺ Tests pass, pushed the fix.\n\n↓ 2 more\n────\n❯ \n  ⏵⏵ bypass permissions on (shift+tab to cycle)\n'), 'Tests pass, pushed the fix.');
   assert.equal(stripAnsi('\x1b(Bhello\x1b)0'), 'hello');
   assert.equal(previewOf('❯ say it\n✻ Contemplating… (2s · thinking)\n⏺\n  Bildirim testi tamam.\n  Contemplating… running Stop hooks… 1/2\n✻ Baked for 3s · done 17:14\n❯ \noff $0.00 0s Review Audit Board Details [-]\n'), 'Bildirim testi tamam.');
+}
+
+{
+  // Debate: agents speak in turns, an all-AGREE round ends it early, the first agent writes the decision.
+  assert.ok(allAgree([{ agent: 'claude', text: 'ok\n**AGREE**' }, { agent: 'codex', text: 'fine. AGREE' }]));
+  assert.ok(!allAgree([{ agent: 'claude', text: 'AGREE' }, { agent: 'codex', text: 'no\nDISAGREE' }]));
+  assert.ok(debatePrompt('Q?', 'codex', ['claude'], [{ agent: 'claude', text: 'use JWT' }], false).includes('### Claude Code\nuse JWT'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-debate-'));
+  const calls: string[] = [];
+  const replies = ['JWT\nDISAGREE', 'sessions\nDISAGREE', 'ok JWT\nAGREE', 'ok\nAGREE', '## Decision\nJWT'];
+  await runDebate({ projectPath: dir, topic: 'JWT?', agents: ['claude', 'codex'], rounds: 5, ask: async (a) => { calls.push(a); return replies[calls.length - 1]; }, onUpdate: () => {}, stopped: () => false });
+  assert.deepStrictEqual(calls, ['claude', 'codex', 'claude', 'codex', 'claude']);
+  const md = fs.readFileSync(path.join(dir, DEBATE_FILE), 'utf-8');
+  assert.ok(md.startsWith('# Debate: JWT?') && md.includes('## 4. Codex') && md.trimEnd().endsWith('## Decision\nJWT'));
+  let n = 0;
+  await runDebate({ projectPath: dir, topic: 'x', agents: ['claude', 'codex'], rounds: 3, ask: async () => { n++; return 'DISAGREE'; }, onUpdate: () => {}, stopped: () => n >= 1 });
+  assert.equal(n, 1); // Stop: no further turns and no decision
+  const seen: string[] = [];
+  await runDebate({ projectPath: dir, topic: 'y', agents: ['gemini', 'claude', 'codex'], rounds: 2, ask: async (a) => { seen.push(a); return a === 'gemini' ? '(no answer: not logged in)' : 'DISAGREE'; }, onUpdate: () => {}, stopped: () => false });
+  assert.deepStrictEqual(seen, ['gemini', 'claude', 'codex', 'claude', 'codex', 'claude']); // failed agent sits out; an answering one decides
 }
 
 console.log('selfcheck ok');

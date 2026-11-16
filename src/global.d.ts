@@ -59,6 +59,9 @@ declare global {
       onPtyLimit: (callback: (info: { id: string }) => void) => () => void;
       writeHandoff: (projectPath: string, fromAgent: string, sessionFile?: string) => Promise<{ path?: string; error?: string }>;
       pickFile: (title: string) => Promise<string | null>;
+      debateStart: (projectPath: string, topic: string, agents: string[], rounds: number) => Promise<{ ok?: true; error?: string }>;
+      debateStop: (projectPath: string) => Promise<void>;
+      onDebateUpdate: (callback: (u: { projectPath: string; markdown?: string; done?: boolean; error?: string }) => void) => () => void;
       agentOptions: (agentId: string) => Promise<AgentOptions>;
       geminiKeyStatus: () => Promise<{ hasKey: boolean; last4?: string }>;
       setGeminiKey: (key: string) => Promise<{ ok?: true; error?: string }>;
