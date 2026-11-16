@@ -9,7 +9,7 @@ cask "pilothouse" do
   url "https://github.com/aemresrbyk/pilothouse/releases/latest/download/Pilothouse-#{arch}-mac.zip"
   name "Pilothouse"
   desc "Tabbed terminal cockpit for Claude Code, Codex and other AI coding agents"
-  homepage "https://github.com/aemresrbyk/pilothouse"
+  homepage "https://usepilothouse.com"
 
   auto_updates true
   depends_on macos: ">= :monterey"
