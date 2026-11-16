@@ -66,6 +66,11 @@ declare global {
       setRemote: (enabled: boolean) => Promise<RemoteInfo>;
       resetRemote: () => Promise<RemoteInfo>;
       openRemoteWeb: () => Promise<void>;
+      ptyPaste: (id: string, text: string) => Promise<void>;
+      queueGet: (id: string) => Promise<string[]>;
+      queueAdd: (id: string, text: string) => Promise<string[]>;
+      queueRemove: (id: string, index: number) => Promise<string[]>;
+      onQueueChanged: (cb: (e: { id: string; queue: string[] }) => void) => () => void;
       copyViewOnlyLink: () => Promise<string>;
       revokeRemoteDevice: (id: string) => Promise<RemoteInfo>;
       setupScan: () => Promise<{ agents: { id: string; path: string | null }[]; projects: SetupProject[] }>;

@@ -10,7 +10,7 @@ import { Screen } from './screen';
 import { startRelayLink } from './relayLink';
 import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './terminal';
 import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions, readTranscript, searchHistory, isSessionFile, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
-import { startControlServer, CONTROL_FILE, stripAnsi } from './control';
+import { startControlServer, CONTROL_FILE, stripAnsi, pasteText } from './control';
 import { Activity, newActivity, noteOutput, nextStatus, hitLimit } from './activity';
 import { startRemoteServer, remoteApi, webPairingLink, viewOnlyLink, RemoteDeps, pairingLink, resetPairCode, revokeDevice, listDevices, pushTargets, forgetPushTokens, webPushTargets, forgetWebPush, vapidKeys, sessionView, autoChoice, isRefusal, audit } from './remote';
 import { apnsConfig, sendPush, sendWebPush } from './push';
@@ -35,7 +35,7 @@ let storage: StorageManager;
 const ptySessions = new Map<string, pty.IPty>();
 // cwd + recent output per PTY, so the control API can tell which project a terminal belongs to and read it back.
 // screen: made on first request from the phone/web (seeded from buf), so tabs nobody watches cost nothing extra.
-const ptyMeta = new Map<string, { cwd: string; buf: string; act: Activity; sender: Electron.WebContents; limited?: boolean; agent?: string; cols: number; rows: number; screen?: Screen }>();
+const ptyMeta = new Map<string, { cwd: string; buf: string; act: Activity; sender: Electron.WebContents; limited?: boolean; agent?: string; cols: number; rows: number; screen?: Screen; queue?: string[]; queueBusy?: NodeJS.Timeout }>();
 function screenOf(id: string) {
   const m = ptyMeta.get(id);
   if (!m || !ptySessions.has(id)) return null;
@@ -215,6 +215,27 @@ app.whenReady().then(() => {
   if (storage.getSettings().remoteEnabled) applyRemote(true);
 });
 
+// Agent queue: tasks lined up per tab, sent one by one each time the agent goes idle after working.
+function runNextQueued(id: string) {
+  const m = ptyMeta.get(id), p = ptySessions.get(id);
+  if (!m || !p) return;
+  clearTimeout(m.queueBusy);
+  m.queueBusy = undefined;
+  const text = m.queue?.shift();
+  if (!text) return;
+  m.act.lastInput = Date.now();
+  p.write(pasteText(m.buf, text, !!m.agent));
+  setTimeout(() => { if (ptySessions.get(id) === p) p.write('\r'); }, 150);
+  // Busy until the agent works and goes idle again (onAgentStatus); a task so short it never looked busy is
+  // let through after 10 s of idleness.
+  const check = () => {
+    if (ptyMeta.get(id) !== m) return;
+    if (m.act.status === 'idle') runNextQueued(id); else m.queueBusy = setTimeout(check, 10_000);
+  };
+  m.queueBusy = setTimeout(check, 10_000);
+  if (!m.sender.isDestroyed()) m.sender.send('queue:changed', { id, queue: m.queue });
+}
+
 // Phone remote (Settings → Phone remote). Started and stopped live; the link carries the token.
 let remote: { server: http.Server; url: string } | null = null;
 let remoteError = '';
@@ -258,6 +279,8 @@ const remoteInfo = () => ({
 const DEBUG = !!process.env.PILOTHOUSE_DEBUG;
 function onAgentStatus(id: string, m: { cwd: string; buf: string; act: Activity }, prev: PtyStatus, status: PtyStatus) {
   if (DEBUG) console.log(`[status] ${path.basename(m.cwd)} ${prev} → ${status} remote=${remoteOn()} targets=${remoteOn() ? pushTargets().length : 0}`);
+  // Queue: the agent finished a task and more are lined up, so the next one goes in instead of a "finished" ping.
+  if (status === 'idle' && prev === 'running' && m.act.lastInput && (ptyMeta.get(id)?.queue?.length ?? 0) > 0) return runNextQueued(id);
   if (status !== 'waiting' && !(status === 'idle' && prev === 'running')) return;
   const v = sessionView({ id, cwd: m.cwd, status, buf: m.buf }, storage.listStoredProjects());
   if (status === 'waiting') {
@@ -645,7 +668,7 @@ function registerIpcHandlers() {
 
       ptySessions.set(id, ptyProcess);
       ptyMeta.get(id)?.screen?.dispose(); // a restarted tab starts a fresh screen
-      const meta: NonNullable<ReturnType<typeof ptyMeta.get>> = { cwd: targetCwd, buf: '', act: newActivity(Date.now()), sender: event.sender, agent, cols: safeCols, rows: safeRows };
+      const meta: NonNullable<ReturnType<typeof ptyMeta.get>> = { cwd: targetCwd, buf: '', act: newActivity(Date.now()), sender: event.sender, agent, cols: safeCols, rows: safeRows, queue: ptyMeta.get(id)?.queue };
       ptyMeta.set(id, meta);
 
       // A replaced/killed session must not touch the map entry or UI of its successor (same id).
@@ -704,6 +727,29 @@ function registerIpcHandlers() {
       } catch {}
     }
   };
+  // Typing a whole message into a tab: line breaks survive (bracketed paste) and Enter submits it once.
+  ipcMain.handle('pty:paste', async (_e, id: string, text: string) => {
+    const m = ptyMeta.get(id), p = ptySessions.get(id);
+    if (!m || !p || !String(text ?? '').trim()) return;
+    m.act.lastInput = Date.now();
+    p.write(pasteText(m.buf, String(text), !!m.agent));
+    setTimeout(() => { if (ptySessions.get(id) === p) p.write('\r'); }, 150);
+  });
+  ipcMain.handle('queue:get', async (_e, id: string) => ptyMeta.get(id)?.queue ?? []);
+  // Adding to an idle agent starts right away; otherwise it waits its turn.
+  ipcMain.handle('queue:add', async (_e, id: string, text: string) => {
+    const m = ptyMeta.get(id);
+    const t = String(text ?? '').trim().slice(0, 20_000);
+    if (!m || !t) return m?.queue ?? [];
+    (m.queue ??= []).push(t);
+    if (m.act.status === 'idle' && !m.queueBusy) runNextQueued(id);
+    return m.queue;
+  });
+  ipcMain.handle('queue:remove', async (_e, id: string, index: number) => {
+    const m = ptyMeta.get(id);
+    m?.queue?.splice(Number(index), 1);
+    return m?.queue ?? [];
+  });
   ipcMain.on('pty:write', handlePtyWrite);
   ipcMain.handle('pty:write', handlePtyWrite);
 

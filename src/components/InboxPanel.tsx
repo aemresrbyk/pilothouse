@@ -80,8 +80,7 @@ export const InboxPanel: React.FC<InboxPanelProps> = ({
   const reply = (tabId: string) => {
     const text = replies[tabId]?.trim();
     if (!text) return;
-    window.electronAPI.ptyWrite(tabId, text);
-    setTimeout(() => window.electronAPI.ptyWrite(tabId, '\r'), 80);
+    window.electronAPI.ptyPaste(tabId, text);
     setReplies((r) => ({ ...r, [tabId]: '' }));
   };
 
