@@ -15,7 +15,8 @@
     "dist:linux": "electron-builder --linux",
     "postinstall": "node -e \"const fs=require('fs'),p=require('path'),d='node_modules/node-pty/prebuilds';if(process.platform!=='win32'&&fs.existsSync(d))for(const x of fs.readdirSync(d)){const f=p.join(d,x,'spawn-helper');if(fs.existsSync(f))fs.chmodSync(f,0o755)}\"",
     "typecheck": "tsc --noEmit",
-    "build:whisper": "bash scripts/build-whisper.sh"
+    "build:whisper": "bash scripts/build-whisper.sh",
+    "build:server": "bun build server/pilothouse-server.ts --target node --external node-pty --outfile server/dist/pilothouse-server.mjs --banner '#!/usr/bin/env node'"
   },
   "build": {
     "appId": "com.aemresrbyk.pilothouse",
@@ -122,7 +123,7 @@
     "anthropic",
     "electron"
   ],
-  "author": "Ali Emre Sarıbıyık (aemresrbyk) <https://github.com/aemresrbyk>",
+  "author": "Ali Emre Sar\u0131b\u0131y\u0131k (aemresrbyk) <https://github.com/aemresrbyk>",
   "repository": {
     "type": "git",
     "url": "https://github.com/aemresrbyk/pilothouse.git"
