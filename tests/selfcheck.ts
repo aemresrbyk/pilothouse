@@ -510,6 +510,7 @@ if (bin && hasModel()) {
     const out = JSON.parse((await handle(pairMsg))!);
     const paired = await unseal(pk, 'pair', out.c);
     assert.equal(paired.s, 200);
+    assert.equal(typeof paired.b.computer, 'string'); // shown when one browser follows several computers
     const dk = await aes(Buffer.from(paired.b.relayKey, 'base64'));
     const dev = paired.b.device, tok = paired.b.token;
     assert.equal(await handle(pairMsg), null, 'a replayed pairing message is dropped');

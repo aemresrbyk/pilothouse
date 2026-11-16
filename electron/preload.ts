@@ -127,6 +127,7 @@ export const electronAPI = {
   remoteInfo: (): Promise<RemoteInfo> => ipcRenderer.invoke('remote:info'),
   setRemote: (enabled: boolean): Promise<RemoteInfo> => ipcRenderer.invoke('remote:set', enabled),
   resetRemote: (): Promise<RemoteInfo> => ipcRenderer.invoke('remote:reset'),
+  openRemoteWeb: (): Promise<void> => ipcRenderer.invoke('remote:open-web'),
   revokeRemoteDevice: (id: string): Promise<RemoteInfo> => ipcRenderer.invoke('remote:revoke', id),
   setupScan: (): Promise<{ agents: { id: string; path: string | null }[]; projects: SetupProject[] }> => ipcRenderer.invoke('setup:scan'),
   addWorktree: (repoPath: string): Promise<{ path?: string; error?: string }> => ipcRenderer.invoke('git:worktree-add', repoPath),

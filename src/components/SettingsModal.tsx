@@ -114,6 +114,11 @@ const RemoteField: React.FC = () => {
                   <button type="button" onClick={() => window.electronAPI.copyToClipboard(link)} className="px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300">
                     Copy link
                   </button>
+                  {via === 'web' && (
+                    <button type="button" onClick={() => window.electronAPI.openRemoteWeb()} className="px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300">
+                      Open in browser
+                    </button>
+                  )}
                 </div>
                 <span className="text-[10px] text-zinc-600">{info.push === 'direct' ? 'iPhone notifications: sent straight to Apple with your APNs key.' : 'iPhone notifications: end-to-end encrypted through the Pilothouse relay (it cannot read them).'}</span>
               </div>
