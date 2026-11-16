@@ -1,6 +1,6 @@
 # Pilothouse for iOS
 
-SwiftUI app + WidgetKit extension that talks to Pilothouse's Phone remote over Tailscale.
+SwiftUI app + WidgetKit extension (widgets, Live Activity) that talks to Pilothouse's remote API through the end-to-end encrypted relay, or over Tailscale.
 
 ## Build
 
@@ -11,7 +11,7 @@ xcodegen                     # creates Pilothouse.xcodeproj (not committed)
 open Pilothouse.xcodeproj    # set your team in project.yml (DEVELOPMENT_TEAM) and keychainGroup in Shared/Client.swift
 ```
 
-Run on a device, then pair: Pilothouse → Settings → Phone remote → scan the QR code.
+Run on a device, then pair: Pilothouse → Settings → Remote control → scan the QR code.
 
 ## Notifications (optional)
 
@@ -24,4 +24,4 @@ Pilothouse sends pushes straight from your computer to Apple, signed with an APN
 { "keyPath": "/path/to/AuthKey_XXXXXXXXXX.p8", "keyId": "XXXXXXXXXX", "teamId": "YOURTEAMID", "bundleId": "com.aemresrbyk.pilothouse.mobile" }
 ```
 
-Settings → Phone remote then says *Notifications: on*. Debug builds use Apple's sandbox push servers, release builds the production ones.
+Settings → Remote control then lists the iPhone with *notifications*. Debug builds use Apple's sandbox push servers, release builds the production ones.

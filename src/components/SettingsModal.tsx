@@ -47,7 +47,7 @@ const GeminiKeyField: React.FC = () => {
   );
 };
 
-// Phone remote: applied live (not on SAVE), so the QR code shows up right away.
+// Remote control: applied live (not on SAVE), so the QR code shows up right away.
 const RemoteField: React.FC = () => {
   const [info, setInfo] = useState<RemoteInfo | null>(null);
   const [qr, setQr] = useState('');
