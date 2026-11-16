@@ -5,7 +5,7 @@
 // The relay sees room ids, device ids and ciphertext only; it can neither read nor forge a request.
 // Each request also carries the device token (checked like the HTTP API) and a timestamp + nonce against replays.
 import crypto from 'crypto';
-import { ApiResult, remoteState, relayRoom, pairExpired } from './remote';
+import { ApiResult, remoteState, relayRoom, pairExpired, PAIR_TTL } from './remote';
 
 export const RELAY_WS = process.env.PILOTHOUSE_RELAY_WS || 'wss://relay.usepilothouse.com';
 const MAX_SKEW = 60_000;
@@ -41,11 +41,20 @@ export function relayHandler(api: Api, now = () => Date.now()) {
     if (!c || c.length > 400_000) return null;
     const state = remoteState();
     let key: Buffer | undefined;
-    if (d === 'pair') { if (!pairExpired(state)) key = pairKey(state.pair); }
+    // Pairing: the normal code, or a view-only code shared from Settings (whichever opens the box).
+    const candidates: Buffer[] = [];
+    if (d === 'pair') {
+      if (!pairExpired(state)) candidates.push(pairKey(state.pair));
+      if (state.viewPair && state.viewPairAt && Date.now() - state.viewPairAt <= PAIR_TTL) candidates.push(pairKey(state.viewPair));
+    }
     else { const dev = state.devices.find(x => x.id === d); if (dev?.relayKey) key = Buffer.from(dev.relayKey, 'base64'); }
-    if (!key) return null;
     let req: any;
-    try { req = openBox(key, d, c); } catch { return null; }
+    if (d === 'pair') {
+      for (const k of candidates) { try { req = openBox(k, d, c); key = k; break; } catch {} }
+    } else if (key) {
+      try { req = openBox(key, d, c); } catch {}
+    }
+    if (!key || !req) return null;
     const t = now();
     if (typeof req.t !== 'number' || Math.abs(t - req.t) > MAX_SKEW || typeof req.n !== 'string' || seen.has(req.n)) return null;
     seen.set(req.n, t);

@@ -207,7 +207,7 @@ export const DEFAULT_QUICK_COMMANDS = [
 ];
 
 // url carries the pairing token, so it is only shown inside Settings.
-export interface RemoteDevice { id: string; name: string; created: number; lastSeen?: number; push: boolean }
+export interface RemoteDevice { id: string; name: string; created: number; lastSeen?: number; push: boolean; viewOnly?: boolean }
 // url: Tailscale pairing link (iPhone app); webUrl: usepilothouse.com/app pairing link (any browser, via the relay).
 export interface RemoteInfo { enabled: boolean; url?: string; webUrl?: string; webOnline?: boolean; error?: string; devices?: RemoteDevice[]; push?: 'direct' | 'relay' }
 

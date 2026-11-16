@@ -131,13 +131,14 @@ export function autoChoice(v: SessionView, rules: string[]): Choice | null {
 
 // pushKey: AES-256 key shared with the phone, so notification text is end-to-end encrypted through the relay.
 // relayKey: AES-256 key for the web relay (usepilothouse.com/app): requests and replies are sealed with it end to end.
-interface Device { id: string; name: string; hash: string; created: number; lastSeen?: number; apns?: string; sandbox?: boolean; pushKey?: string; relayKey?: string; webPush?: WebPushSub }
+interface Device { id: string; name: string; hash: string; created: number; lastSeen?: number; apns?: string; sandbox?: boolean; pushKey?: string; relayKey?: string; webPush?: WebPushSub; viewOnly?: boolean }
 // pairAt: when the pairing code was made. A code works once and for PAIR_TTL, so an old screenshot of the QR is useless.
 // relaySecret: proves to the relay that this computer owns its room (room id = sha256(secret)); never leaves here.
 // vapid: this computer's Web Push keys (made here, never shared except the public half).
-interface RemoteState { pair: string; pairAt?: number; devices: Device[]; relaySecret?: string; vapid?: { publicKey: string; privateKey: string } }
+// viewPair: one-time code for a view-only link (someone watches, cannot type, approve or open anything).
+interface RemoteState { pair: string; pairAt?: number; viewPair?: string; viewPairAt?: number; devices: Device[]; relaySecret?: string; vapid?: { publicKey: string; privateKey: string } }
 export const PAIR_TTL = 10 * 60_000;
-export interface DeviceInfo { id: string; name: string; created: number; lastSeen?: number; push: boolean }
+export interface DeviceInfo { id: string; name: string; created: number; lastSeen?: number; push: boolean; viewOnly?: boolean }
 
 const hashOf = (t: string) => crypto.createHash('sha256').update(t).digest('hex');
 
@@ -176,6 +177,12 @@ export function computerName(): string {
   return (/^[\d.]+$/.test(name) ? 'Computer' : name).slice(0, 40);
 }
 export const WEB_APP = process.env.PILOTHOUSE_WEB_APP || 'https://usepilothouse.com/app/';
+// A link that lets someone watch your agents (read only), for 10 minutes, once. Shared deliberately from Settings.
+export function viewOnlyLink() {
+  const s = remoteState();
+  s.viewPair = newCode(); s.viewPairAt = Date.now(); saveState(s);
+  return `${WEB_APP}#r=${relayRoom().room}&p=${s.viewPair}&view=1`;
+}
 // QR for a browser anywhere (no Tailscale): the room to join and the one-time pairing code, after the # so the site
 // never receives them.
 export function webPairingLink() {
@@ -196,7 +203,7 @@ export function resetPairCode() { const s = remoteState(); s.pair = newCode(); s
 export function revokeDevice(id: string) { const s = remoteState(); s.devices = s.devices.filter(d => d.id !== id); saveState(s); }
 
 export const listDevices = (): DeviceInfo[] =>
-  remoteState().devices.map(d => ({ id: d.id, name: d.name, created: d.created, lastSeen: d.lastSeen, push: !!(d.apns || d.webPush) }));
+  remoteState().devices.map(d => ({ id: d.id, name: d.name, created: d.created, lastSeen: d.lastSeen, push: !!(d.apns || d.webPush), viewOnly: d.viewOnly }));
 
 export const pushTargets = () => remoteState().devices.filter(d => d.apns).map(d => ({ token: d.apns!, sandbox: d.sandbox, key: d.pushKey }));
 
@@ -268,15 +275,16 @@ export function remoteApi(deps: RemoteDeps) {
     // Pairing: the QR code's one secret buys each phone its own token. Only the hash is stored.
     if (route === 'POST /api/pair') {
       const s = remoteState();
-      if (pairExpired(s) || !secretOk(body.secret, s.pair)) { audit(from, 'pair-refused', '', ''); return reply(401, { error: 'This code is no longer valid. Scan the new one in Pilothouse Settings.' }); }
+      const viewOnly = !!s.viewPair && !!s.viewPairAt && Date.now() - s.viewPairAt <= PAIR_TTL && secretOk(body.secret, s.viewPair);
+    if (!viewOnly && (pairExpired(s) || !secretOk(body.secret, s.pair))) { audit(from, 'pair-refused', '', ''); return reply(401, { error: 'This code is no longer valid. Scan the new one in Pilothouse Settings.' }); }
       const token = crypto.randomBytes(24).toString('hex');
-      const device: Device = { id: crypto.randomBytes(6).toString('hex'), name: String(body.name || 'Phone').slice(0, 60), hash: hashOf(token), created: Date.now(), relayKey: crypto.randomBytes(32).toString('base64') };
+      const device: Device = { id: crypto.randomBytes(6).toString('hex'), name: String(body.name || 'Phone').slice(0, 60), hash: hashOf(token), created: Date.now(), relayKey: crypto.randomBytes(32).toString('base64'), ...(viewOnly ? { viewOnly: true } : {}) };
       s.devices.push(device);
       // One code, one device: the next phone needs the fresh QR from Settings.
-      s.pair = newCode(); s.pairAt = Date.now();
+      if (viewOnly) delete s.viewPair; else { s.pair = newCode(); s.pairAt = Date.now(); }
       saveState(s);
-      audit(from, 'pair', '', device.name);
-      return reply(200, { token, device: device.id, relayKey: device.relayKey, computer: computerName() });
+      audit(from, viewOnly ? 'pair-view-only' : 'pair', '', device.name);
+      return reply(200, { token, device: device.id, relayKey: device.relayKey, computer: computerName(), viewOnly });
     }
 
     const device = deviceFor(auth);
@@ -287,6 +295,9 @@ export function remoteApi(deps: RemoteDeps) {
       if (d) { d.lastSeen = Date.now(); saveState(s); }
     }
     const who = `${from} ${device.name}`;
+    // View-only devices read; the only things they may change are their own pairing and notifications.
+    if (device.viewOnly && route.startsWith('POST ') && route !== 'POST /api/unpair' && route !== 'POST /api/web-push')
+      return reply(403, { error: 'This is a view-only link.' });
 
     const projects = deps.listProjects();
     const views = deps.sessions().map(s => sessionView(s, projects));

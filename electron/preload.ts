@@ -86,6 +86,15 @@ export const electronAPI = {
     ipcRenderer.on('control:open-tab', listener);
     return () => { ipcRenderer.removeListener('control:open-tab', listener); };
   },
+  ptyPaste: (id: string, text: string): Promise<void> => ipcRenderer.invoke('pty:paste', id, text),
+  queueGet: (id: string): Promise<string[]> => ipcRenderer.invoke('queue:get', id),
+  queueAdd: (id: string, text: string): Promise<string[]> => ipcRenderer.invoke('queue:add', id, text),
+  queueRemove: (id: string, index: number): Promise<string[]> => ipcRenderer.invoke('queue:remove', id, index),
+  onQueueChanged: (cb: (e: { id: string; queue: string[] }) => void): (() => void) => {
+    const l = (_e: any, d: { id: string; queue: string[] }) => cb(d);
+    ipcRenderer.on('queue:changed', l);
+    return () => { ipcRenderer.removeListener('queue:changed', l); };
+  },
   copyToClipboard: (text: string): Promise<void> =>
     ipcRenderer.invoke('clipboard:write', text),
   // File.path was removed in Electron 32; this is the supported replacement for drag & drop.
@@ -128,6 +137,7 @@ export const electronAPI = {
   setRemote: (enabled: boolean): Promise<RemoteInfo> => ipcRenderer.invoke('remote:set', enabled),
   resetRemote: (): Promise<RemoteInfo> => ipcRenderer.invoke('remote:reset'),
   openRemoteWeb: (): Promise<void> => ipcRenderer.invoke('remote:open-web'),
+  copyViewOnlyLink: (): Promise<string> => ipcRenderer.invoke('remote:view-link'),
   revokeRemoteDevice: (id: string): Promise<RemoteInfo> => ipcRenderer.invoke('remote:revoke', id),
   setupScan: (): Promise<{ agents: { id: string; path: string | null }[]; projects: SetupProject[] }> => ipcRenderer.invoke('setup:scan'),
   addWorktree: (repoPath: string): Promise<{ path?: string; error?: string }> => ipcRenderer.invoke('git:worktree-add', repoPath),

@@ -221,9 +221,19 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   };
 
   // Send text to the running Claude session; Enter goes separately so the TUI doesn't treat it as part of a paste.
-  const sendToTerminal = (text: string) => {
-    window.electronAPI.ptyWrite(tabSession.id, text);
-    setTimeout(() => window.electronAPI.ptyWrite(tabSession.id, '\r'), 80);
+  const sendToTerminal = (text: string) => { window.electronAPI.ptyPaste(tabSession.id, text); };
+
+  // Queue: tasks for this tab, sent one at a time each time the agent finishes (main process runs it).
+  const [queue, setQueue] = useState<string[]>([]);
+  useEffect(() => {
+    window.electronAPI.queueGet(tabSession.id).then(setQueue).catch(() => {});
+    return window.electronAPI.onQueueChanged(({ id, queue: q }) => { if (id === tabSession.id) setQueue([...q]); });
+  }, [tabSession.id]);
+  const addToQueue = async () => {
+    if (!scratchpadText.trim()) return;
+    playClickSound();
+    setQueue([...(await window.electronAPI.queueAdd(tabSession.id, scratchpadText))]);
+    setScratchpadText('');
   };
 
   const handleExecuteCommand = (cmd: string) => {
@@ -770,7 +780,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
             >
               <div className="flex items-center gap-1.5" style={{ color: themeConfig.accent }}>
                 <FileEdit className="w-3.5 h-3.5" />
-                <span>Prompt Drafter &amp; Notes</span>
+                <span>Drafts &amp; queue</span>
               </div>
               <button
                 onClick={() => setIsScratchpadOpen(false)}
@@ -794,6 +804,22 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
                 }}
               />
             </div>
+
+            {queue.length > 0 && (
+              <div className="px-2 pb-2 flex flex-col gap-1 max-h-48 overflow-auto" aria-label="Queued tasks">
+                <span className="text-[10px] uppercase tracking-wider" style={{ color: themeConfig.textMuted }}>
+                  Queued · next goes in when the agent finishes
+                </span>
+                {queue.map((q, i) => (
+                  <div key={i} className="flex items-start gap-1.5 text-[11px] rounded border px-2 py-1" style={{ borderColor: themeConfig.border, color: themeConfig.textSecondary }}>
+                    <span className="flex-1 whitespace-pre-wrap break-words line-clamp-3">{i + 1}. {q}</span>
+                    <button onClick={async () => setQueue([...(await window.electronAPI.queueRemove(tabSession.id, i))])} aria-label={`Remove task ${i + 1}`} style={{ color: themeConfig.textMuted }}>
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div
               className="p-2 border-t flex items-center justify-between gap-2"
@@ -826,6 +852,15 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
                   }}
                 >
                   Copy
+                </button>
+                <button
+                  onClick={addToQueue}
+                  disabled={!scratchpadText.trim()}
+                  title="Line this task up: it goes in when the agent finishes what it is doing (right away if it is idle)"
+                  className="px-2 py-1 rounded text-[10px] border disabled:opacity-40"
+                  style={{ backgroundColor: themeConfig.bgTabActive, borderColor: themeConfig.border, color: themeConfig.textSecondary }}
+                >
+                  Queue
                 </button>
                 <button
                   onClick={handleSendScratchpadToTerminal}
