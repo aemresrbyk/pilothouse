@@ -344,7 +344,7 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
     >
       {/* 1. Slim Modern Control Bar */}
       <div
-        className="h-10 px-3 flex items-center justify-between text-xs border-b gap-2 flex-shrink-0 overflow-x-auto overflow-y-hidden"
+        className="h-10 px-3 flex items-center justify-between text-xs border-b gap-2 flex-shrink-0 overflow-x-auto overflow-y-hidden no-scrollbar"
         onWheel={(e) => { if (!e.deltaX) e.currentTarget.scrollLeft += e.deltaY; }}
         style={{
           backgroundColor: themeConfig.bgHeader,
@@ -569,8 +569,8 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
           </div>
         </div>
 
-        {/* Right: View Switcher & Action Buttons */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        {/* Right: View Switcher & Action Buttons. Pinned to the right edge; the rest scrolls under it when the window is narrow. */}
+        <div className="flex items-center gap-1.5 flex-shrink-0 sticky right-0 z-10 pl-2" style={{ backgroundColor: themeConfig.bgHeader }}>
           {/* View Mode Switcher */}
           <div
             className="flex items-center p-0.5 rounded border"
