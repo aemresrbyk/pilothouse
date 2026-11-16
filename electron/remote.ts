@@ -14,6 +14,7 @@ import { parseChoices, Choice } from '../src/utils/inbox';
 import type { ProjectItem, PtyStatus } from '../src/types';
 import { REMOTE_PAGE } from './remotePage';
 import type { Snapshot } from './screen';
+import { WebPushSub, validWebPush, newVapidKeys } from './push';
 import { REMOTE_ICON_PNG } from './remoteIcon';
 import { claudeUsage, codexUsage, projectTodos, AgentUsage } from './usage';
 import { AGENTS } from '../src/types';
@@ -129,9 +130,12 @@ export function autoChoice(v: SessionView, rules: string[]): Choice | null {
 // ---- Paired devices ----
 
 // pushKey: AES-256 key shared with the phone, so notification text is end-to-end encrypted through the relay.
-interface Device { id: string; name: string; hash: string; created: number; lastSeen?: number; apns?: string; sandbox?: boolean; pushKey?: string }
+// relayKey: AES-256 key for the web relay (usepilothouse.com/app): requests and replies are sealed with it end to end.
+interface Device { id: string; name: string; hash: string; created: number; lastSeen?: number; apns?: string; sandbox?: boolean; pushKey?: string; relayKey?: string; webPush?: WebPushSub }
 // pairAt: when the pairing code was made. A code works once and for PAIR_TTL, so an old screenshot of the QR is useless.
-interface RemoteState { pair: string; pairAt?: number; devices: Device[] }
+// relaySecret: proves to the relay that this computer owns its room (room id = sha256(secret)); never leaves here.
+// vapid: this computer's Web Push keys (made here, never shared except the public half).
+interface RemoteState { pair: string; pairAt?: number; devices: Device[]; relaySecret?: string; vapid?: { publicKey: string; privateKey: string } }
 export const PAIR_TTL = 10 * 60_000;
 export interface DeviceInfo { id: string; name: string; created: number; lastSeen?: number; push: boolean }
 
@@ -155,7 +159,21 @@ export function remoteState(): RemoteState {
 }
 
 const newCode = () => crypto.randomBytes(24).toString('hex');
-const pairExpired = (s: RemoteState, now = Date.now()) => !s.pairAt || now - s.pairAt > PAIR_TTL;
+export const pairExpired = (s: RemoteState, now = Date.now()) => !s.pairAt || now - s.pairAt > PAIR_TTL;
+
+// The web relay room of this computer; the secret is made once and kept in remote.json (0600).
+export function relayRoom(): { secret: string; room: string } {
+  const s = remoteState();
+  if (!s.relaySecret) { s.relaySecret = crypto.randomBytes(32).toString('hex'); saveState(s); }
+  return { secret: s.relaySecret, room: crypto.createHash('sha256').update(s.relaySecret).digest('hex').slice(0, 32) };
+}
+export const WEB_APP = process.env.PILOTHOUSE_WEB_APP || 'https://usepilothouse.com/app/';
+// QR for a browser anywhere (no Tailscale): the room to join and the one-time pairing code, after the # so the site
+// never receives them.
+export function webPairingLink() {
+  pairingLink('');
+  return `${WEB_APP}#r=${relayRoom().room}&p=${remoteState().pair}`;
+}
 
 // Shown as the QR in Settings; an expired code is replaced on the spot.
 export function pairingLink(base: string) {
@@ -170,9 +188,22 @@ export function resetPairCode() { const s = remoteState(); s.pair = newCode(); s
 export function revokeDevice(id: string) { const s = remoteState(); s.devices = s.devices.filter(d => d.id !== id); saveState(s); }
 
 export const listDevices = (): DeviceInfo[] =>
-  remoteState().devices.map(d => ({ id: d.id, name: d.name, created: d.created, lastSeen: d.lastSeen, push: !!d.apns }));
+  remoteState().devices.map(d => ({ id: d.id, name: d.name, created: d.created, lastSeen: d.lastSeen, push: !!(d.apns || d.webPush) }));
 
 export const pushTargets = () => remoteState().devices.filter(d => d.apns).map(d => ({ token: d.apns!, sandbox: d.sandbox, key: d.pushKey }));
+
+export function vapidKeys() {
+  const s = remoteState();
+  if (!s.vapid) { s.vapid = newVapidKeys(); saveState(s); }
+  return s.vapid!;
+}
+export const webPushTargets = () => remoteState().devices.flatMap(d => (d.webPush ? [d.webPush] : []));
+export function forgetWebPush(endpoints: string[]) {
+  if (!endpoints.length) return;
+  const s = remoteState();
+  for (const d of s.devices) if (d.webPush && endpoints.includes(d.webPush.endpoint)) delete d.webPush;
+  saveState(s);
+}
 
 export function forgetPushTokens(tokens: string[]) {
   if (!tokens.length) return;
@@ -181,14 +212,14 @@ export function forgetPushTokens(tokens: string[]) {
   saveState(s);
 }
 
-function deviceFor(header: string | undefined): Device | undefined {
+export function deviceFor(header: string | undefined): Device | undefined {
   const m = /^Bearer ([0-9a-f]{48})$/.exec(header || '');
   if (!m) return;
   const h = hashOf(m[1]);
   return remoteState().devices.find(d => d.hash === h);
 }
 
-const secretOk = (given: unknown, secret: string) => {
+export const secretOk = (given: unknown, secret: string) => {
   const a = Buffer.from(String(given || '')), b = Buffer.from(secret);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 };
@@ -221,11 +252,207 @@ const MANIFEST = JSON.stringify({
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// The remote API itself, independent of how a request arrives (HTTP over Tailscale, or the encrypted web relay).
+// auth: the "Bearer <token>" header; from: who is asking, for the audit log.
+export function remoteApi(deps: RemoteDeps) {
+  return async (route: string, url: URL, body: any, auth: string | undefined, from: string | undefined): Promise<ApiResult> => {
+    const reply = (status: number, b: unknown): ApiResult => ({ status, body: b });
+    // Pairing: the QR code's one secret buys each phone its own token. Only the hash is stored.
+    if (route === 'POST /api/pair') {
+      const s = remoteState();
+      if (pairExpired(s) || !secretOk(body.secret, s.pair)) { audit(from, 'pair-refused', '', ''); return reply(401, { error: 'This code is no longer valid. Scan the new one in Pilothouse Settings.' }); }
+      const token = crypto.randomBytes(24).toString('hex');
+      const device: Device = { id: crypto.randomBytes(6).toString('hex'), name: String(body.name || 'Phone').slice(0, 60), hash: hashOf(token), created: Date.now(), relayKey: crypto.randomBytes(32).toString('base64') };
+      s.devices.push(device);
+      // One code, one device: the next phone needs the fresh QR from Settings.
+      s.pair = newCode(); s.pairAt = Date.now();
+      saveState(s);
+      audit(from, 'pair', '', device.name);
+      return reply(200, { token, device: device.id, relayKey: device.relayKey });
+    }
+
+    const device = deviceFor(auth);
+    if (!device) return reply(401, { error: 'unauthorized' });
+    if (!device.lastSeen || Date.now() - device.lastSeen > 60_000) {
+      const s = remoteState();
+      const d = s.devices.find(x => x.id === device.id);
+      if (d) { d.lastSeen = Date.now(); saveState(s); }
+    }
+    const who = `${from} ${device.name}`;
+
+    const projects = deps.listProjects();
+    const views = deps.sessions().map(s => sessionView(s, projects));
+    const order = { waiting: 0, running: 1, idle: 2 };
+
+    try {
+      if (route === 'GET /api/sessions') return reply(200, views.sort((a, b) => order[a.status] - order[b.status]));
+      if (route === 'GET /api/projects') {
+        const open = new Set(deps.sessions().map(s => s.cwd));
+        return reply(200, projects.filter(p => !open.has(p.path))
+          .sort((a, b) => Number(b.isFavorite) - Number(a.isFavorite) || (b.lastLaunched || 0) - (a.lastLaunched || 0))
+          .map(p => ({ id: p.id, name: p.name })));
+      }
+      if (route === 'GET /api/usage') {
+        const open = deps.sessions();
+        const limited = (id: string) => open.some(s => s.agent === id && s.limited);
+        const out: AgentUsage[] = [
+          claudeUsage() || { agent: 'Claude Code', windows: [], note: 'Shows up after a Claude tab opened from Pilothouse has run once.' },
+          codexUsage() || { agent: 'Codex', windows: [], note: 'No Codex sessions on this computer yet.' }
+        ];
+        if (limited('claude')) out[0].note = 'Limit reached in an open tab.';
+        if (limited('codex')) out[1].note = 'Limit reached in an open tab.';
+        for (const a of AGENTS.filter(a => a.id !== 'claude' && a.id !== 'codex' && open.some(s => s.agent === a.id))) {
+          out.push({ agent: a.name, windows: [], note: limited(a.id) ? 'Limit reached in an open tab.' : 'This CLI does not report its limits; Pilothouse warns when a tab hits one.' });
+        }
+        return reply(200, out);
+      }
+      // Claude Code / Codex conversations from any terminal, including ones Pilothouse did not start.
+      if (route === 'GET /api/conversations') {
+        const now = Date.now();
+        return reply(200, recentSessions(now - 3 * 86_400_000).map(c => {
+          const p = projects.find(x => x.path === c.cwd);
+          return {
+            key: `${c.agent}:${c.id}`,
+            agent: AGENTS.find(a => a.id === c.agent)?.name || c.agent,
+            project: p?.name || path.basename(c.cwd),
+            projectId: p?.id || '',
+            title: (c.title || '').slice(0, 140),
+            updatedAt: c.modifiedAt,
+            live: now - c.modifiedAt < 90_000
+          };
+        }));
+      }
+      const conversation = () => {
+        const [agent, id] = String(url.searchParams.get('key') ?? body.key ?? '').split(':');
+        return recentSessions(Date.now() - 30 * 86_400_000, undefined, 300).find(c => c.agent === agent && c.id === id);
+      };
+      if (route === 'GET /api/conversation') {
+        const c = conversation();
+        if (!c) return reply(404, { error: 'conversation not found' });
+        // shortcut: parses the whole transcript on every poll; cache by mtime if long sessions get slow.
+        const messages = readTranscript(c.file!).slice(-80).map(m => ({ ...m, text: m.text.length > 6000 ? m.text.slice(0, 6000) + ' …' : m.text }));
+        return reply(200, { messages, live: Date.now() - c.modifiedAt < 90_000 });
+      }
+      if (route === 'POST /api/resume') {
+        const c = conversation();
+        if (!c) return reply(404, { error: 'conversation not found' });
+        const p = projects.find(x => x.path === c.cwd);
+        if (!p) return reply(400, { error: 'Add this folder to Pilothouse first, then you can continue it here.' });
+        await deps.resume(p.id, c.agent || 'claude', c.id);
+        audit(who, 'resume', p.name, c.id);
+        return reply(200, { ok: true });
+      }
+      if (route === 'GET /api/todos') {
+        const p = projects.find(x => x.id === url.searchParams.get('project'));
+        if (!p) return reply(404, { error: 'project not found' });
+        return reply(200, { project: p.name, items: await projectTodos(p.path) });
+      }
+      if (route === 'POST /api/open') {
+        const p = projects.find(x => x.id === String(body.project));
+        if (!p) return reply(404, { error: 'project not found' });
+        await deps.openTab(p.id);
+        audit(who, 'open', p.name, '');
+        return reply(200, { ok: true });
+      }
+      // The phone hands over its APNs token so this computer can push "needs you" notifications.
+      if (route === 'POST /api/push-token') {
+        const token = String(body.token || '');
+        if (!/^[0-9a-f]{64,200}$/i.test(token)) return reply(400, { error: 'bad token' });
+        const s = remoteState();
+        const d = s.devices.find(x => x.id === device.id);
+        if (!d) return reply(404, { error: 'device not found' });
+        d.apns = token;
+        d.sandbox = body.sandbox === true;
+        d.pushKey ||= crypto.randomBytes(32).toString('base64');
+        saveState(s);
+        return reply(200, { ok: true, pushKey: d.pushKey });
+      }
+      // Browser notifications for the web remote: the page asks for the public key, then hands over its subscription.
+      if (route === 'GET /api/web-push-key') return reply(200, { key: vapidKeys().publicKey });
+      if (route === 'POST /api/web-push') {
+        const s = remoteState();
+        const d = s.devices.find(x => x.id === device.id);
+        if (!d) return reply(404, { error: 'device not found' });
+        if (body.subscription === null) delete d.webPush;
+        else if (validWebPush(body.subscription)) d.webPush = { endpoint: body.subscription.endpoint, keys: { p256dh: body.subscription.keys.p256dh, auth: body.subscription.keys.auth } };
+        else return reply(400, { error: 'bad subscription' });
+        saveState(s);
+        audit(who, d.webPush ? 'web-push-on' : 'web-push-off', '', '');
+        return reply(200, { ok: true });
+      }
+      if (route === 'POST /api/unpair') {
+        revokeDevice(device.id);
+        audit(who, 'unpair', '', '');
+        return reply(200, { ok: true });
+      }
+
+      const v = views.find(x => x.id === String(body.id ?? url.searchParams.get('id')));
+      if (!v) return reply(404, { error: 'session not found' });
+
+      // The conversation behind a Claude Code / Codex tab, read from the agent's own transcript: far easier to
+      // follow on a phone than the terminal. 404 for other agents, so the app shows the terminal instead.
+      if (route === 'GET /api/tab-chat') {
+        const s = deps.sessions().find(x => x.id === v.id)!;
+        const file = s.agent === 'claude' ? getProjectSessions(s.cwd)[0]?.file : s.agent === 'codex' ? getCodexSessions(s.cwd)[0]?.file : undefined;
+        if (!file) return reply(404, { error: 'no transcript for this tab' });
+        const messages = readTranscript(file).slice(-60).map(m => ({ ...m, text: m.text.length > 6000 ? m.text.slice(0, 6000) + ' …' : m.text }));
+        return reply(200, { messages, live: v.status === 'running' });
+      }
+      if (route === 'GET /api/diff') {
+        const s = deps.sessions().find(x => x.id === v.id)!;
+        return reply(200, { project: v.project, ...(await projectDiff(s.cwd)) });
+      }
+      if (route === 'POST /api/send') {
+        const text = String(body.text || '').trim();
+        if (!text) return reply(400, { error: 'text required' });
+        const raw = deps.sessions().find(x => x.id === v.id)!;
+        deps.write(v.id, pasteText(raw.buf, text, !!raw.agent));
+        // Enter separately, or agent TUIs treat it as part of a paste.
+        await sleep(150);
+        deps.write(v.id, '\r');
+        audit(who, 'send', v.project, text);
+        return reply(200, { ok: true });
+      }
+      if (route === 'POST /api/choose') {
+        if (v.status !== 'waiting' || v.sig !== body.sig) return reply(409, { error: 'The prompt changed. Look at it again.' });
+        const c = v.choices.find(x => x.key === body.key);
+        if (!c) return reply(400, { error: 'unknown choice' });
+        if (v.risk === 'danger' && !isRefusal(c.label) && body.confirm !== true) return reply(428, { error: 'confirm' });
+        deps.write(v.id, c.key);
+        audit(who, 'choose', v.project, `${c.label} | ${v.tail.slice(-300)}`);
+        return reply(200, { ok: true });
+      }
+      // Live terminal: the screen as the desktop shows it, and raw keys (arrows, Esc, Tab, Ctrl+C …) back.
+      if (route === 'GET /api/screen') {
+        const snap = await deps.screen(v.id);
+        return snap ? reply(200, snap) : reply(404, { error: 'session not found' });
+      }
+      if (route === 'POST /api/keys') {
+        const data = String(body.data ?? '');
+        if (!data || data.length > 4000) return reply(400, { error: 'keys required' });
+        deps.write(v.id, data);
+        audit(who, 'keys', v.project, `${data.length} chars`); // not the keys themselves: they may be a password
+        return reply(200, { ok: true });
+      }
+      if (route === 'POST /api/stop') {
+        deps.write(v.id, '\x1b'); // Esc interrupts Claude Code, Codex and Gemini CLI
+        audit(who, 'stop', v.project, '');
+        return reply(200, { ok: true });
+      }
+      return reply(404, { error: 'unknown route' });
+    } catch (err: any) {
+      return reply(500, { error: err.message });
+    }
+  };
+}
+export interface ApiResult { status: number; body: unknown }
+
 // Resolves to the base URL; pairingLink(url) adds the current pairing code for the QR.
 export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = REMOTE_PORT): Promise<{ server: http.Server; url: string } | { error: string }> {
   if (!ip) return Promise.resolve({ error: 'Tailscale is not running on this computer. Install it from tailscale.com, sign in, then turn this on again.' });
   remoteState();
 
+  const api = remoteApi(deps);
   const server = http.createServer(async (req, res) => {
     const send = (code: number, body: unknown) => {
       res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
@@ -234,7 +461,6 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
     if (!hostOk(req.headers.host, ip, (server.address() as any).port)) return send(421, { error: 'wrong host' });
     const url = new URL(req.url || '/', `http://${ip}`);
     const route = `${req.method} ${url.pathname}`;
-    const from = req.socket.remoteAddress;
 
     if (route === 'GET /') {
       res.writeHead(200, {
@@ -255,179 +481,8 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
       try { body = raw ? JSON.parse(raw) : {}; } catch { return send(400, { error: 'bad json' }); }
     }
 
-    // Pairing: the QR code's one secret buys each phone its own token. Only the hash is stored.
-    if (route === 'POST /api/pair') {
-      const s = remoteState();
-      if (pairExpired(s) || !secretOk(body.secret, s.pair)) { audit(from, 'pair-refused', '', ''); return send(401, { error: 'This code is no longer valid. Scan the new one in Pilothouse Settings.' }); }
-      const token = crypto.randomBytes(24).toString('hex');
-      const device: Device = { id: crypto.randomBytes(6).toString('hex'), name: String(body.name || 'Phone').slice(0, 60), hash: hashOf(token), created: Date.now() };
-      s.devices.push(device);
-      // One code, one device: the next phone needs the fresh QR from Settings.
-      s.pair = newCode(); s.pairAt = Date.now();
-      saveState(s);
-      audit(from, 'pair', '', device.name);
-      return send(200, { token, device: device.id });
-    }
-
-    const device = deviceFor(req.headers.authorization);
-    if (!device) return send(401, { error: 'unauthorized' });
-    if (!device.lastSeen || Date.now() - device.lastSeen > 60_000) {
-      const s = remoteState();
-      const d = s.devices.find(x => x.id === device.id);
-      if (d) { d.lastSeen = Date.now(); saveState(s); }
-    }
-    const who = `${from} ${device.name}`;
-
-    const projects = deps.listProjects();
-    const views = deps.sessions().map(s => sessionView(s, projects));
-    const order = { waiting: 0, running: 1, idle: 2 };
-
-    try {
-      if (route === 'GET /api/sessions') return send(200, views.sort((a, b) => order[a.status] - order[b.status]));
-      if (route === 'GET /api/projects') {
-        const open = new Set(deps.sessions().map(s => s.cwd));
-        return send(200, projects.filter(p => !open.has(p.path))
-          .sort((a, b) => Number(b.isFavorite) - Number(a.isFavorite) || (b.lastLaunched || 0) - (a.lastLaunched || 0))
-          .map(p => ({ id: p.id, name: p.name })));
-      }
-      if (route === 'GET /api/usage') {
-        const open = deps.sessions();
-        const limited = (id: string) => open.some(s => s.agent === id && s.limited);
-        const out: AgentUsage[] = [
-          claudeUsage() || { agent: 'Claude Code', windows: [], note: 'Shows up after a Claude tab opened from Pilothouse has run once.' },
-          codexUsage() || { agent: 'Codex', windows: [], note: 'No Codex sessions on this computer yet.' }
-        ];
-        if (limited('claude')) out[0].note = 'Limit reached in an open tab.';
-        if (limited('codex')) out[1].note = 'Limit reached in an open tab.';
-        for (const a of AGENTS.filter(a => a.id !== 'claude' && a.id !== 'codex' && open.some(s => s.agent === a.id))) {
-          out.push({ agent: a.name, windows: [], note: limited(a.id) ? 'Limit reached in an open tab.' : 'This CLI does not report its limits; Pilothouse warns when a tab hits one.' });
-        }
-        return send(200, out);
-      }
-      // Claude Code / Codex conversations from any terminal, including ones Pilothouse did not start.
-      if (route === 'GET /api/conversations') {
-        const now = Date.now();
-        return send(200, recentSessions(now - 3 * 86_400_000).map(c => {
-          const p = projects.find(x => x.path === c.cwd);
-          return {
-            key: `${c.agent}:${c.id}`,
-            agent: AGENTS.find(a => a.id === c.agent)?.name || c.agent,
-            project: p?.name || path.basename(c.cwd),
-            projectId: p?.id || '',
-            title: (c.title || '').slice(0, 140),
-            updatedAt: c.modifiedAt,
-            live: now - c.modifiedAt < 90_000
-          };
-        }));
-      }
-      const conversation = () => {
-        const [agent, id] = String(url.searchParams.get('key') ?? body.key ?? '').split(':');
-        return recentSessions(Date.now() - 30 * 86_400_000, undefined, 300).find(c => c.agent === agent && c.id === id);
-      };
-      if (route === 'GET /api/conversation') {
-        const c = conversation();
-        if (!c) return send(404, { error: 'conversation not found' });
-        // shortcut: parses the whole transcript on every poll; cache by mtime if long sessions get slow.
-        const messages = readTranscript(c.file!).slice(-80).map(m => ({ ...m, text: m.text.length > 6000 ? m.text.slice(0, 6000) + ' …' : m.text }));
-        return send(200, { messages, live: Date.now() - c.modifiedAt < 90_000 });
-      }
-      if (route === 'POST /api/resume') {
-        const c = conversation();
-        if (!c) return send(404, { error: 'conversation not found' });
-        const p = projects.find(x => x.path === c.cwd);
-        if (!p) return send(400, { error: 'Add this folder to Pilothouse first, then you can continue it here.' });
-        await deps.resume(p.id, c.agent || 'claude', c.id);
-        audit(who, 'resume', p.name, c.id);
-        return send(200, { ok: true });
-      }
-      if (route === 'GET /api/todos') {
-        const p = projects.find(x => x.id === url.searchParams.get('project'));
-        if (!p) return send(404, { error: 'project not found' });
-        return send(200, { project: p.name, items: await projectTodos(p.path) });
-      }
-      if (route === 'POST /api/open') {
-        const p = projects.find(x => x.id === String(body.project));
-        if (!p) return send(404, { error: 'project not found' });
-        await deps.openTab(p.id);
-        audit(who, 'open', p.name, '');
-        return send(200, { ok: true });
-      }
-      // The phone hands over its APNs token so this computer can push "needs you" notifications.
-      if (route === 'POST /api/push-token') {
-        const token = String(body.token || '');
-        if (!/^[0-9a-f]{64,200}$/i.test(token)) return send(400, { error: 'bad token' });
-        const s = remoteState();
-        const d = s.devices.find(x => x.id === device.id);
-        if (!d) return send(404, { error: 'device not found' });
-        d.apns = token;
-        d.sandbox = body.sandbox === true;
-        d.pushKey ||= crypto.randomBytes(32).toString('base64');
-        saveState(s);
-        return send(200, { ok: true, pushKey: d.pushKey });
-      }
-      if (route === 'POST /api/unpair') {
-        revokeDevice(device.id);
-        audit(who, 'unpair', '', '');
-        return send(200, { ok: true });
-      }
-
-      const v = views.find(x => x.id === String(body.id ?? url.searchParams.get('id')));
-      if (!v) return send(404, { error: 'session not found' });
-
-      // The conversation behind a Claude Code / Codex tab, read from the agent's own transcript: far easier to
-      // follow on a phone than the terminal. 404 for other agents, so the app shows the terminal instead.
-      if (route === 'GET /api/tab-chat') {
-        const s = deps.sessions().find(x => x.id === v.id)!;
-        const file = s.agent === 'claude' ? getProjectSessions(s.cwd)[0]?.file : s.agent === 'codex' ? getCodexSessions(s.cwd)[0]?.file : undefined;
-        if (!file) return send(404, { error: 'no transcript for this tab' });
-        const messages = readTranscript(file).slice(-60).map(m => ({ ...m, text: m.text.length > 6000 ? m.text.slice(0, 6000) + ' …' : m.text }));
-        return send(200, { messages, live: v.status === 'running' });
-      }
-      if (route === 'GET /api/diff') {
-        const s = deps.sessions().find(x => x.id === v.id)!;
-        return send(200, { project: v.project, ...(await projectDiff(s.cwd)) });
-      }
-      if (route === 'POST /api/send') {
-        const text = String(body.text || '').trim();
-        if (!text) return send(400, { error: 'text required' });
-        const raw = deps.sessions().find(x => x.id === v.id)!;
-        deps.write(v.id, pasteText(raw.buf, text, !!raw.agent));
-        // Enter separately, or agent TUIs treat it as part of a paste.
-        await sleep(150);
-        deps.write(v.id, '\r');
-        audit(who, 'send', v.project, text);
-        return send(200, { ok: true });
-      }
-      if (route === 'POST /api/choose') {
-        if (v.status !== 'waiting' || v.sig !== body.sig) return send(409, { error: 'The prompt changed. Look at it again.' });
-        const c = v.choices.find(x => x.key === body.key);
-        if (!c) return send(400, { error: 'unknown choice' });
-        if (v.risk === 'danger' && !isRefusal(c.label) && body.confirm !== true) return send(428, { error: 'confirm' });
-        deps.write(v.id, c.key);
-        audit(who, 'choose', v.project, `${c.label} | ${v.tail.slice(-300)}`);
-        return send(200, { ok: true });
-      }
-      // Live terminal: the screen as the desktop shows it, and raw keys (arrows, Esc, Tab, Ctrl+C …) back.
-      if (route === 'GET /api/screen') {
-        const snap = await deps.screen(v.id);
-        return snap ? send(200, snap) : send(404, { error: 'session not found' });
-      }
-      if (route === 'POST /api/keys') {
-        const data = String(body.data ?? '');
-        if (!data || data.length > 4000) return send(400, { error: 'keys required' });
-        deps.write(v.id, data);
-        audit(who, 'keys', v.project, `${data.length} chars`); // not the keys themselves: they may be a password
-        return send(200, { ok: true });
-      }
-      if (route === 'POST /api/stop') {
-        deps.write(v.id, '\x1b'); // Esc interrupts Claude Code, Codex and Gemini CLI
-        audit(who, 'stop', v.project, '');
-        return send(200, { ok: true });
-      }
-      return send(404, { error: 'unknown route' });
-    } catch (err: any) {
-      return send(500, { error: err.message });
-    }
+    const r = await api(route, url, body, req.headers.authorization, req.socket.remoteAddress);
+    return send(r.status, r.body);
   });
 
   return new Promise(resolve => {

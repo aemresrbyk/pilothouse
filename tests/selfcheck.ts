@@ -458,6 +458,19 @@ if (bin && hasModel()) {
   assert.deepStrictEqual(writes, ['\x1b[A']);
   assert.equal((await call('/api/keys', { id: 't1', data: '' })).status, 400);
   assert.ok(!fs.readFileSync(auditFile(), 'utf-8').includes('\\u001b[A'));
+  // Web Push: only real browser push services are accepted (the computer POSTs to that address).
+  const { validWebPush } = await import('../electron/push');
+  const goodSub = { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256dh: 'B' + 'a'.repeat(86), auth: 'x'.repeat(22) } };
+  assert.ok(validWebPush(goodSub));
+  for (const endpoint of ['http://fcm.googleapis.com/x', 'https://169.254.169.254/latest', 'https://evil.com/fcm.googleapis.com', 'https://fcm.googleapis.com.evil.com/x', 'https://localhost:4747/api/keys'])
+    assert.ok(!validWebPush({ ...goodSub, endpoint }), endpoint);
+  assert.equal((await call('/api/web-push', { subscription: { ...goodSub, endpoint: 'https://127.0.0.1/' } })).status, 400);
+  assert.match((await call('/api/web-push-key')).body.key, /^[A-Za-z0-9_-]{80,}$/);
+  assert.equal((await call('/api/web-push', { subscription: goodSub })).status, 200);
+  const { webPushTargets } = await import('../electron/remote');
+  assert.deepStrictEqual(webPushTargets(), [goodSub]);
+  assert.equal((await call('/api/web-push', { subscription: null })).status, 200);
+  assert.deepStrictEqual(webPushTargets(), []);
   // Hostile input: oversized and broken bodies, tokens of the wrong shape.
   assert.equal((await call('/api/send', { id: 't1', text: 'x'.repeat(30_000) })).status, 413);
   assert.equal((await call('/api/sessions', undefined, token + '0')).status, 401);
@@ -473,6 +486,54 @@ if (bin && hasModel()) {
   assert.deepStrictEqual(listDevices().map(d => d.name), ['iPhone']);
   assert.equal((await call('/manifest.json')).status, 200);
   assert.equal(fs.statSync(auditFile()).mode & 0o777, 0o600);
+  // Web relay: the browser side (WebCrypto, as the page does it) against the computer's handler, no network.
+  {
+    const { relayHandler } = await import('../electron/relayLink');
+    const { remoteApi } = await import('../electron/remote');
+    const handle = relayHandler(remoteApi({ listProjects: () => [], sessions: () => [], write: () => true, screen: () => null, openTab: async () => '', resume: async () => '' }));
+    const te = new TextEncoder(), td = new TextDecoder();
+    const aes = (raw: Uint8Array) => crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+    const seal = async (key: CryptoKey, d: string, obj: unknown) => {
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: te.encode(d) }, key, te.encode(JSON.stringify(obj))));
+      return Buffer.concat([iv, ct]).toString('base64');
+    };
+    const unseal = async (key: CryptoKey, d: string, box: string) => {
+      const raw = Buffer.from(box, 'base64');
+      return JSON.parse(td.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.subarray(0, 12), additionalData: te.encode(d) }, key, raw.subarray(12))));
+    };
+    const code = /#p=(\w+)/.exec(pairingLink(''))![1];
+    const pk = await aes(new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode(code))));
+    const req = (o: object) => ({ id: 'a', t: Date.now(), n: crypto.randomUUID(), ...o });
+    // Pairing through the relay hands over token + relay key, sealed with the code's key.
+    const pairMsg = JSON.stringify({ d: 'pair', c: await seal(pk, 'pair', req({ m: 'POST', p: '/api/pair', b: { secret: code, name: 'web' } })) });
+    const out = JSON.parse((await handle(pairMsg))!);
+    const paired = await unseal(pk, 'pair', out.c);
+    assert.equal(paired.s, 200);
+    const dk = await aes(Buffer.from(paired.b.relayKey, 'base64'));
+    const dev = paired.b.device, tok = paired.b.token;
+    assert.equal(await handle(pairMsg), null, 'a replayed pairing message is dropped');
+    // Requests with the device key work; the wrong key, a wrong token, an old timestamp or a replay do not.
+    const get = async (o: object, key = dk, d = dev) => { const r = await handle(JSON.stringify({ d, c: await seal(key, d, req({ m: 'GET', p: '/api/sessions', a: tok, ...o })) })); return r && (await unseal(key, d, JSON.parse(r).c)); };
+    assert.deepStrictEqual((await get({}))!.b, []);
+    assert.equal(await get({}, pk), null);
+    assert.equal((await get({ a: 'f'.repeat(48) }))!.s, 401);
+    assert.equal(await get({ t: Date.now() - 5 * 60_000 }), null);
+    const fixed = JSON.stringify({ d: dev, c: await seal(dk, dev, req({ m: 'GET', p: '/api/sessions', a: tok })) });
+    assert.ok(await handle(fixed)); assert.equal(await handle(fixed), null);
+    // Only the pairing route goes with the pairing key; a revoked device is gone for good.
+    const code2 = /#p=(\w+)/.exec(pairingLink(''))![1];
+    const pk2 = await aes(new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode(code2))));
+    assert.equal(await handle(JSON.stringify({ d: 'pair', c: await seal(pk2, 'pair', req({ m: 'GET', p: '/api/sessions' })) })), null);
+    const { revokeDevice } = await import('../electron/remote');
+    revokeDevice(dev);
+    assert.equal(await get({}), null);
+    // The room id is derived from a secret that stays on the computer; the web link carries room + code, after the #.
+    const { relayRoom, webPairingLink } = await import('../electron/remote');
+    const { roomOf } = await import('../relay/worker.js');
+    assert.equal(await roomOf(relayRoom().secret), relayRoom().room);
+    assert.match(webPairingLink(), /^https:\/\/usepilothouse\.com\/app\/#r=[0-9a-f]{32}&p=[0-9a-f]{48}$/);
+  }
   r.server.close();
   delete process.env.PILOTHOUSE_DIR;
 

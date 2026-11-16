@@ -7,12 +7,13 @@ import * as pty from 'node-pty';
 import { autoUpdater } from 'electron-updater';
 import { StorageManager } from './store';
 import { Screen } from './screen';
+import { startRelayLink } from './relayLink';
 import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './terminal';
 import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions, readTranscript, searchHistory, isSessionFile, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
 import { startControlServer, CONTROL_FILE, stripAnsi } from './control';
 import { Activity, newActivity, noteOutput, nextStatus, hitLimit } from './activity';
-import { startRemoteServer, pairingLink, resetPairCode, revokeDevice, listDevices, pushTargets, forgetPushTokens, sessionView, autoChoice, isRefusal, audit } from './remote';
-import { apnsConfig, sendPush } from './push';
+import { startRemoteServer, remoteApi, webPairingLink, RemoteDeps, pairingLink, resetPairCode, revokeDevice, listDevices, pushTargets, forgetPushTokens, webPushTargets, forgetWebPush, vapidKeys, sessionView, autoChoice, isRefusal, audit } from './remote';
+import { apnsConfig, sendPush, sendWebPush } from './push';
 import { agentOfCommand, withClaudeStatus, ensureClaudeStatusHook } from './usage';
 import http from 'http';
 import { writeHandoff } from './handoff';
@@ -217,12 +218,18 @@ app.whenReady().then(() => {
 // Phone remote (Settings → Phone remote). Started and stopped live; the link carries the token.
 let remote: { server: http.Server; url: string } | null = null;
 let remoteError = '';
+// Two ways in, same API: the Tailscale server (iPhone app, any browser on the tailnet) and the encrypted web relay
+// (usepilothouse.com/app from any browser, no Tailscale). The relay part needs no extra setup, so it always runs.
+let relay: ReturnType<typeof startRelayLink> | null = null;
+const remoteOn = () => !!(remote || relay);
 async function applyRemote(enabled: boolean) {
   remote?.server.close();
   remote = null;
+  relay?.stop();
+  relay = null;
   remoteError = '';
   if (!enabled) return;
-  const r = await startRemoteServer({
+  const deps: RemoteDeps = {
     listProjects: () => storage.listStoredProjects(),
     sessions: () => [...ptyMeta.entries()].filter(([id]) => ptySessions.has(id)).map(([id, m]) => ({ id, cwd: m.cwd, status: m.act.status, buf: m.buf, agent: m.agent, limited: m.limited })),
     write: (id, data) => { const p = ptySessions.get(id); const m = ptyMeta.get(id); if (!p) return false; if (m) m.act.lastInput = Date.now(); p.write(data); return true; },
@@ -232,12 +239,16 @@ async function applyRemote(enabled: boolean) {
       const agent = agentById(agentId);
       return openTabViaRenderer(projectId, buildAgentCommand(agent, agentBinary(agent, storage.getSettings()), [], undefined, sessionId));
     }
-  });
+  };
+  relay = startRelayLink(remoteApi(deps));
+  const r = await startRemoteServer(deps);
   if ('error' in r) remoteError = r.error; else remote = r;
 }
 const remoteInfo = () => ({
   enabled: !!storage.getSettings().remoteEnabled,
   url: remote ? pairingLink(remote.url) : undefined,
+  webUrl: relay ? webPairingLink() : undefined,
+  webOnline: relay?.status() ?? false,
   error: remoteError || undefined,
   devices: listDevices(),
   push: apnsConfig() ? 'direct' as const : 'relay' as const
@@ -246,7 +257,7 @@ const remoteInfo = () => ({
 // Auto-approval rules (every tab, phone or not) and phone notifications when an agent needs you or finishes.
 const DEBUG = !!process.env.PILOTHOUSE_DEBUG;
 function onAgentStatus(id: string, m: { cwd: string; buf: string; act: Activity }, prev: PtyStatus, status: PtyStatus) {
-  if (DEBUG) console.log(`[status] ${path.basename(m.cwd)} ${prev} → ${status} remote=${!!remote} targets=${remote ? pushTargets().length : 0}`);
+  if (DEBUG) console.log(`[status] ${path.basename(m.cwd)} ${prev} → ${status} remote=${remoteOn()} targets=${remoteOn() ? pushTargets().length : 0}`);
   if (status !== 'waiting' && !(status === 'idle' && prev === 'running')) return;
   const v = sessionView({ id, cwd: m.cwd, status, buf: m.buf }, storage.listStoredProjects());
   if (status === 'waiting') {
@@ -260,8 +271,9 @@ function onAgentStatus(id: string, m: { cwd: string; buf: string; act: Activity 
   }
   // A tab that never got a message only replayed its startup (a resumed session): nothing finished for you.
   if (status === 'idle' && !m.act.lastInput) return;
-  const targets = remote ? pushTargets() : [];
-  if (!targets.length) return;
+  const targets = remoteOn() ? pushTargets() : [];
+  const webTargets = remoteOn() ? webPushTargets() : [];
+  if (!targets.length && !webTargets.length) return;
   const deny = v.choices.find(c => isRefusal(c.label)) || v.choices[v.choices.length - 1];
   const msg = status === 'waiting'
     ? {
@@ -273,6 +285,7 @@ function onAgentStatus(id: string, m: { cwd: string; buf: string; act: Activity 
     : { title: v.project, body: 'Finished. Your turn.', data: { sid: id } };
   if (DEBUG) console.log(`[push] ${msg.title}: ${msg.body}`);
   sendPush(targets, msg).then(forgetPushTokens).catch((err) => console.error('Push failed:', err.message));
+  if (webTargets.length) sendWebPush(vapidKeys(), webTargets, msg).then(forgetWebPush).catch((err) => console.error('Web push failed:', err.message));
 }
 
 // Voice hotkey works system-wide, so you can talk to the agent while another app is in front.

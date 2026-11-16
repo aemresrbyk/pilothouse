@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
+import webpush from 'web-push';
 
 export interface ApnsConfig { keyPath: string; keyId: string; teamId: string; bundleId: string }
 export interface PushTarget { token: string; sandbox?: boolean; key?: string } // key: base64 AES-256 key the phone holds
@@ -115,5 +116,37 @@ export async function sendPush(targets: PushTarget[], m: PushMessage): Promise<s
     })));
     session.close();
   }
+  return dead;
+}
+
+// ---- Web Push (the browser web remote, usepilothouse.com/app) ----
+// The VAPID keys are made on this computer and the payload is encrypted to the browser's own key (RFC 8291), so the
+// browser's push service (Google, Mozilla, Apple, Microsoft) carries it without reading it. No server of ours.
+export interface WebPushSub { endpoint: string; keys: { p256dh: string; auth: string } }
+// Only real browser push services: a subscription is an address this computer will POST to.
+const PUSH_HOSTS = /^(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|web\.push\.apple\.com|[a-z0-9-]+\.notify\.windows\.com)$/;
+export function validWebPush(sub: any): sub is WebPushSub {
+  try {
+    const u = new URL(String(sub?.endpoint));
+    return u.protocol === 'https:' && PUSH_HOSTS.test(u.hostname) && sub.endpoint.length < 1000
+      && /^[A-Za-z0-9_-]{40,200}$/.test(String(sub.keys?.p256dh)) && /^[A-Za-z0-9_-]{10,100}$/.test(String(sub.keys?.auth));
+  } catch { return false; }
+}
+export const newVapidKeys = () => webpush.generateVAPIDKeys();
+
+// Resolves to the endpoints the push service says are gone (unsubscribed), so the caller can forget them.
+export async function sendWebPush(vapid: { publicKey: string; privateKey: string }, subs: WebPushSub[], m: PushMessage): Promise<string[]> {
+  const dead: string[] = [];
+  await Promise.all(subs.map(async (sub) => {
+    try {
+      await webpush.sendNotification(sub, JSON.stringify({ title: m.title, body: m.body, tag: String(m.data?.sid || m.title) }), {
+        vapidDetails: { subject: 'https://usepilothouse.com', publicKey: vapid.publicKey, privateKey: vapid.privateKey },
+        TTL: 3600, urgency: 'high', timeout: 10_000
+      });
+    } catch (err: any) {
+      if (err.statusCode === 404 || err.statusCode === 410) dead.push(sub.endpoint);
+      else console.error('Web push:', err.statusCode || err.message);
+    }
+  }));
   return dead;
 }
