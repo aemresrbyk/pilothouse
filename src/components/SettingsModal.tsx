@@ -51,6 +51,8 @@ const GeminiKeyField: React.FC = () => {
 const RemoteField: React.FC = () => {
   const [info, setInfo] = useState<RemoteInfo | null>(null);
   const [qr, setQr] = useState('');
+  // Which way in the QR is for: any browser through the encrypted relay, or the iPhone app over Tailscale.
+  const [via, setVia] = useState<'web' | 'tailscale'>('web');
   // Polled: a pairing code works once and for 10 minutes, so the QR (and the device list) must follow along.
   useEffect(() => {
     const load = () => window.electronAPI.remoteInfo().then(setInfo).catch(() => {});
@@ -58,10 +60,11 @@ const RemoteField: React.FC = () => {
     const t = setInterval(load, 4000);
     return () => clearInterval(t);
   }, []);
+  const link = via === 'web' ? info?.webUrl : info?.url;
   useEffect(() => {
     setQr('');
-    if (info?.url) QRCode.toDataURL(info.url, { margin: 1, width: 180 }).then(setQr).catch(() => {});
-  }, [info?.url]);
+    if (link) QRCode.toDataURL(link, { margin: 1, width: 180 }).then(setQr).catch(() => {});
+  }, [link]);
   return (
     <div className="flex flex-col gap-1.5">
       <label className="flex items-start gap-2 cursor-pointer select-none">
@@ -72,23 +75,50 @@ const RemoteField: React.FC = () => {
           className="mt-0.5 w-3.5 h-3.5 rounded bg-zinc-900 border-[#2a344a] accent-[#C8FF2E] cursor-pointer"
         />
         <span>
-          <span className="text-xs text-zinc-300 block">Phone remote</span>
+          <span className="text-xs text-zinc-300 block">Remote control</span>
           <span className="text-[10px] text-zinc-600">
-            See every agent tab on your phone (Pilothouse iOS app or any browser), answer approval prompts, send messages and read diffs. Works over Tailscale (encrypted, only your own devices). Risky commands need two taps; every action is logged to ~/.pilothouse/remote-audit.jsonl.
+            Watch and answer your agents from your phone or any other computer: approvals, messages, the live terminal, changes. End-to-end encrypted, no account. Risky commands need two taps; every action is logged to ~/.pilothouse/remote-audit.jsonl.
           </span>
         </span>
       </label>
-      {info?.error && <span className="text-[10px] text-red-400 ml-5">{info.error}</span>}
-      {info?.url && (
-        <div className="ml-5 flex items-start gap-3">
-          {qr && <img src={qr} alt="QR code to open Pilothouse on your phone" width={120} height={120} className="rounded bg-white" />}
-          <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] text-zinc-500">Scan with a phone signed in to the same Tailscale account. Each code pairs one device and expires after 10 minutes.</span>
-            <button type="button" onClick={async () => setInfo(await window.electronAPI.resetRemote())} className="self-start px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300">
-              New code
-            </button>
-            <span className="text-[10px] text-zinc-600">{info.push === 'direct' ? 'Notifications: sent straight to Apple with your APNs key.' : 'Notifications: end-to-end encrypted through the Pilothouse relay (it cannot read them).'}</span>
+      {info?.enabled && (
+        <div className="ml-5 flex flex-col gap-2">
+          <div className="flex gap-1 text-[11px]" role="tablist">
+            {([['web', 'Any browser'], ['tailscale', 'iPhone app']] as const).map(([k, label]) => (
+              <button key={k} type="button" role="tab" aria-selected={via === k} onClick={() => setVia(k)}
+                className={`px-2 py-0.5 rounded border ${via === k ? 'border-[#C8FF2E] text-[#C8FF2E]' : 'border-zinc-700 text-zinc-400'}`}>
+                {label}
+              </button>
+            ))}
           </div>
+          {via === 'tailscale' && info.error && <span className="text-[10px] text-red-400">{info.error}</span>}
+          {link && (
+            <div className="flex items-start gap-3">
+              {qr && <img src={qr} alt={via === 'web' ? 'QR code to open Pilothouse in a browser' : 'QR code to pair the Pilothouse iPhone app'} width={120} height={120} className="rounded bg-white" />}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] text-zinc-500">
+                  {via === 'web'
+                    ? 'Scan with your phone, or open the link on another computer. Works from anywhere, nothing to install. '
+                    : 'Scan with the Pilothouse iPhone app, signed in to the same Tailscale account. '}
+                  Each code pairs one device and expires after 10 minutes.
+                </span>
+                {via === 'web' && (
+                  <span className="text-[10px]" style={{ color: info.webOnline ? '#C8FF2E' : '#f87171' }}>
+                    {info.webOnline ? '● Reachable from the web' : '● Connecting to the relay…'}
+                  </span>
+                )}
+                <div className="flex gap-1.5">
+                  <button type="button" onClick={async () => setInfo(await window.electronAPI.resetRemote())} className="px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300">
+                    New code
+                  </button>
+                  <button type="button" onClick={() => window.electronAPI.copyToClipboard(link)} className="px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300">
+                    Copy link
+                  </button>
+                </div>
+                <span className="text-[10px] text-zinc-600">{info.push === 'direct' ? 'iPhone notifications: sent straight to Apple with your APNs key.' : 'iPhone notifications: end-to-end encrypted through the Pilothouse relay (it cannot read them).'}</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
       {!!info?.devices?.length && (

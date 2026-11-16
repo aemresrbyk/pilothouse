@@ -8,8 +8,8 @@ export const REMOTE_PAGE = `<!doctype html>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0B0D10">
 <title>Pilothouse</title>
-<link rel="manifest" href="/manifest.json">
-<link rel="apple-touch-icon" href="/icon.png">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
 <meta name="apple-mobile-web-app-title" content="Pilothouse">
 <style>
   :root { --bg:#0B0D10; --card:#12161f; --line:#232a3a; --text:#e4e7ee; --dim:#7b8496; --lime:#C8FF2E; --red:#ff5c5c; --amber:#ffc24a; }
@@ -17,6 +17,7 @@ export const REMOTE_PAGE = `<!doctype html>
   body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 -apple-system, system-ui, sans-serif; padding:16px 16px calc(16px + env(safe-area-inset-bottom)); }
   h1 { font-size:17px; margin:0 0 12px; display:flex; align-items:center; gap:8px; }
   h1 b { color:var(--lime); }
+  #notify { margin-left:auto; min-height:32px; padding:4px 10px; font-size:13px; }
   #msg { color:var(--dim); font-size:13px; margin-bottom:10px; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; }
   .card.waiting { border-color:var(--amber); }
@@ -47,7 +48,7 @@ export const REMOTE_PAGE = `<!doctype html>
 </style>
 </head>
 <body>
-<h1><b>●</b> Pilothouse</h1>
+<h1><b>●</b> Pilothouse <button id="notify" hidden></button></h1>
 <div id="msg">Connecting…</div>
 <div id="list"></div>
 <h2 id="ptitle" hidden>Projects</h2>
@@ -63,7 +64,8 @@ export const REMOTE_PAGE = `<!doctype html>
   var KEY = 'pilothouse-device-token';
   var token = (function () { try { return localStorage.getItem(KEY); } catch (e) { return null; } })();
   // The QR carries a pairing code; trade it once for this browser's own token, then drop it from the address bar.
-  var pair = /#p=([0-9a-f]+)/.exec(location.hash);
+  var pair = /[#&]p=([0-9a-f]+)/.exec(location.hash);
+  var relayLink = /[#&]r=([0-9a-f]{32})/.exec(location.hash);
   history.replaceState(null, '', location.pathname);
   var msg = document.getElementById('msg'), list = document.getElementById('list');
   var armed = {}; // session id -> choice key armed for a risky approval
@@ -72,8 +74,66 @@ export const REMOTE_PAGE = `<!doctype html>
   var plist = document.getElementById('projects'), ptitle = document.getElementById('ptitle');
 
   function api(method, path, body) {
+    if (relayMode) return relayApi(method, path, body);
     return fetch(path, { method: method, headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
       .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); });
+  }
+
+  // ---- Web relay (usepilothouse.com/app): same API, reached through the Pilothouse relay instead of Tailscale.
+  // Every request and reply is sealed with AES-256-GCM using a key that only this browser and your computer hold;
+  // the relay only passes the sealed boxes along.
+  var RELAY = 'wss://relay.usepilothouse.com';
+  var RKEY = 'pilothouse-relay';
+  var rcfg = (function () { try { return JSON.parse(localStorage.getItem(RKEY) || 'null'); } catch (e) { return null; } })();
+  var relayMode = location.protocol === 'https:' && !!(window.crypto && crypto.subtle);
+  var rws = null, rwsReady = null, pending = {};
+  var enc = new TextEncoder(), dec = new TextDecoder();
+  function b64(buf) { var s = '', a = new Uint8Array(buf); for (var i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s); }
+  function unb64(s) { var r = atob(s), a = new Uint8Array(r.length); for (var i = 0; i < r.length; i++) a[i] = r.charCodeAt(i); return a; }
+  function rand(n) { return crypto.getRandomValues(new Uint8Array(n)); }
+  function hex(a) { return Array.prototype.map.call(a, function (x) { return ('0' + x.toString(16)).slice(-2); }).join(''); }
+  function aesKey(raw) { return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']); }
+  function keyFor(d) { return d === 'pair' ? crypto.subtle.digest('SHA-256', enc.encode(rcfg.pair)).then(aesKey) : aesKey(unb64(rcfg.key)); }
+  function seal(key, d, obj) {
+    var iv = rand(12);
+    return crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv, additionalData: enc.encode(d) }, key, enc.encode(JSON.stringify(obj)))
+      .then(function (ct) { var out = new Uint8Array(12 + ct.byteLength); out.set(iv); out.set(new Uint8Array(ct), 12); return b64(out); });
+  }
+  function unseal(key, d, box) {
+    var raw = unb64(box);
+    return crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12), additionalData: enc.encode(d) }, key, raw.slice(12))
+      .then(function (pt) { return JSON.parse(dec.decode(pt)); });
+  }
+  function failAll(why) { Object.keys(pending).forEach(function (id) { pending[id].reject(new Error(why)); delete pending[id]; }); }
+  function connectRelay() {
+    if (rwsReady) return rwsReady;
+    rwsReady = new Promise(function (resolve, reject) {
+      var ws = new WebSocket(RELAY + '/room/' + rcfg.room);
+      ws.onopen = function () { rws = ws; resolve(); };
+      ws.onmessage = function (e) {
+        var m; try { m = JSON.parse(e.data); } catch (x) { return; }
+        if (m.offline) return failAll('offline');
+        keyFor(m.d).then(function (k) { return unseal(k, m.d, m.c); }).then(function (r) {
+          var p = pending[r.id]; if (!p) return;
+          delete pending[r.id]; clearTimeout(p.timer); p.resolve({ status: r.s, body: r.b });
+        }).catch(function () {});
+      };
+      ws.onclose = function () { rws = null; rwsReady = null; failAll('offline'); reject(new Error('offline')); };
+    });
+    return rwsReady;
+  }
+  function relayApi(method, path, body) {
+    if (!rcfg) return Promise.reject(new Error('not paired'));
+    var d = rcfg.device || 'pair';
+    var id = hex(rand(8));
+    return connectRelay().then(function () { return keyFor(d); }).then(function (k) {
+      return seal(k, d, { id: id, t: Date.now(), n: hex(rand(12)), m: method, p: path, b: body || {}, a: rcfg.token });
+    }).then(function (c) {
+      return new Promise(function (resolve, reject) {
+        pending[id] = { resolve: resolve, reject: reject, timer: setTimeout(function () { delete pending[id]; reject(new Error('offline')); }, 15000) };
+        rws.send(JSON.stringify({ d: d, c: c }));
+      });
+    });
   }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   var LABEL = { waiting: 'needs you', running: 'working', idle: 'idle' };
@@ -203,7 +263,7 @@ export const REMOTE_PAGE = `<!doctype html>
     var tag = document.activeElement && document.activeElement.tagName;
     if (diffOpen || termId || tag === 'INPUT' || tag === 'TEXTAREA') return;
     api('GET', '/api/sessions').then(function (r) {
-      if (r.status === 401) { msg.textContent = 'This browser is no longer paired. Scan the QR code in Pilothouse Settings.'; list.replaceChildren(); plist.replaceChildren(); ptitle.hidden = true; last = ''; return; }
+      if (r.status === 401) { msg.textContent = 'This browser is no longer paired. Scan the QR code in Pilothouse Settings.'; list.replaceChildren(); plist.replaceChildren(); ptitle.hidden = true; last = ''; if (relayMode) { rcfg = null; try { localStorage.removeItem(RKEY); } catch (e) {} } return; }
       var key = JSON.stringify(r.body) + JSON.stringify(armed);
       if (key === last) return;
       last = key;
@@ -211,7 +271,7 @@ export const REMOTE_PAGE = `<!doctype html>
       msg.textContent = r.body.length ? (waiting ? waiting + ' waiting for you' : 'All agents are working or idle') : 'No terminals open in Pilothouse.';
       document.title = waiting ? '(' + waiting + ') Pilothouse' : 'Pilothouse';
       list.replaceChildren.apply(list, r.body.map(card));
-    }).catch(function () { msg.textContent = 'Cannot reach Pilothouse. Is the computer awake and on Tailscale?'; });
+    }).catch(function (e) { msg.textContent = relayMode ? (e && e.message === 'offline' ? 'Your computer is offline, asleep, or Pilothouse is closed.' : 'Cannot reach Pilothouse.') : 'Cannot reach Pilothouse. Is the computer awake and on Tailscale?'; });
   }
   function loadProjects() {
     if (!token) return;
@@ -237,14 +297,52 @@ export const REMOTE_PAGE = `<!doctype html>
       }));
     }).catch(function () {});
   }
+  // Browser notifications (web remote only: they need https and a service worker). The subscription goes to your
+  // computer, which sends the pushes itself, encrypted to this browser.
+  var notifyBtn = document.getElementById('notify');
+  function urlKey(k) { var s = atob((k + '==='.slice((k.length + 3) % 4)).replace(/-/g, '+').replace(/_/g, '/')); var a = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; }
+  function setupNotify() {
+    if (!relayMode || !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    navigator.serviceWorker.register('sw.js').then(function (reg) {
+      function show(on) { notifyBtn.hidden = false; notifyBtn.textContent = on ? '🔔 On' : '🔔 Notify me'; notifyBtn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+      reg.pushManager.getSubscription().then(function (sub) { show(!!sub); });
+      notifyBtn.onclick = function () {
+        reg.pushManager.getSubscription().then(function (sub) {
+          if (sub) return sub.unsubscribe().then(function () { return api('POST', '/api/web-push', { subscription: null }); }).then(function () { show(false); });
+          return Notification.requestPermission().then(function (p) {
+            if (p !== 'granted') { msg.textContent = 'Notifications are blocked for this site in your browser settings.'; return; }
+            return api('GET', '/api/web-push-key').then(function (r) {
+              return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlKey(r.body.key) });
+            }).then(function (sub) { return api('POST', '/api/web-push', { subscription: sub.toJSON() }); })
+              .then(function (r) { if (r.status === 200) show(true); else msg.textContent = r.body.error || 'Could not turn notifications on.'; });
+          });
+        }).catch(function (e) { msg.textContent = 'Notifications: ' + e.message; });
+      };
+    }).catch(function () {});
+  }
   function start() {
+    setupNotify();
     loadProjects();
     setInterval(loadProjects, 10000);
     load();
     setInterval(load, 2000);
   }
   // A fresh QR link always pairs, even over an old token (that one may have been revoked or be from another computer).
-  if (pair) {
+  if (relayMode && relayLink && pair) {
+    rcfg = { room: relayLink[1], pair: pair[1] };
+    msg.textContent = 'Pairing…';
+    relayApi('POST', '/api/pair', { secret: pair[1], name: 'Browser · ' + (navigator.platform || 'web') }).then(function (r) {
+      if (r.status !== 200 || !r.body.relayKey) { msg.textContent = r.body.error || 'Pairing failed.'; rcfg = null; return; }
+      rcfg = { room: relayLink[1], device: r.body.device, key: r.body.relayKey, token: r.body.token };
+      token = r.body.token;
+      try { localStorage.setItem(RKEY, JSON.stringify(rcfg)); } catch (e) {}
+      if (rws) rws.close();
+      start();
+    }).catch(function () { msg.textContent = 'Your computer did not answer. Is Pilothouse open with Remote control on?'; rcfg = null; });
+  } else if (relayMode) {
+    if (rcfg && rcfg.token) { token = rcfg.token; start(); }
+    else msg.textContent = 'Open Pilothouse on your computer → Settings → Remote control, and scan the QR code.';
+  } else if (pair) {
     fetch('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: pair[1], name: 'Browser · ' + (navigator.platform || 'phone') }) })
       .then(function (r) { return r.json(); })
       .then(function (j) { if (j.token) { token = j.token; try { localStorage.setItem(KEY, token); } catch (e) {} } else msg.textContent = j.error; start(); })

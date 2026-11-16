@@ -1,4 +1,4 @@
-// Pilothouse push relay (Cloudflare Worker). Forwards notifications from a user's computer to Apple (APNs) for
+// Pilothouse relay (Cloudflare Worker): web remote rooms (below) and push. Push forwards notifications from a user's computer to Apple (APNs) for
 // the App Store build of the iPhone app, whose push key cannot ship inside open-source desktop code.
 //
 // It cannot read what it forwards: the computer encrypts the text with a key that only the paired iPhone holds
@@ -29,9 +29,66 @@ export async function apnsJwt(env, now = Date.now()) {
   return cached.jwt;
 }
 
+// ---- Web remote rooms ----
+// usepilothouse.com/app talks to a user's computer through a room: the computer joins as host (proving it owns the
+// room: roomId = first 32 hex of sha256(hostSecret)), browsers join as clients. The room only passes messages
+// between them. They are end-to-end encrypted (AES-256-GCM, keys made on the computer and handed over by QR), so
+// the relay cannot read or forge them. Nothing is stored; the room exists only while sockets are open.
+const ROOM_RE = /^[0-9a-f]{32}$/;
+const MAX_MSG = 512 * 1024;
+export const roomOf = async (secret) =>
+  [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret)))].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+const APP_ORIGINS = ['https://usepilothouse.com', 'https://www.usepilothouse.com'];
+
+async function joinRoom(req, env, url) {
+  const room = url.pathname.split('/')[2] || '';
+  if (!ROOM_RE.test(room) || req.headers.get('upgrade') !== 'websocket') return new Response('bad room', { status: 400 });
+  const secret = url.searchParams.get('host');
+  if (secret !== null) {
+    if (await roomOf(secret) !== room) return new Response('not the host', { status: 403 });
+  } else {
+    const origin = req.headers.get('origin') || '';
+    if (!APP_ORIGINS.includes(origin) && !(env.DEV_ORIGIN && origin === env.DEV_ORIGIN)) return new Response('origin', { status: 403 });
+  }
+  if (env.LIMITER) {
+    const { success } = await env.LIMITER.limit({ key: req.headers.get('cf-connecting-ip') || 'unknown' });
+    if (!success) return new Response('slow down', { status: 429 });
+  }
+  const stub = env.ROOMS.get(env.ROOMS.idFromName(room));
+  return stub.fetch(new Request(`https://room/${secret !== null ? 'host' : 'client'}`, req));
+}
+
+export class Room {
+  constructor(state) { this.state = state; }
+  async fetch(req) {
+    const role = new URL(req.url).pathname.slice(1);
+    const [client, server] = Object.values(new WebSocketPair());
+    const tag = role === 'host' ? 'host' : `c${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
+    if (tag === 'host') for (const old of this.state.getWebSockets('host')) old.close(4000, 'replaced');
+    this.state.acceptWebSocket(server, [tag]); // hibernation: an idle room costs nothing
+    return new Response(null, { status: 101, webSocket: client });
+  }
+  webSocketMessage(ws, msg) {
+    if (typeof msg !== 'string' || msg.length > MAX_MSG) return;
+    const [tag] = this.state.getTags(ws);
+    if (tag === 'host') {
+      let m; try { m = JSON.parse(msg); } catch { return; }
+      if (typeof m.to !== 'string' || typeof m.data !== 'string') return;
+      for (const c of this.state.getWebSockets(m.to)) c.send(m.data);
+      return;
+    }
+    const [host] = this.state.getWebSockets('host');
+    if (!host) return ws.send(JSON.stringify({ offline: true }));
+    host.send(JSON.stringify({ from: tag, data: msg }));
+  }
+  webSocketClose(ws, code) { try { ws.close(code === 1005 ? 1000 : code); } catch {} }
+  webSocketError(ws) { try { ws.close(1011); } catch {} }
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
+    if (url.pathname.startsWith('/room/')) return joinRoom(req, env, url);
     if (req.method !== 'POST' || url.pathname !== '/push') return new Response('Pilothouse push relay. Source: https://github.com/aemresrbyk/pilothouse/tree/main/relay', { status: 404 });
 
     if (env.LIMITER) {
