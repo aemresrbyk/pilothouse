@@ -6,6 +6,7 @@ import { execFile } from 'child_process';
 import * as pty from 'node-pty';
 import { autoUpdater } from 'electron-updater';
 import { StorageManager } from './store';
+import { Screen } from './screen';
 import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './terminal';
 import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions, readTranscript, searchHistory, isSessionFile, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
 import { startControlServer, CONTROL_FILE, stripAnsi } from './control';
@@ -32,7 +33,15 @@ let win: BrowserWindow | null = null;
 let storage: StorageManager;
 const ptySessions = new Map<string, pty.IPty>();
 // cwd + recent output per PTY, so the control API can tell which project a terminal belongs to and read it back.
-const ptyMeta = new Map<string, { cwd: string; buf: string; act: Activity; sender: Electron.WebContents; limited?: boolean; agent?: string }>();
+// screen: made on first request from the phone/web (seeded from buf), so tabs nobody watches cost nothing extra.
+const ptyMeta = new Map<string, { cwd: string; buf: string; act: Activity; sender: Electron.WebContents; limited?: boolean; agent?: string; cols: number; rows: number; screen?: Screen }>();
+function screenOf(id: string) {
+  const m = ptyMeta.get(id);
+  if (!m || !ptySessions.has(id)) return null;
+  m.screen ??= new Screen(m.cols, m.rows, m.buf);
+  return m.screen.snapshot();
+}
+function dropMeta(id: string) { ptyMeta.get(id)?.screen?.dispose(); ptyMeta.delete(id); }
 const OUTPUT_KEEP = 60_000;
 const pendingOpens = new Map<string, (tabId: string) => void>();
 
@@ -217,6 +226,7 @@ async function applyRemote(enabled: boolean) {
     listProjects: () => storage.listStoredProjects(),
     sessions: () => [...ptyMeta.entries()].filter(([id]) => ptySessions.has(id)).map(([id, m]) => ({ id, cwd: m.cwd, status: m.act.status, buf: m.buf, agent: m.agent, limited: m.limited })),
     write: (id, data) => { const p = ptySessions.get(id); const m = ptyMeta.get(id); if (!p) return false; if (m) m.act.lastInput = Date.now(); p.write(data); return true; },
+    screen: screenOf,
     openTab: (projectId) => openTabViaRenderer(projectId),
     resume: (projectId, agentId, sessionId) => {
       const agent = agentById(agentId);
@@ -617,7 +627,8 @@ function registerIpcHandlers() {
       });
 
       ptySessions.set(id, ptyProcess);
-      const meta = { cwd: targetCwd, buf: '', act: newActivity(Date.now()), sender: event.sender, agent };
+      ptyMeta.get(id)?.screen?.dispose(); // a restarted tab starts a fresh screen
+      const meta: NonNullable<ReturnType<typeof ptyMeta.get>> = { cwd: targetCwd, buf: '', act: newActivity(Date.now()), sender: event.sender, agent, cols: safeCols, rows: safeRows };
       ptyMeta.set(id, meta);
 
       // A replaced/killed session must not touch the map entry or UI of its successor (same id).
@@ -626,6 +637,7 @@ function registerIpcHandlers() {
       ptyProcess.onData((data: string) => {
         if (!isCurrent()) return;
         meta.buf = (meta.buf + data).slice(-OUTPUT_KEEP);
+        meta.screen?.write(data);
         noteOutput(meta.act, Date.now());
         // shortcut: assumes printf's marker arrives in one chunk (it is one small write); buffer across chunks if it ever misses.
         const exit = /\x1b\]7777;exit;(\d+)\x07/.exec(data);
@@ -683,6 +695,8 @@ function registerIpcHandlers() {
     if (ptyProc && cols >= 40 && rows >= 8) {
       try {
         ptyProc.resize(cols, rows);
+        const m = ptyMeta.get(id);
+        if (m) { m.cols = cols; m.rows = rows; m.screen?.resize(cols, rows); }
       } catch {}
     }
   };
@@ -697,7 +711,7 @@ function registerIpcHandlers() {
       } catch {}
       ptySessions.delete(id);
     }
-    ptyMeta.delete(id);
+    dropMeta(id);
   });
 }
 

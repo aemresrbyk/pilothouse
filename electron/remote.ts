@@ -13,6 +13,7 @@ import { stripAnsi, pasteText } from './control';
 import { parseChoices, Choice } from '../src/utils/inbox';
 import type { ProjectItem, PtyStatus } from '../src/types';
 import { REMOTE_PAGE } from './remotePage';
+import type { Snapshot } from './screen';
 import { REMOTE_ICON_PNG } from './remoteIcon';
 import { claudeUsage, codexUsage, projectTodos, AgentUsage } from './usage';
 import { AGENTS } from '../src/types';
@@ -24,6 +25,8 @@ export interface RemoteDeps {
   listProjects: () => ProjectItem[];
   sessions: () => RemoteSession[];
   write: (id: string, data: string) => boolean;
+  // The tab's screen as the desktop shows it (null: no such live tab).
+  screen: (id: string) => Promise<Snapshot> | null;
   // Opens the project's default agent in a new tab, as clicking it in the app would.
   openTab: (projectId: string) => Promise<string>;
   // Opens a tab that resumes an agent conversation (claude --resume <id>, codex resume <id>).
@@ -402,6 +405,18 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
         if (v.risk === 'danger' && !isRefusal(c.label) && body.confirm !== true) return send(428, { error: 'confirm' });
         deps.write(v.id, c.key);
         audit(who, 'choose', v.project, `${c.label} | ${v.tail.slice(-300)}`);
+        return send(200, { ok: true });
+      }
+      // Live terminal: the screen as the desktop shows it, and raw keys (arrows, Esc, Tab, Ctrl+C …) back.
+      if (route === 'GET /api/screen') {
+        const snap = await deps.screen(v.id);
+        return snap ? send(200, snap) : send(404, { error: 'session not found' });
+      }
+      if (route === 'POST /api/keys') {
+        const data = String(body.data ?? '');
+        if (!data || data.length > 4000) return send(400, { error: 'keys required' });
+        deps.write(v.id, data);
+        audit(who, 'keys', v.project, `${data.length} chars`); // not the keys themselves: they may be a password
         return send(200, { ok: true });
       }
       if (route === 'POST /api/stop') {

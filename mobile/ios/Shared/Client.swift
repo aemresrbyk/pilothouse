@@ -53,6 +53,20 @@ struct ChatLog: Codable { let messages: [ChatMessage]; let live: Bool }
 struct TodoItem: Codable, Hashable { let file: String; let line: Int; let text: String; let kind: String }
 struct TodoList: Codable { let project: String; let items: [TodoItem] }
 struct DiffResult: Codable { let project: String; let stat: String; let diff: String; let untracked: [String] }
+// The live terminal: each line is runs of ["text", "#rrggbb" or "" for default, bold?].
+struct ScreenRun: Decodable, Hashable {
+    let text: String; let color: String; let bold: Bool
+    init(from decoder: Decoder) throws {
+        var c = try decoder.unkeyedContainer()
+        text = try c.decode(String.self)
+        color = try c.decode(String.self)
+        bold = c.isAtEnd ? false : try c.decode(Bool.self)
+    }
+}
+struct ScreenSnapshot: Decodable, Equatable {
+    struct Cursor: Decodable, Equatable { let x: Int; let y: Int }
+    let cols: Int; let rows: Int; let lines: [[ScreenRun]]; let cursor: Cursor
+}
 
 enum PilotError: LocalizedError {
     case notPaired, badLink, server(Int, String)
@@ -162,6 +176,11 @@ final class Client {
         let _: OK = try await send("POST", "/api/choose", ["id": id, "key": key, "sig": sig, "confirm": confirm])
     }
     func message(_ id: String, _ text: String) async throws { let _: OK = try await send("POST", "/api/send", ["id": id, "text": text]) }
+    func screen(_ id: String) async throws -> ScreenSnapshot {
+        try await send("GET", "/api/screen?id=\(id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? id)")
+    }
+    // Raw keys for the terminal: arrows, Esc, Tab, Enter, Ctrl+C.
+    func keys(_ id: String, _ data: String) async throws { let _: OK = try await send("POST", "/api/keys", ["id": id, "data": data]) }
     func stop(_ id: String) async throws { let _: OK = try await send("POST", "/api/stop", ["id": id]) }
     func open(_ projectId: String) async throws { let _: OK = try await send("POST", "/api/open", ["project": projectId]) }
     private struct PushRegistered: Decodable { let pushKey: String? }
