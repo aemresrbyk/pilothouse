@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, MutableRefObject } from 'react';
 import { startRecording, Recording } from '../utils/voice';
 import { converse, ConvoDeps } from '../utils/conversationLoop';
-import { Heard } from '../utils/conversation';
+import { Heard, BRAINSTORM } from '../utils/conversation';
 import { WakeWordDetector, startWakeListener, WakeListener } from '../utils/wakeword';
 import { ProjectItem, AppSettings, TabSession, PtyStatus, agentById } from '../types';
 import { playLaunchSound } from '../utils/audio';
@@ -76,7 +76,7 @@ export function useVoice({ activeTabId, projects, settings, tabs, statusListener
     recRef.current?.cancel();
   };
 
-  const startConversation = async () => {
+  const startConversation = async (mode?: 'brainstorm') => {
     const ctx = voiceCtx.current;
     const tab = ctx.tabs.find((t) => t.id === ctx.activeTabId);
     const project = tab && ctx.projects.find((p) => p.id === tab.projectId);
@@ -154,6 +154,7 @@ export function useVoice({ activeTabId, projects, settings, tabs, statusListener
       vocab: [...ctx.projects.map((p) => p.name), agent.name],
       fixedLang: fixed,
       cancelled: () => convo.cancel,
+      preamble: mode === 'brainstorm' ? BRAINSTORM : undefined,
       onState: (state, text) => setVoice({
         phase: state === 'thinking' ? 'transcribing' : state,
         level: 0,
@@ -162,6 +163,15 @@ export function useVoice({ activeTabId, projects, settings, tabs, statusListener
     };
 
     try {
+      if (mode === 'brainstorm') {
+        // Opens the floor out loud, so it is clear the agent is listening for an idea, not a command.
+        const lang = fixed ?? (navigator.language.toLowerCase().startsWith('tr') ? 'tr' : 'en');
+        const hello = lang === 'tr' ? 'Beyin fırtınası. Fikrin ne?' : "Let's brainstorm. What's the idea?";
+        setVoice({ phase: 'speaking', level: 0, note: hello });
+        await window.electronAPI.speak(hello, lang);
+        if (convo.cancel) return;
+        setVoice({ phase: 'listening', level: 0 });
+      }
       await converse(deps);
     } catch (err: any) {
       flashVoice(`Conversation stopped: ${err.message}`);
@@ -263,6 +273,13 @@ export function useVoice({ activeTabId, projects, settings, tabs, statusListener
     return () => window.removeEventListener('keydown', onKey);
   }, [voice.phase]);
 
+  // Brainstorm by voice (the light-bulb button): talk an idea through, then the agent writes SPEC.md.
+  const brainstorm = async () => {
+    if (convoRef.current) return endConversation();
+    if (recRef.current || voicePhase.current !== 'idle') return;
+    if (await voiceReady()) startConversation('brainstorm');
+  };
+
   // conversing: a conversation is running (Esc ends it rather than cancelling one recording).
-  return { voice, setVoice, toggleVoice: () => toggleVoiceRef.current(), downloadVoiceModel, endConversation, flashVoice, conversing: !!convoRef.current };
+  return { voice, setVoice, toggleVoice: () => toggleVoiceRef.current(), brainstorm, downloadVoiceModel, endConversation, flashVoice, conversing: !!convoRef.current };
 }

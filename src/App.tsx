@@ -313,7 +313,7 @@ export const App: React.FC = () => {
     window.electronAPI.setBadge(needsYou);
   }, [needsYou]);
 
-  const { voice, setVoice, toggleVoice, downloadVoiceModel, conversing } = useVoice({ activeTabId, projects, settings, tabs, statusListeners });
+  const { voice, setVoice, toggleVoice, brainstorm, downloadVoiceModel, conversing } = useVoice({ activeTabId, projects, settings, tabs, statusListeners });
 
   // The menu bar's "Stop Listening" changes settings from main.
   useEffect(() => window.electronAPI.onSettingsChanged((s) => setSettings(s)), []);
@@ -549,6 +549,7 @@ export const App: React.FC = () => {
         voiceActive={voice.phase === 'listening'}
         voiceHotkey={settings.voiceHotkey || 'CommandOrControl+Shift+Space'}
         onToggleVoice={toggleVoice}
+        onBrainstorm={brainstorm}
         onSyncClaude={handleSyncClaude}
         isSyncing={isSyncing}
         soundEnabled={soundOn}

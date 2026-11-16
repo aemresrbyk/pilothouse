@@ -23,6 +23,8 @@ export interface ConvoDeps {
   vocab: string[];
   fixedLang?: Lang;
   cancelled(): boolean;
+  // Put in front of the first thing the user says (one line): sets the agent up for the session, e.g. brainstorming.
+  preamble?: string;
   onState(state: ConvoState, text?: string): void;
 }
 
@@ -118,7 +120,7 @@ export async function converse(d: ConvoDeps, first?: Heard | null): Promise<'sil
       if (yn !== 'yes') text = applyCorrection(text, verdict.words, reply.text);
     }
 
-    d.send(text);
+    d.send(turn === 0 && d.preamble ? `${d.preamble} ${text}` : text);
     await d.speak(T[lang].onIt, lang);
     heard = await afterSend();
   }
