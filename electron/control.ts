@@ -51,6 +51,16 @@ export function stripAnsi(s: string): string {
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// What to write so a message keeps its line breaks. Agent TUIs turn on bracketed paste (ESC[?2004h): text between
+// the paste markers is one message, newlines and all. Without it a newline would submit, so lines are joined.
+// knownAgent: the switch-on can scroll out of the kept output; every supported agent CLI uses bracketed paste.
+export function pasteText(buf: string, text: string, knownAgent = false): string {
+  const clean = text.replace(/\x1b/g, '').replace(/\r\n?/g, '\n').trim();
+  const on = buf.lastIndexOf('\x1b[?2004h'), off = buf.lastIndexOf('\x1b[?2004l');
+  const bracketed = on > off || (on < 0 && off < 0 && knownAgent);
+  return bracketed && clean.includes('\n') ? `\x1b[200~${clean}\x1b[201~` : clean.replace(/\n+/g, ' ');
+}
+
 export function startControlServer(deps: ControlDeps, onFocus: () => void): http.Server {
   const token = crypto.randomBytes(24).toString('hex');
 
@@ -105,8 +115,7 @@ export function startControlServer(deps: ControlDeps, onFocus: () => void): http
       }
       if (route === 'POST /send') {
         const p = needProject(); if (!p) return;
-        const text = String(body.text || '').replace(/\r?\n/g, ' ').trim();
-        if (!text) return send(400, { error: 'text required' });
+        if (!String(body.text || '').trim()) return send(400, { error: 'text required' });
         let t = terminalFor(p);
         if (!t) {
           await deps.openTab(p.id);
@@ -116,7 +125,7 @@ export function startControlServer(deps: ControlDeps, onFocus: () => void): http
         }
         if (!t) return send(504, { error: 'terminal did not start' });
         onFocus();
-        deps.write(t.id, text);
+        deps.write(t.id, pasteText(deps.output(t.id), String(body.text)));
         // Enter separately, or Claude's TUI treats it as part of a paste.
         await sleep(150);
         deps.write(t.id, '\r');

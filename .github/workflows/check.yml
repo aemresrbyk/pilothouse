@@ -1,0 +1,23 @@
+name: Check
+
+# Typecheck and the self-check suite (security tests included) on every PR and push to main.
+# Linux runners are free for public repositories.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install
+      - run: bun run typecheck
+      - run: bun tests/selfcheck.ts

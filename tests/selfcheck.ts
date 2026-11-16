@@ -425,7 +425,27 @@ if (bin && hasModel()) {
   assert.equal(Buffer.from(reg.body.pushKey, 'base64').length, 32);
   assert.deepStrictEqual(pushTargets(), [{ token: 'ab'.repeat(32), sandbox: true, key: reg.body.pushKey }]);
   assert.equal((await call('/api/push-token', { token: 'cd'.repeat(32) })).body.pushKey, reg.body.pushKey); // stable per phone
-  const other = (await call('/api/pair', { secret, name: 'iPad' })).body.token;
+  // A pairing code works once: a screenshot of an old QR cannot pair another device.
+  assert.equal((await call('/api/pair', { secret, name: 'thief' })).status, 401);
+  const fresh = /#p=(\w+)/.exec(pairingLink(r.url))![1];
+  assert.notEqual(fresh, secret);
+  // ...and only for 10 minutes.
+  const stateFile = path.join(process.env.PILOTHOUSE_DIR!, 'remote.json');
+  const st = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
+  fs.writeFileSync(stateFile, JSON.stringify({ ...st, pairAt: Date.now() - 11 * 60_000 }));
+  assert.equal((await call('/api/pair', { secret: fresh, name: 'late' })).status, 401);
+  assert.notEqual(/#p=(\w+)/.exec(pairingLink(r.url))![1], fresh); // Settings shows a new one
+  const other = (await call('/api/pair', { secret: /#p=(\w+)/.exec(pairingLink(r.url))![1], name: 'iPad' })).body.token;
+  assert.match(other, /^[0-9a-f]{48}$/);
+  // Hostile input: oversized and broken bodies, tokens of the wrong shape.
+  assert.equal((await call('/api/send', { id: 't1', text: 'x'.repeat(30_000) })).status, 413);
+  assert.equal((await call('/api/sessions', undefined, token + '0')).status, 401);
+  assert.equal((await call('/api/sessions', undefined, token.toUpperCase())).status, 401);
+  // Multi-line messages arrive as one bracketed paste, then Enter.
+  writes.length = 0;
+  tail = '\x1b[?2004h' + tail; // the agent TUI switched bracketed paste on
+  assert.equal((await call('/api/send', { id: 't1', text: 'line one\nline two' })).status, 200);
+  assert.deepStrictEqual(writes, ['\x1b[200~line one\nline two\x1b[201~', '\r']);
   assert.equal((await call('/api/unpair', {}, other)).status, 200);
   assert.equal((await call('/api/sessions', undefined, other)).status, 401);
   assert.equal((await call('/api/sessions')).status, 200);
@@ -434,6 +454,23 @@ if (bin && hasModel()) {
   assert.equal(fs.statSync(auditFile()).mode & 0o777, 0o600);
   r.server.close();
   delete process.env.PILOTHOUSE_DIR;
+
+  // Messages keep their line breaks only where the program understands bracketed paste.
+  const { pasteText } = await import('../electron/control');
+  assert.equal(pasteText('\x1b[?2004h', 'a\nb'), '\x1b[200~a\nb\x1b[201~');
+  assert.equal(pasteText('\x1b[?2004h\x1b[?2004l', 'a\nb'), 'a b'); // a plain shell would run each line
+  assert.equal(pasteText('', 'a\r\nb', true), '\x1b[200~a\nb\x1b[201~');
+  assert.equal(pasteText('', 'a\nb'), 'a b');
+  assert.equal(pasteText('\x1b[?2004h', 'one line'), 'one line');
+  assert.equal(pasteText('\x1b[?2004h', 'x\x1b[201~\nrm -rf ~'), '\x1b[200~x[201~\nrm -rf ~\x1b[201~'); // cannot end the paste early
+
+  // Folder names reach external terminals and editors as literal text, never as shell code.
+  const { shQuote, asString } = await import('../electron/terminal');
+  for (const evil of ["a'b", 'x$(touch /tmp/ph-pwned)', '`id`', 'sp ace"; rm -rf ~ #', "it's \\ fine"]) {
+    assert.equal(execFileSync('sh', ['-c', `printf %s ${shQuote(evil)}`]).toString(), evil);
+    if (process.platform === 'darwin') assert.equal(execFileSync('osascript', ['-e', `return ${asString(evil)}`]).toString().replace(/\n$/, ''), evil);
+  }
+  assert.ok(!fs.existsSync('/tmp/ph-pwned'));
 
   // Auto-approval: only non-risky prompts that contain a rule phrase, always the first option.
   const view = (buf: string) => sessionView({ id: 'x', cwd: '/tmp/demo', status: 'waiting', buf }, []);

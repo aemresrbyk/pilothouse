@@ -51,7 +51,13 @@ const GeminiKeyField: React.FC = () => {
 const RemoteField: React.FC = () => {
   const [info, setInfo] = useState<RemoteInfo | null>(null);
   const [qr, setQr] = useState('');
-  useEffect(() => { window.electronAPI.remoteInfo().then(setInfo).catch(() => {}); }, []);
+  // Polled: a pairing code works once and for 10 minutes, so the QR (and the device list) must follow along.
+  useEffect(() => {
+    const load = () => window.electronAPI.remoteInfo().then(setInfo).catch(() => {});
+    load();
+    const t = setInterval(load, 4000);
+    return () => clearInterval(t);
+  }, []);
   useEffect(() => {
     setQr('');
     if (info?.url) QRCode.toDataURL(info.url, { margin: 1, width: 180 }).then(setQr).catch(() => {});
@@ -77,7 +83,7 @@ const RemoteField: React.FC = () => {
         <div className="ml-5 flex items-start gap-3">
           {qr && <img src={qr} alt="QR code to open Pilothouse on your phone" width={120} height={120} className="rounded bg-white" />}
           <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] text-zinc-500">Scan with a phone signed in to the same Tailscale account. Anyone with this code can pair and control your terminals.</span>
+            <span className="text-[10px] text-zinc-500">Scan with a phone signed in to the same Tailscale account. Each code pairs one device and expires after 10 minutes.</span>
             <button type="button" onClick={async () => setInfo(await window.electronAPI.resetRemote())} className="self-start px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300">
               New code
             </button>

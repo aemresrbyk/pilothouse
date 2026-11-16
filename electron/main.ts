@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell, clipboard, globalShortcut, 
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { exec, execFile } from 'child_process';
+import { execFile } from 'child_process';
 import * as pty from 'node-pty';
 import { autoUpdater } from 'electron-updater';
 import { StorageManager } from './store';
@@ -78,6 +78,12 @@ function createWindow() {
 
   // Started at login with the wake word on: stay in the menu bar until "Hey Pilothouse" or a click.
   const startHidden = app.getLoginItemSettings().wasOpenedAtLogin && storage?.getSettings().wakeWordEnabled;
+  // The window has the full preload API (terminals, files). It must never show anything but Pilothouse itself:
+  // no pop-ups, and no navigating away (a dropped file or link would otherwise replace the app with that page).
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  win.webContents.on('will-navigate', (e, url) => { if (url !== win?.webContents.getURL()) e.preventDefault(); });
+  win.webContents.on('will-attach-webview', (e) => e.preventDefault());
+
   win.once('ready-to-show', () => {
     if (!startHidden) win?.show();
   });
@@ -452,24 +458,17 @@ function registerIpcHandlers() {
     const settings = storage.getSettings();
     const targetEditor = editor || settings.defaultEditor || 'VSCode';
 
+    // execFile: no shell, so a folder name is never parsed as a command.
+    const fallback = (err: Error | null) => { if (err) shell.openPath(dirPath); };
     if (process.platform === 'darwin') {
-      const appName = targetEditor === 'Cursor' ? 'Cursor' : 'Visual Studio Code';
-      exec(`open -a "${appName}" "${dirPath}"`, (err) => {
-        if (err) {
-          // Fallback to opening folder
-          shell.openPath(dirPath);
-        }
-      });
+      execFile('open', ['-a', targetEditor === 'Cursor' ? 'Cursor' : 'Visual Studio Code', dirPath], fallback);
       return true;
     }
 
-    // Windows / Linux
+    // Windows / Linux. code/cursor are .cmd files on Windows, which need a shell; Windows paths cannot contain ".
     const cmd = targetEditor === 'Cursor' ? 'cursor' : 'code';
-    exec(`${cmd} "${dirPath}"`, (err) => {
-      if (err) {
-        shell.openPath(dirPath);
-      }
-    });
+    if (process.platform === 'win32') execFile(cmd, [`"${dirPath}"`], { shell: true }, fallback);
+    else execFile(cmd, [dirPath], fallback);
     return true;
   });
 
