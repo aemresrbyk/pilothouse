@@ -32,7 +32,7 @@ export const REMOTE_PAGE = `<!doctype html>
   button.primary { background:var(--lime); color:#0B0D10; border-color:var(--lime); font-weight:600; }
   button.armed { background:var(--red); color:#fff; border-color:var(--red); }
   .row { display:flex; gap:6px; margin-top:10px; }
-  input { flex:1; min-width:0; font:inherit; color:var(--text); background:#07090c; border:1px solid var(--line); border-radius:10px; padding:10px; min-height:44px; }
+  input, textarea { resize:none; flex:1; min-width:0; font:inherit; color:var(--text); background:#07090c; border:1px solid var(--line); border-radius:10px; padding:10px; min-height:44px; }
   .row button { flex-shrink:0; text-align:center; }
   h2 { font-size:14px; color:var(--dim); margin:20px 0 8px; font-weight:600; }
   .proj { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0 6px 12px; }
@@ -96,14 +96,15 @@ export const REMOTE_PAGE = `<!doctype html>
       var d = el('details'); d.appendChild(el('summary', null, 'Output')); d.appendChild(pre); c.appendChild(d);
     }
     var row = el('div', 'row');
-    var input = el('input'); input.placeholder = 'Message the agent'; input.enterKeyHint = 'send';
+    var input = el('textarea'); input.rows = 1; input.placeholder = 'Message the agent (Shift+Enter: new line)'; input.enterKeyHint = 'send';
     var go = el('button', null, 'Send');
     function sendIt() {
       var t = input.value.trim(); if (!t) return;
       api('POST', '/api/send', { id: s.id, text: t }).then(function (r) { if (r.status !== 200) msg.textContent = r.body.error; input.value = ''; input.blur(); last = ''; load(); });
     }
     go.onclick = sendIt;
-    input.onkeydown = function (e) { if (e.key === 'Enter') sendIt(); };
+    input.onkeydown = function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendIt(); } };
+    input.oninput = function () { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 160) + 'px'; };
     row.appendChild(input); row.appendChild(go);
     var diffBtn = el('button', null, 'Changes');
     var diffBox = el('pre'); diffBox.hidden = true;

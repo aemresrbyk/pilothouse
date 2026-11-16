@@ -1,4 +1,4 @@
-import { exec, execSync, spawn } from 'child_process';
+import { exec, execFile, execSync, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -153,170 +153,71 @@ export function findClaudeBinary(): string {
   return 'claude';
 }
 
+// POSIX single-quote: the path reaches the shell as one literal word, whatever it contains ($, `, ", spaces).
+export const shQuote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+// Text inside an AppleScript "..." string.
+export const asString = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+
+// Programs run with execFile (no shell in between), so a folder name is never parsed as a command.
+const run = (file: string, args: string[]) => new Promise<Error | null>(r => execFile(file, args, err => r(err)));
+
 export function launchInTerminal(
   projectPath: string,
   claudeCommand: string,
   terminalId: string = 'Terminal'
 ): Promise<{ success: boolean; error?: string }> {
-  return new Promise((resolve) => {
-    const isMac = process.platform === 'darwin';
-    const isWin = process.platform === 'win32';
+  const done = (err: Error | null) => ({ success: !err, error: err?.message });
+  const isMac = process.platform === 'darwin';
+  const isWin = process.platform === 'win32';
 
-    // Ensure PATH contains ~/.local/bin and Homebrew so claude binary is found
-    const envPath = `${os.homedir()}/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH`;
-    const fullCommand = `export PATH="${envPath}"; cd "${projectPath}" && ${claudeCommand}`;
+  // Ensure PATH contains ~/.local/bin and Homebrew so claude binary is found
+  const envPath = `${os.homedir()}/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH`;
+  const fullCommand = `export PATH="${envPath}"; cd ${shQuote(projectPath)} && ${claudeCommand}`;
+  const terminalApp = async () => done(await run('osascript', ['-e', `tell application "Terminal"\n  activate\n  do script ${asString(fullCommand)}\nend tell`]));
+  const orTerminalApp = async (err: Error | null) => err ? terminalApp() : done(null);
 
+  return (async () => {
     if (isMac) {
       if (terminalId === 'iTerm') {
-        const script = `
-          tell application "iTerm"
-            activate
-            try
-              tell current window
-                create tab with default profile
-                tell current session
-                  write text "${fullCommand.replace(/"/g, '\\"')}"
-                end tell
-              end tell
-            on error
-              create window with default profile
-              tell current session of current window
-                write text "${fullCommand.replace(/"/g, '\\"')}"
-              end tell
-            end try
-          end tell
-        `;
-        exec(`osascript -e '${script.replace(/'/g, "'\\''")}'`, (err) => {
-          if (err) {
-            // Fallback to Terminal.app
-            launchTerminalApp(projectPath, fullCommand, resolve);
-          } else {
-            resolve({ success: true });
-          }
-        });
-        return;
-      }
-
-      if (terminalId === 'Ghostty') {
-        const escaped = fullCommand.replace(/"/g, '\\"');
-        exec(`open -a Ghostty --args -e "bash -c \\"${escaped}; exec bash\\""`, (err) => {
-          if (err) {
-            launchTerminalApp(projectPath, fullCommand, resolve);
-          } else {
-            resolve({ success: true });
-          }
-        });
-        return;
-      }
-
-      if (terminalId === 'Warp') {
-        exec(`open -a Warp "${projectPath}"`, (err) => {
-          if (err) {
-            launchTerminalApp(projectPath, fullCommand, resolve);
-          } else {
-            resolve({ success: true });
-          }
-        });
-        return;
-      }
-
-      if (terminalId === 'Alacritty') {
-        const escaped = fullCommand.replace(/"/g, '\\"');
-        exec(`open -a Alacritty --args --working-directory "${projectPath}" -e bash -c "${escaped}; exec bash"`, (err) => {
-          if (err) {
-            launchTerminalApp(projectPath, fullCommand, resolve);
-          } else {
-            resolve({ success: true });
-          }
-        });
-        return;
-      }
-
-      if (terminalId === 'Kitty') {
-        const escaped = fullCommand.replace(/"/g, '\\"');
-        exec(`open -a kitty --args --directory "${projectPath}" bash -c "${escaped}; exec bash"`, (err) => {
-          if (err) {
-            launchTerminalApp(projectPath, fullCommand, resolve);
-          } else {
-            resolve({ success: true });
-          }
-        });
-        return;
-      }
-
-      if (terminalId === 'VSCode') {
-        exec(`open -a "Visual Studio Code" "${projectPath}"`, (err) => {
-          if (err) {
-            resolve({ success: false, error: err.message });
-          } else {
-            resolve({ success: true });
-          }
-        });
-        return;
-      }
-
-      if (terminalId === 'Cursor') {
-        exec(`open -a "Cursor" "${projectPath}"`, (err) => {
-          if (err) {
-            resolve({ success: false, error: err.message });
-          } else {
-            resolve({ success: true });
-          }
-        });
-        return;
-      }
-
-      // Default macOS Terminal.app
-      launchTerminalApp(projectPath, fullCommand, resolve);
-    } else if (isWin) {
-      const winCmd = `cd /d "${projectPath}" && ${claudeCommand}`;
-      if (terminalId === 'WindowsTerminal') {
-        exec(`wt.exe -d "${projectPath}" cmd /k "${claudeCommand}"`, (err) => {
-          if (err) {
-            exec(`start cmd.exe /k "${winCmd}"`, (err2) => {
-              resolve({ success: !err2, error: err2?.message });
-            });
-          } else {
-            resolve({ success: true });
-          }
-        });
-      } else {
-        exec(`start cmd.exe /k "${winCmd}"`, (err) => {
-          resolve({ success: !err, error: err?.message });
-        });
-      }
-    } else {
-      // Linux
-      exec(`gnome-terminal --working-directory="${projectPath}" -- bash -c "${fullCommand}; exec bash"`, (err) => {
-        if (err) {
-          exec(`xterm -e "cd '${projectPath}' && ${claudeCommand}; exec bash"`, (err2) => {
-            resolve({ success: !err2, error: err2?.message });
-          });
-        } else {
-          resolve({ success: true });
-        }
-      });
-    }
-  });
-}
-
-function launchTerminalApp(
-  _projectPath: string,
-  fullCommand: string,
-  resolve: (res: { success: boolean; error?: string }) => void
-) {
-  const safeScript = `
-tell application "Terminal"
+        const write = `write text ${asString(fullCommand)}`;
+        return orTerminalApp(await run('osascript', ['-e', `tell application "iTerm"
   activate
-  do script "${fullCommand.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"
-end tell
-  `;
-  exec(`osascript -e '${safeScript.replace(/'/g, "'\\''")}'`, (err) => {
-    if (err) {
-      resolve({ success: false, error: err.message });
-    } else {
-      resolve({ success: true });
+  try
+    tell current window
+      create tab with default profile
+      tell current session
+        ${write}
+      end tell
+    end tell
+  on error
+    create window with default profile
+    tell current session of current window
+      ${write}
+    end tell
+  end try
+end tell`]));
+      }
+      if (terminalId === 'Ghostty') return orTerminalApp(await run('open', ['-a', 'Ghostty', '--args', '-e', 'bash', '-c', `${fullCommand}; exec bash`]));
+      if (terminalId === 'Warp') return orTerminalApp(await run('open', ['-a', 'Warp', projectPath]));
+      if (terminalId === 'Alacritty') return orTerminalApp(await run('open', ['-a', 'Alacritty', '--args', '--working-directory', projectPath, '-e', 'bash', '-c', `${fullCommand}; exec bash`]));
+      if (terminalId === 'Kitty') return orTerminalApp(await run('open', ['-a', 'kitty', '--args', '--directory', projectPath, 'bash', '-c', `${fullCommand}; exec bash`]));
+      if (terminalId === 'VSCode') return done(await run('open', ['-a', 'Visual Studio Code', projectPath]));
+      if (terminalId === 'Cursor') return done(await run('open', ['-a', 'Cursor', projectPath]));
+      return terminalApp();
     }
-  });
+    if (isWin) {
+      // cmd.exe has to parse these; Windows paths cannot contain ", so quoting the path is enough.
+      const winCmd = `cd /d "${projectPath}" && ${claudeCommand}`;
+      const startCmd = () => new Promise<Error | null>(r => exec(`start cmd.exe /k "${winCmd}"`, err => r(err)));
+      if (terminalId === 'WindowsTerminal') {
+        const err = await new Promise<Error | null>(r => exec(`wt.exe -d "${projectPath}" cmd /k "${claudeCommand}"`, e => r(e)));
+        if (!err) return done(null);
+      }
+      return done(await startCmd());
+    }
+    // Linux
+    const err = await run('gnome-terminal', [`--working-directory=${projectPath}`, '--', 'bash', '-c', `${fullCommand}; exec bash`]);
+    if (!err) return done(null);
+    return done(await run('xterm', ['-e', 'bash', '-c', `${fullCommand}; exec bash`]));
+  })();
 }
-

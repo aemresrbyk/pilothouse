@@ -9,7 +9,7 @@ import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import { execFile } from 'child_process';
-import { stripAnsi } from './control';
+import { stripAnsi, pasteText } from './control';
 import { parseChoices, Choice } from '../src/utils/inbox';
 import type { ProjectItem, PtyStatus } from '../src/types';
 import { REMOTE_PAGE } from './remotePage';
@@ -127,7 +127,9 @@ export function autoChoice(v: SessionView, rules: string[]): Choice | null {
 
 // pushKey: AES-256 key shared with the phone, so notification text is end-to-end encrypted through the relay.
 interface Device { id: string; name: string; hash: string; created: number; lastSeen?: number; apns?: string; sandbox?: boolean; pushKey?: string }
-interface RemoteState { pair: string; devices: Device[] }
+// pairAt: when the pairing code was made. A code works once and for PAIR_TTL, so an old screenshot of the QR is useless.
+interface RemoteState { pair: string; pairAt?: number; devices: Device[] }
+export const PAIR_TTL = 10 * 60_000;
 export interface DeviceInfo { id: string; name: string; created: number; lastSeen?: number; push: boolean }
 
 const hashOf = (t: string) => crypto.createHash('sha256').update(t).digest('hex');
@@ -144,15 +146,23 @@ export function remoteState(): RemoteState {
     if (typeof s.pair === 'string' && Array.isArray(s.devices)) return s;
   } catch {}
   // First run, or the v1.4.0 single-token file: start over; old links must pair again.
-  const s = { pair: crypto.randomBytes(24).toString('hex'), devices: [] };
+  const s: RemoteState = { pair: newCode(), pairAt: Date.now(), devices: [] };
   saveState(s);
   return s;
 }
 
-export const pairingLink = (base: string) => `${base}#p=${remoteState().pair}`;
+const newCode = () => crypto.randomBytes(24).toString('hex');
+const pairExpired = (s: RemoteState, now = Date.now()) => !s.pairAt || now - s.pairAt > PAIR_TTL;
+
+// Shown as the QR in Settings; an expired code is replaced on the spot.
+export function pairingLink(base: string) {
+  const s = remoteState();
+  if (pairExpired(s)) resetPairCode();
+  return `${base}#p=${remoteState().pair}`;
+}
 
 // New pairing code: the old QR stops working. Phones already paired stay paired.
-export function resetPairCode() { const s = remoteState(); s.pair = crypto.randomBytes(24).toString('hex'); saveState(s); }
+export function resetPairCode() { const s = remoteState(); s.pair = newCode(); s.pairAt = Date.now(); saveState(s); }
 
 export function revokeDevice(id: string) { const s = remoteState(); s.devices = s.devices.filter(d => d.id !== id); saveState(s); }
 
@@ -245,10 +255,12 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
     // Pairing: the QR code's one secret buys each phone its own token. Only the hash is stored.
     if (route === 'POST /api/pair') {
       const s = remoteState();
-      if (!secretOk(body.secret, s.pair)) { audit(from, 'pair-refused', '', ''); return send(401, { error: 'This code is no longer valid. Scan the new one in Pilothouse Settings.' }); }
+      if (pairExpired(s) || !secretOk(body.secret, s.pair)) { audit(from, 'pair-refused', '', ''); return send(401, { error: 'This code is no longer valid. Scan the new one in Pilothouse Settings.' }); }
       const token = crypto.randomBytes(24).toString('hex');
       const device: Device = { id: crypto.randomBytes(6).toString('hex'), name: String(body.name || 'Phone').slice(0, 60), hash: hashOf(token), created: Date.now() };
       s.devices.push(device);
+      // One code, one device: the next phone needs the fresh QR from Settings.
+      s.pair = newCode(); s.pairAt = Date.now();
       saveState(s);
       audit(from, 'pair', '', device.name);
       return send(200, { token, device: device.id });
@@ -373,9 +385,10 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
         return send(200, { project: v.project, ...(await projectDiff(s.cwd)) });
       }
       if (route === 'POST /api/send') {
-        const text = String(body.text || '').replace(/\r?\n/g, ' ').trim();
+        const text = String(body.text || '').trim();
         if (!text) return send(400, { error: 'text required' });
-        deps.write(v.id, text);
+        const raw = deps.sessions().find(x => x.id === v.id)!;
+        deps.write(v.id, pasteText(raw.buf, text, !!raw.agent));
         // Enter separately, or agent TUIs treat it as part of a paste.
         await sleep(150);
         deps.write(v.id, '\r');
