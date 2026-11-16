@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
+  FolderPlus,
   Terminal,
   UploadCloud,
   Mic,
@@ -430,7 +431,7 @@ export const App: React.FC = () => {
     const projs = await window.electronAPI.getProjects();
     setProjects(projs);
     setTabs((prev) => prev.filter((t) => projs.some((p) => p.id === t.projectId)));
-    showToast(failed ? `SETUP SAVED, ${failed} PROJECT(S) FAILED` : `READY: ${rows.filter((r) => r.include).length} PROJECTS`, failed ? 'error' : 'success');
+    showToast(failed ? `SETUP SAVED, ${failed} PROJECT(S) FAILED` : (rows.some((r) => r.include) ? `READY: ${rows.filter((r) => r.include).length} PROJECTS` : "READY. ADD A PROJECT TO START"), failed ? 'error' : 'success');
   };
   const handleSkipSetup = async () => {
     setIsSetupOpen(false);
@@ -636,20 +637,40 @@ export const App: React.FC = () => {
             style={{ backgroundColor: themeConfig.bgMain }}
           >
             <Terminal className="w-10 h-10 mb-3" style={{ color: themeConfig.accent }} />
-            <h2 className="text-sm font-bold" style={{ color: themeConfig.textPrimary }}>
-              NO PROJECT TERMINAL OPEN
-            </h2>
-            <p className="text-xs mt-1 max-w-xs" style={{ color: themeConfig.textMuted }}>
-              Press {keyLabel('T')} or click [+] to open a project with your agent.
-            </p>
-            {projects.length > 0 && (
-              <button
-                onClick={() => handleNewTab(projects[0].id)}
-                className="mt-4 px-4 py-2 rounded-lg text-xs font-bold shadow-md transition-all active:scale-95"
-                style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
-              >
-                Open {projects[0].name}
-              </button>
+            {projects.length === 0 ? (
+              // First run with nothing added yet: one clear next step, and what happens after it.
+              <>
+                <h2 className="text-sm font-bold" style={{ color: themeConfig.textPrimary }}>Add your first project</h2>
+                <p className="text-xs mt-1 max-w-sm" style={{ color: themeConfig.textMuted }}>
+                  Pick the folder of something you are building. Pilothouse opens your agent there, in a tab.
+                </p>
+                <button
+                  onClick={handleBrowseFolder}
+                  className="mt-4 px-4 py-2 rounded-lg text-xs font-bold shadow-md transition-all active:scale-95 flex items-center gap-1.5"
+                  style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
+                >
+                  <FolderPlus className="w-3.5 h-3.5" /> Add a project folder
+                </button>
+                <ol className="mt-6 text-[11px] text-left flex flex-col gap-1.5 max-w-sm" style={{ color: themeConfig.textMuted }}>
+                  <li><b style={{ color: themeConfig.textSecondary }}>1.</b> Add a folder (or drop one on this window).</li>
+                  <li><b style={{ color: themeConfig.textSecondary }}>2.</b> Talk to your agent in its tab. When it needs you, the tab and the Inbox light up.</li>
+                  <li><b style={{ color: themeConfig.textSecondary }}>3.</b> Away from the desk? Settings → Remote control, scan the QR with your phone.</li>
+                </ol>
+              </>
+            ) : (
+              <>
+                <h2 className="text-sm font-bold" style={{ color: themeConfig.textPrimary }}>No tab open</h2>
+                <p className="text-xs mt-1 max-w-xs" style={{ color: themeConfig.textMuted }}>
+                  Press {keyLabel('T')} or click + to open a project with your agent.
+                </p>
+                <button
+                  onClick={() => handleNewTab(projects[0].id)}
+                  className="mt-4 px-4 py-2 rounded-lg text-xs font-bold shadow-md transition-all active:scale-95"
+                  style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
+                >
+                  Open {projects[0].name}
+                </button>
+              </>
             )}
           </div>
         )}

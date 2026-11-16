@@ -116,9 +116,9 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({ isOpen, onFinish, onSk
           ) : (
             <div className="flex flex-col gap-1.5">
               <button onClick={addFolder} className="self-start mb-1 flex items-center gap-1.5 text-[11px] hover:opacity-80" style={{ color: t.accent }}>
-                <FolderPlus className="w-3.5 h-3.5" /> Add another folder
+                <FolderPlus className="w-3.5 h-3.5" /> {rows.length ? 'Add another folder' : 'Add a project folder'}
               </button>
-              {!rows.length && <p className="text-xs py-8 text-center" style={muted}>No projects found yet. Add a folder to start.</p>}
+              {!rows.length && <p className="text-xs py-8 text-center" style={muted}>No projects found yet. Add the folder of something you are building; you can add more any time.</p>}
               {rows.map((r, i) => (
                 <div key={r.path} className="rounded-lg border px-3 py-2 flex items-center gap-3"
                   style={{ borderColor: r.include ? t.accent : t.border, backgroundColor: t.bgMain, opacity: r.include ? 1 : 0.6 }}>
