@@ -222,6 +222,8 @@ final class Client {
     func keys(_ id: String, _ data: String) async throws { let _: OK = try await send("POST", "/api/keys", ["id": id, "data": data]) }
     func stop(_ id: String) async throws { let _: OK = try await send("POST", "/api/stop", ["id": id]) }
     func open(_ projectId: String) async throws { let _: OK = try await send("POST", "/api/open", ["project": projectId]) }
+    // This Live Activity's push token: the computer updates the lock-screen counts with it.
+    func registerActivity(token: String, sandbox: Bool) async throws { let _: OK = try await send("POST", "/api/activity-token", ["token": token, "sandbox": sandbox]) }
     private struct PushRegistered: Decodable { let pushKey: String? }
     // The computer answers with this phone's notification key; the extension decrypts pushes with it.
     func registerPush(token: String, sandbox: Bool) async throws {

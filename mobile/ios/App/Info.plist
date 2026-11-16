@@ -42,6 +42,8 @@
 	<string>Speak a message to your agent instead of typing it.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Turns what you say into a message for your agent, on this iPhone when it can.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

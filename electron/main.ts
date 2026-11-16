@@ -12,8 +12,8 @@ import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './t
 import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions, readTranscript, searchHistory, isSessionFile, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
 import { startControlServer, CONTROL_FILE, stripAnsi, pasteText } from './control';
 import { Activity, newActivity, noteOutput, nextStatus, hitLimit } from './activity';
-import { startRemoteServer, remoteApi, webPairingLink, viewOnlyLink, RemoteDeps, pairingLink, resetPairCode, revokeDevice, listDevices, pushTargets, forgetPushTokens, webPushTargets, forgetWebPush, vapidKeys, sessionView, autoChoice, isRefusal, audit } from './remote';
-import { apnsConfig, sendPush, sendWebPush } from './push';
+import { startRemoteServer, remoteApi, webPairingLink, viewOnlyLink, RemoteDeps, pairingLink, resetPairCode, revokeDevice, listDevices, pushTargets, forgetPushTokens, activityTargets, forgetActivityTokens, webPushTargets, forgetWebPush, vapidKeys, sessionView, autoChoice, isRefusal, audit } from './remote';
+import { apnsConfig, sendPush, sendWebPush, sendActivity } from './push';
 import { agentOfCommand, withClaudeStatus, ensureClaudeStatusHook } from './usage';
 import http from 'http';
 import { writeHandoff } from './handoff';
@@ -179,6 +179,7 @@ app.whenReady().then(() => {
   // Tab status dots + "Claude finished / needs approval" notifications.
   setInterval(() => {
     const now = Date.now();
+    let changed = false;
     for (const [id, m] of ptyMeta) {
       if (!ptySessions.has(id)) continue;
       const tail = stripAnsi(m.buf.slice(-2000)).slice(-600);
@@ -187,6 +188,7 @@ app.whenReady().then(() => {
       const prev = m.act.status;
       m.act.status = status;
       onAgentStatus(id, m, prev, status);
+      changed = true;
       if (m.sender.isDestroyed()) continue;
       m.sender.send('pty:status', { id, status });
       // Once per stop: the agent ran out of its plan's usage, so the UI can offer another agent.
@@ -196,6 +198,7 @@ app.whenReady().then(() => {
         m.sender.send('pty:limit', { id });
       }
     }
+    if (changed) updateLiveActivity();
   }, 1000);
   if (app.isPackaged) {
     // Downloads from GitHub Releases, notifies, installs on quit. macOS only applies signed updates.
@@ -214,6 +217,19 @@ app.whenReady().then(() => {
   }, focusWindow);
   if (storage.getSettings().remoteEnabled) applyRemote(true);
 });
+
+// iPhone Live Activity: the counts of agents that need you / are working, pushed when they change.
+let lastActivity = '';
+function updateLiveActivity() {
+  if (!remoteOn()) return;
+  const live = [...ptyMeta.entries()].filter(([id]) => ptySessions.has(id)).map(([, m]) => m.act.status);
+  const state = { needsYou: live.filter((s) => s === 'waiting').length, working: live.filter((s) => s === 'running').length };
+  const key = JSON.stringify(state);
+  if (key === lastActivity) return;
+  lastActivity = key;
+  const targets = activityTargets();
+  if (targets.length) sendActivity(targets, state, state.needsYou + state.working === 0).then(forgetActivityTokens).catch(() => {});
+}
 
 // Agent queue: tasks lined up per tab, sent one by one each time the agent goes idle after working.
 function runNextQueued(id: string) {

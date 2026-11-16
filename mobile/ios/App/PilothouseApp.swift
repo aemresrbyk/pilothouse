@@ -1,4 +1,5 @@
 import SwiftUI
+import ActivityKit
 import UserNotifications
 import WidgetKit
 import LocalAuthentication
@@ -40,6 +41,7 @@ final class Model: ObservableObject {
             // Keep the home-screen widget in step while the app is open.
             let waiting = sessions.filter(\.waiting).count
             if waiting != lastWaiting { lastWaiting = waiting; WidgetCenter.shared.reloadAllTimelines() }
+            Live.update(needsYou: waiting, working: sessions.filter { $0.status == "running" }.count)
         } catch PilotError.server(let code, _) where code == 401 {
             // This phone was removed in Pilothouse Settings.
             Client.shared.forget()
@@ -67,6 +69,32 @@ enum Push {
     static func enable() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
             if granted { DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() } }
+        }
+    }
+}
+
+// Live Activity: started while the app is open and agents are busy; afterwards the computer keeps it current
+// with Live Activity pushes (it gets this activity's push token), and ends it when nothing is left.
+@MainActor
+enum Live {
+    static func update(needsYou: Int, working: Int) {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        let state = AgentsActivityAttributes.ContentState(needsYou: needsYou, working: working)
+        let current = Activity<AgentsActivityAttributes>.activities.first
+        if needsYou + working == 0 {
+            if let current { Task { await current.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .default) } }
+            return
+        }
+        if let current {
+            Task { await current.update(ActivityContent(state: state, staleDate: nil)) }
+            return
+        }
+        guard let activity = try? Activity.request(attributes: AgentsActivityAttributes(), content: ActivityContent(state: state, staleDate: nil), pushType: .token) else { return }
+        Task {
+            for await token in activity.pushTokenUpdates {
+                let hex = token.map { String(format: "%02x", $0) }.joined()
+                try? await Client.shared.registerActivity(token: hex, sandbox: Push.sandbox)
+            }
         }
     }
 }
