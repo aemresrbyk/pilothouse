@@ -14,7 +14,7 @@ let keychainGroup = "RHN7LUWPD2.com.aemresrbyk.pilothouse.shared"
 struct Choice: Codable, Hashable { let key: String; let label: String }
 
 struct Session: Codable, Identifiable, Hashable {
-    let id: String
+    let sid: String // the tab id on its computer
     let project: String
     let projectId: String
     let agent: String // "Claude Code", "Codex", … or "Terminal"
@@ -25,11 +25,22 @@ struct Session: Codable, Identifiable, Hashable {
     let sig: String
     let summary: String
     let preview: String // the agent's last message, without TUI chrome
+    // Set by the app: which paired computer this tab runs on (several can share project paths and tab ids).
+    var computer = ""
+    var computerName = ""
+    var id: String { "\(computer)~\(sid)" }
     var waiting: Bool { status == "waiting" }
     var risky: Bool { risk == "danger" }
+    enum CodingKeys: String, CodingKey { case sid = "id", project, projectId, agent, status, tail, choices, risk, sig, summary, preview }
 }
 
-struct Project: Codable, Identifiable, Hashable { let id: String; let name: String }
+struct Project: Codable, Identifiable, Hashable {
+    let pid: String; let name: String
+    var computer = ""
+    var computerName = ""
+    var id: String { "\(computer)~\(pid)" }
+    enum CodingKeys: String, CodingKey { case pid = "id", name }
+}
 
 struct UsageWindow: Codable, Hashable { let label: String; let usedPercent: Double; let resetsAt: Double? }
 struct AgentUsage: Codable, Identifiable, Hashable {
@@ -38,7 +49,10 @@ struct AgentUsage: Codable, Identifiable, Hashable {
     let plan: String?
     let updatedAt: Double?
     let note: String?
-    var id: String { agent }
+    var computer = ""
+    var computerName = ""
+    var id: String { "\(computer)~\(agent)" }
+    enum CodingKeys: String, CodingKey { case agent, windows, plan, updatedAt, note }
 }
 
 struct Conversation: Codable, Identifiable, Hashable {
@@ -49,7 +63,9 @@ struct Conversation: Codable, Identifiable, Hashable {
     let title: String
     let updatedAt: Double
     let live: Bool
-    var id: String { key }
+    var computer = ""
+    var id: String { "\(computer)~\(key)" }
+    enum CodingKeys: String, CodingKey { case key, agent, project, projectId, title, updatedAt, live }
 }
 struct ChatMessage: Codable, Hashable { let role: String; let text: String; let time: String? }
 struct ChatLog: Codable { let messages: [ChatMessage]; let live: Bool }
@@ -106,26 +122,50 @@ enum Keychain {
     }
 }
 
-final class Client {
-    static let shared = Client()
-    private let defaults = UserDefaults(suiteName: appGroup)!
+// "computer~id" (Session.id, Project.id, Conversation.id) -> that computer's client and the id on it.
+func route(_ id: String) -> (client: Client, sid: String) {
+    guard let i = id.firstIndex(of: "~") else { return (Client.shared, id) }
+    return (Client.of(String(id[..<i])), String(id[id.index(after: i)...]))
+}
 
-    var base: URL? { defaults.string(forKey: "base").flatMap(URL.init(string:)) }
-    var relayRoom: String? { defaults.string(forKey: "relayRoom") }
-    var paired: Bool { (base != nil || relayRoom != nil) && Keychain.get("token") != nil }
+// One Client per paired computer. The first keeps the storage keys of the one-computer app (id ""), so updating
+// the app needs no new pairing; later ones add "-<id>" to every key.
+final class Client {
+    let id: String
+    private static let store = UserDefaults(suiteName: appGroup)!
+    private var defaults: UserDefaults { Self.store }
+    init(id: String) { self.id = id }
+    private func k(_ name: String) -> String { id.isEmpty ? name : "\(name)-\(id)" }
+
+    private static var ids: [String] {
+        get { store.stringArray(forKey: "computers") ?? [""] }
+        set { store.set(newValue, forKey: "computers") }
+    }
+    // Every paired computer, in pairing order.
+    static var all: [Client] { ids.map(Client.init(id:)).filter(\.paired) }
+    static var anyPaired: Bool { !all.isEmpty }
+    static func of(_ id: String) -> Client { Client(id: id) }
+    // The first paired computer (widgets, older callers).
+    static var shared: Client { all.first ?? Client(id: "") }
+
+    var name: String { defaults.string(forKey: k("name")) ?? "Computer" }
+    var base: URL? { defaults.string(forKey: k("base")).flatMap(URL.init(string:)) }
+    var relayRoom: String? { defaults.string(forKey: k("relayRoom")) }
+    var paired: Bool { (base != nil || relayRoom != nil) && Keychain.get(k("token")) != nil }
     // Shown in Settings: where this phone reaches the computer.
     var connection: String { relayRoom != nil ? "Pilothouse relay (end-to-end encrypted)" : base?.host ?? "Not paired" }
+    var pushKey: String? { Keychain.get(k("pushKey")) }
 
     private struct ErrorBody: Decodable { let error: String }
     private struct OK: Decodable { let ok: Bool }
-    private struct Paired: Decodable { let token: String; let device: String?; let relayKey: String? }
+    private struct Paired: Decodable { let token: String; let device: String?; let relayKey: String?; let computer: String? }
 
     func send<T: Decodable>(_ method: String, _ path: String, _ body: [String: Any]? = nil, base: URL? = nil, auth: Bool = true) async throws -> T {
         if base == nil, let room = relayRoom {
-            guard let device = defaults.string(forKey: "relayDevice"), let key = Keychain.get("relayKey"), let token = Keychain.get("token")
+            guard let device = defaults.string(forKey: k("relayDevice")), let key = Keychain.get(k("relayKey")), let token = Keychain.get(k("token"))
             else { throw PilotError.notPaired }
             let (code, data) = try await RelayLink.shared.request(room: room, device: device, key: key, token: token, method: method, path: path, body: body ?? [:])
-            return try decode(code, data)
+            return try Self.decode(code, data)
         }
         guard let root = base ?? self.base, let url = URL(string: path, relativeTo: root) else { throw PilotError.notPaired }
         var req = URLRequest(url: url)
@@ -133,15 +173,15 @@ final class Client {
         req.timeoutInterval = 10
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if auth {
-            guard let token = Keychain.get("token") else { throw PilotError.notPaired }
+            guard let token = Keychain.get(k("token")) else { throw PilotError.notPaired }
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         if let body { req.httpBody = try JSONSerialization.data(withJSONObject: body) }
         let (data, response) = try await URLSession.shared.data(for: req)
-        return try decode((response as? HTTPURLResponse)?.statusCode ?? 0, data)
+        return try Self.decode((response as? HTTPURLResponse)?.statusCode ?? 0, data)
     }
 
-    private func decode<T: Decodable>(_ code: Int, _ data: Data) throws -> T {
+    fileprivate static func decode<T: Decodable>(_ code: Int, _ data: Data) throws -> T {
         guard code == 200 else {
             throw PilotError.server(code, (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error ?? "Error \(code)")
         }
@@ -151,7 +191,9 @@ final class Client {
     // link, from the QR code in Pilothouse Settings:
     //   https://usepilothouse.com/app/#r=<room>&p=<pairing code>   (relay, works anywhere)
     //   http://100.x.y.z:4747/#p=<pairing code>                     (Tailscale)
-    func pair(link: String, name: String) async throws {
+    // Adds that computer (or re-pairs it, if this phone knew it already). The others stay.
+    @discardableResult
+    static func pair(link: String, name: String) async throws -> Client {
         let text = link.trimmingCharacters(in: .whitespacesAndNewlines)
         if let parts = URLComponents(string: text), parts.scheme == "https", parts.host == "usepilothouse.com" || parts.host == "www.usepilothouse.com" {
             let fields = Dictionary((parts.fragment ?? "").split(separator: "&").compactMap { kv -> (String, String)? in
@@ -162,31 +204,43 @@ final class Client {
                                                                     method: "POST", path: "/api/pair", body: ["secret": code, "name": name])
             let res: Paired = try decode(status, data)
             guard let device = res.device, let relayKey = res.relayKey else { throw PilotError.badLink }
-            defaults.removeObject(forKey: "base")
-            defaults.set(room, forKey: "relayRoom")
-            defaults.set(device, forKey: "relayDevice")
-            Keychain.set(relayKey, for: "relayKey")
-            Keychain.set(res.token, for: "token")
-            return
+            let c = slot { $0.relayRoom == room }
+            c.forget()
+            c.defaults.set(room, forKey: c.k("relayRoom"))
+            c.defaults.set(device, forKey: c.k("relayDevice"))
+            Keychain.set(relayKey, for: c.k("relayKey"))
+            c.save(token: res.token, name: res.computer)
+            return c
         }
-        guard var parts = URLComponents(string: link.trimmingCharacters(in: .whitespacesAndNewlines)),
-              let fragment = parts.fragment, fragment.hasPrefix("p="), parts.scheme == "http" else { throw PilotError.badLink }
+        guard var parts = URLComponents(string: text), let fragment = parts.fragment, fragment.hasPrefix("p="), parts.scheme == "http" else { throw PilotError.badLink }
         parts.fragment = nil
         parts.path = "/"
         guard let base = parts.url else { throw PilotError.badLink }
-        let res: Paired = try await send("POST", "/api/pair", ["secret": String(fragment.dropFirst(2)), "name": name], base: base, auth: false)
-        defaults.set(base.absoluteString, forKey: "base")
-        defaults.removeObject(forKey: "relayRoom")
-        Keychain.set(res.token, for: "token")
+        let res: Paired = try await Client(id: "~probe").send("POST", "/api/pair", ["secret": String(fragment.dropFirst(2)), "name": name], base: base, auth: false)
+        let c = slot { $0.base == base }
+        c.forget()
+        c.defaults.set(base.absoluteString, forKey: c.k("base"))
+        c.save(token: res.token, name: res.computer)
+        return c
+    }
+
+    // The entry for a computer this phone already knew, else a free one.
+    private static func slot(_ same: (Client) -> Bool) -> Client {
+        if let known = all.first(where: same) { return known }
+        if !Client(id: "").paired { return Client(id: "") }
+        return Client(id: String(UUID().uuidString.prefix(6)).lowercased())
+    }
+    private func save(token: String, name: String?) {
+        Keychain.set(token, for: k("token"))
+        if let name { defaults.set(name, forKey: k("name")) }
+        if !Self.ids.contains(id) { Self.ids = Self.ids.filter { Client(id: $0).paired || $0 == id } + [id] }
     }
 
     func forget() {
-        Keychain.set(nil, for: "token")
-        Keychain.set(nil, for: "pushKey")
-        Keychain.set(nil, for: "relayKey")
-        defaults.removeObject(forKey: "base")
-        defaults.removeObject(forKey: "relayRoom")
-        defaults.removeObject(forKey: "relayDevice")
+        for key in ["token", "pushKey", "relayKey"] { Keychain.set(nil, for: k(key)) }
+        for key in ["base", "relayRoom", "relayDevice", "name"] { defaults.removeObject(forKey: k(key)) }
+        Self.ids = Self.ids.filter { $0 != id }
+        if Self.ids.isEmpty { Self.ids = [""] }
     }
 
     func unpair() async {
@@ -194,10 +248,22 @@ final class Client {
         forget()
     }
 
-    func sessions() async throws -> [Session] { try await send("GET", "/api/sessions") }
-    func projects() async throws -> [Project] { try await send("GET", "/api/projects") }
-    func usage() async throws -> [AgentUsage] { try await send("GET", "/api/usage") }
-    func conversations() async throws -> [Conversation] { try await send("GET", "/api/conversations") }
+    func sessions() async throws -> [Session] {
+        let list: [Session] = try await send("GET", "/api/sessions")
+        return list.map { var s = $0; s.computer = id; s.computerName = name; return s }
+    }
+    func projects() async throws -> [Project] {
+        let list: [Project] = try await send("GET", "/api/projects")
+        return list.map { var p = $0; p.computer = id; p.computerName = name; return p }
+    }
+    func usage() async throws -> [AgentUsage] {
+        let list: [AgentUsage] = try await send("GET", "/api/usage")
+        return list.map { var u = $0; u.computer = id; u.computerName = name; return u }
+    }
+    func conversations() async throws -> [Conversation] {
+        let list: [Conversation] = try await send("GET", "/api/conversations")
+        return list.map { var c = $0; c.computer = id; return c }
+    }
     func conversation(_ key: String) async throws -> ChatLog {
         try await send("GET", "/api/conversation?key=\(key.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? key)")
     }
@@ -228,7 +294,7 @@ final class Client {
     // The computer answers with this phone's notification key; the extension decrypts pushes with it.
     func registerPush(token: String, sandbox: Bool) async throws {
         let res: PushRegistered = try await send("POST", "/api/push-token", ["token": token, "sandbox": sandbox])
-        if let key = res.pushKey { Keychain.set(key, for: "pushKey") }
+        if let key = res.pushKey { Keychain.set(key, for: k("pushKey")) }
     }
 }
 

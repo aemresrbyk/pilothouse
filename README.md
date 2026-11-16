@@ -96,7 +96,7 @@ This puts the AppImage in `~/.local/bin` and adds Pilothouse to your app menu (U
 
 <p align="center"><em>The iOS app, or <a href="https://usepilothouse.com/app/">usepilothouse.com/app</a> in any browser. One QR code, no account, no VPN to set up, end-to-end encrypted.</em></p>
 
-- **Every agent, every computer, one list.** What needs you is on top, with the agent each tab runs and its last message. One browser can follow several computers and servers.
+- **Every agent, every computer, one list.** What needs you is on top, with the agent each tab runs and its last message. The iPhone app and the web app can each follow several computers and servers.
 - **The live terminal**, exactly as on the desktop, with a key bar (Esc, Tab, arrows, Enter, Ctrl+C) and multi-line messages.
 - **Approve safely.** The agent's own options as buttons. Risky commands take two taps (and Face ID on the iPhone). If the prompt changed since you looked, your tap is refused instead of approving something else. "What changed" sits right under the prompt.
 - **Notifications** when an agent needs you or finishes: lock-screen ones with Approve / Deny on the iPhone, browser notifications in the web app, and a **Live Activity** with the counts.
