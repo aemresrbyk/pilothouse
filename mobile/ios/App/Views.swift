@@ -22,7 +22,7 @@ struct PairView: View {
             Spacer()
             Image(systemName: "location.north.circle").font(.system(size: 56)).foregroundStyle(Color.lime)
             Text("Pilothouse").font(.largeTitle.bold())
-            Text("On your computer: Pilothouse → Settings → Phone remote. Make sure Tailscale is on here and there, then scan the QR code.")
+            Text("On your computer: Pilothouse → Settings → Remote control. Scan the QR code. Works anywhere, end-to-end encrypted, no account.")
                 .foregroundStyle(.secondary)
             Button { scanning = true } label: {
                 Label("Scan QR code", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity).padding(.vertical, 6)
@@ -693,7 +693,7 @@ struct SettingsView: View {
     var body: some View {
         List {
             Section("Computer") {
-                Text(Client.shared.base?.host ?? "Not paired").font(.system(.body, design: .monospaced))
+                Text(Client.shared.connection).font(.system(.body, design: .monospaced))
                 Button("Unpair this iPhone", role: .destructive) {
                     Task { await Client.shared.unpair(); model.paired = false }
                 }
