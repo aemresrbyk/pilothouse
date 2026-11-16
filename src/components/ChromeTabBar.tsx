@@ -11,6 +11,7 @@ import {
   Search,
   FolderPlus,
   Mic,
+  Lightbulb,
   Inbox,
   LayoutGrid
 } from 'lucide-react';
@@ -35,6 +36,7 @@ interface ChromeTabBarProps {
   voiceActive: boolean;
   voiceHotkey: string;
   onToggleVoice: () => void;
+  onBrainstorm: () => void;
   onSyncClaude: () => void;
   isSyncing: boolean;
   soundEnabled: boolean;
@@ -63,6 +65,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
   voiceActive,
   voiceHotkey,
   onToggleVoice,
+  onBrainstorm,
   onSyncClaude,
   isSyncing,
   soundEnabled,
@@ -281,6 +284,17 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
           style={{ color: voiceActive ? '#ef4444' : themeConfig.textMuted }}
         >
           <Mic className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Brainstorm by voice: talk an idea through with the agent, then it writes SPEC.md */}
+        <button
+          onClick={onBrainstorm}
+          title="Brainstorm by voice: talk an idea through, then the agent writes it up as SPEC.md"
+          aria-label="Brainstorm by voice"
+          className="p-1.5 rounded-md hover:bg-black/20 transition-colors"
+          style={{ color: themeConfig.textMuted }}
+        >
+          <Lightbulb className="w-3.5 h-3.5" />
         </button>
 
         {/* Quick Find */}

@@ -127,3 +127,7 @@ const T = {
   }
 };
 export const say = T;
+
+// Brainstorm by voice: the agent thinks along instead of coding, then writes the result down as a spec.
+// Runs on the user's own agent (their tokens); nothing here talks to any server of ours.
+export const BRAINSTORM = '[Voice brainstorm] We are thinking an idea through by voice. Do not write code or change files yet. Answer in one to three short spoken sentences, in my language, with no markdown, and ask me one question at a time. When I say we agreed or to write it up, write SPEC.md in this project (goal, decisions, open questions, a numbered task list) and tell me in one sentence that it is there. My first thought:';

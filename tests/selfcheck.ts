@@ -7,6 +7,7 @@ import http from 'http';
 import crypto from 'crypto';
 import { detectRunCommands, getCodexSessions, readTranscript, searchHistory } from '../electron/scanner';
 import { findProject, stripAnsi } from '../electron/control';
+import { BRAINSTORM } from '../src/utils/conversation';
 import { Screen, paletteColor } from '../electron/screen';
 import { Endpointer } from '../src/utils/voice';
 import { pcmToWav, cleanTranscript, transcribe, whisperBinary, hasModel } from '../electron/voice';
@@ -311,7 +312,7 @@ if (bin && hasModel()) {
   assert.equal(C.approvalQuestion('Edit file\n Do you want to make this edit to auth.ts?\n ❯ 1. Yes\n 2. No'), 'Do you want to make this edit to auth.ts?');
 
   // Fake world: a scripted user, a speaker that records what was said, an agent that answers.
-  const run = async (user: any[], agent: Array<'idle' | 'waiting'>, opts: { reply?: string; bargeAt?: number } = {}) => {
+  const run = async (user: any[], agent: Array<'idle' | 'waiting'>, opts: { reply?: string; bargeAt?: number; preamble?: string } = {}) => {
     const said: string[] = [], sent: string[] = [], keys: string[] = [];
     let listens = 0;
     const result = await converse({
@@ -327,7 +328,7 @@ if (bin && hasModel()) {
       lastReply: async () => opts.reply ?? 'All **tests** pass.',
       screen: async () => ' Do you want to run npm test?\n ❯ 1. Yes',
       agentName: 'Claude', approveKey: '\r', denyKey: '\x1b', interruptKey: '\x1b',
-      vocab: ['kitefold'], cancelled: () => false, onState: () => {}
+      vocab: ['kitefold'], cancelled: () => false, onState: () => {}, preamble: opts.preamble
     });
     return { result, said, sent, keys };
   };
@@ -364,6 +365,10 @@ if (bin && hasModel()) {
   // Talking over the answer cuts it off and becomes the next request.
   r = await run([H('explain the router'), H('actually just list the files')], ['idle', 'idle'], { reply: 'The router is long. '.repeat(10), bargeAt: 2 });
   assert.deepStrictEqual(r.sent, ['explain the router', 'actually just list the files']);
+  // Brainstorm: the set-up goes in front of the first message only.
+  r = await run([H('a habit tracker app'), H('for students')], ['idle', 'idle'], { preamble: '[Voice brainstorm]' });
+  assert.deepStrictEqual(r.sent, ['[Voice brainstorm] a habit tracker app', 'for students']);
+  assert.ok(BRAINSTORM.includes('SPEC.md') && !BRAINSTORM.includes('\n'), 'one line, names the file');
   console.log('conversation ok');
 }
 
