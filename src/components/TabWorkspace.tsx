@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   Terminal as TerminalIcon,
   Play,
-  RotateCcw,
   Square,
   FileText,
   Layers,
@@ -12,21 +11,14 @@ import {
   Check,
   GitBranch,
   Search,
-  FileCode,
-  FileJson,
-  Folder,
-  File as FileIcon,
   Trash2,
   Sparkles,
   Save,
-  Edit3,
-  Eye,
   FileEdit,
   Send,
   X,
   Stethoscope,
   Minimize2,
-  HelpCircle,
   Coins,
   History,
   Brain,
@@ -37,11 +29,14 @@ import {
   ArrowRightLeft,
   MoreHorizontal
 } from 'lucide-react';
-import { ProjectItem, TabSession, ProjectFlags, FileItem, ClaudeSession, RunCommand, MemoryFile, TranscriptMessage, HistoryHit, isDangerFlag, DEFAULT_QUICK_COMMANDS, AGENTS, AgentProfile, buildAgentCommand, promptArgs, agentById, PendingLaunch, ModelChoice } from '../types';
+import { ProjectItem, TabSession, ProjectFlags, RunCommand, MemoryFile, isDangerFlag, DEFAULT_QUICK_COMMANDS, AGENTS, AgentProfile, buildAgentCommand, promptArgs, PendingLaunch, ModelChoice } from '../types';
 import type { AgentOptions } from '../../electron/agentOptions';
 import { ThemeConfig } from '../theme';
 import { EmbeddedTerminal } from './EmbeddedTerminal';
-import { isAppShortcut, keyLabel, isMac } from '../utils/platform';
+import { FilesView } from './FilesView';
+import { HistoryView } from './HistoryView';
+import { InstructionsView } from './InstructionsView';
+import { isAppShortcut, isMac } from '../utils/platform';
 import { playClickSound, playToggleSound, playLaunchSound } from '../utils/audio';
 
 interface TabWorkspaceProps {
@@ -94,6 +89,9 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   onSaveCustomCommands
 }) => {
   const [viewMode, setViewMode] = useState<'terminal' | 'claude-md' | 'files' | 'history' | 'run' | 'memory'>('terminal');
+  // Files tab mounts on first visit and then stays (hidden), keeping its folder and preview.
+  const [filesSeen, setFilesSeen] = useState(false);
+  useEffect(() => { if (viewMode === 'files') setFilesSeen(true); }, [viewMode]);
   // Run view: commands the repo declares (package.json, Makefile, README …) plus the user's own.
   const [runCommands, setRunCommands] = useState<RunCommand[] | null>(null);
   const [newCmd, setNewCmd] = useState('');
@@ -104,19 +102,11 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   const [memorySaved, setMemorySaved] = useState<string>('');
   // Command the next terminal (re)mount runs; null = the normal fullCommand.
   const [launchCommand, setLaunchCommand] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<ClaudeSession[] | null>(null);
   const [customInput, setCustomInput] = useState<string>(tabSession.customInput || '');
   const [termSessionKey, setTermSessionKey] = useState<number>(1);
   const [copiedPath, setCopiedPath] = useState(false);
   const [isFlagsOpen, setIsFlagsOpen] = useState(false);
-  // History: selected session's transcript + search across all sessions of this project.
-  const [openSession, setOpenSession] = useState<ClaudeSession | null>(null);
-  const [transcript, setTranscript] = useState<TranscriptMessage[] | null>(null);
-  const [focusMsg, setFocusMsg] = useState<number | null>(null);
-  const [histQuery, setHistQuery] = useState('');
-  const [hits, setHits] = useState<HistoryHit[] | null>(null);
   const histSearchRef = useRef<HTMLInputElement>(null);
-  const transcriptRef = useRef<HTMLDivElement>(null);
 
   // Git Status state
   const [gitStatus, setGitStatus] = useState<{ isGit: boolean; branch: string; modifiedCount: number; statusText: string } | null>(null);
@@ -127,25 +117,8 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
     return localStorage.getItem(`scratchpad-${project.id}`) || '';
   });
 
-  // CLAUDE.md state
-  const [claudeMdContent, setClaudeMdContent] = useState<string>('');
-  const [isEditingMd, setIsEditingMd] = useState(false);
-  const [editedMdContent, setEditedMdContent] = useState<string>('');
-  const [isLoadingMd, setIsLoadingMd] = useState(false);
-  const [isSavingMd, setIsSavingMd] = useState(false);
-  const [copiedMd, setCopiedMd] = useState(false);
-  const [mdSavedToast, setMdSavedToast] = useState(false);
-  const [mdSaveError, setMdSaveError] = useState<string | null>(null);
 
   // Files state
-  const [files, setFiles] = useState<FileItem[]>([]);
-  const [currentDir, setCurrentDir] = useState<string>(project.path);
-  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
-  const [fileSearch, setFileSearch] = useState('');
-  const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
-  const [selectedContent, setSelectedContent] = useState<string>('');
-  const [isLoadingContent, setIsLoadingContent] = useState(false);
-  const [copiedFile, setCopiedFile] = useState(false);
 
   const flags: ProjectFlags = project.flags || [];
   // Presets first, then any active flag that was since removed from the presets (so it can still be switched off).
@@ -190,10 +163,6 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   const handleSwitchAgent = (agentId: string) => {
     playLaunchSound();
     onSwitchAgent(project.id, agentId);
-    setClaudeMdContent('');
-    setSessions(null);
-    setOpenSession(null);
-    setHistQuery('');
     if (viewMode === 'memory' || viewMode === 'history') setViewMode('terminal');
     setLaunchCommand(null);
     setTermSessionKey((k) => k + 1);
@@ -202,9 +171,6 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   // A hand-off or resume switched the agent (via props): start the new one once with its prompt or session.
   useEffect(() => {
     if (!pendingLaunch) return;
-    setSessions(null);
-    setOpenSession(null);
-    setClaudeMdContent('');
     setViewMode('terminal');
     const first = pendingLaunch.prompt ? promptArgs(agent, pendingLaunch.prompt) : undefined;
     setLaunchCommand(buildAgentCommand(agent, agentBinary, flags, first, pendingLaunch.resumeId, modelChoice));
@@ -216,28 +182,8 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   // Toolbar scrolls sideways, so its menus are fixed-positioned under their button instead of clipped.
   const [menuAt, setMenuAt] = useState<DOMRect | null>(null);
 
-  const openTranscript = (sess: ClaudeSession, msgIndex: number | null = null) => {
-    setOpenSession(sess);
-    setFocusMsg(msgIndex);
-    setTranscript(null);
-    if (sess.file) window.electronAPI.getTranscript(sess.file).then(setTranscript).catch(() => setTranscript([]));
-  };
 
-  // Debounced search; empty query shows the session list again.
-  useEffect(() => {
-    const q = histQuery.trim();
-    if (!q) { setHits(null); return; }
-    const t = setTimeout(() => {
-      window.electronAPI.searchHistory(project.path, 'all', q).then(setHits).catch(() => setHits([]));
-    }, 250);
-    return () => clearTimeout(t);
-  }, [histQuery, project.path, agent.id]);
 
-  // Scroll the transcript to the message a search hit points at.
-  useEffect(() => {
-    if (focusMsg === null || !transcript) return;
-    transcriptRef.current?.querySelector(`[data-msg="${focusMsg}"]`)?.scrollIntoView({ block: 'center' });
-  }, [focusMsg, transcript]);
 
   // ⌘F (Ctrl+Shift+F off macOS) opens History with the search box focused.
   useEffect(() => {
@@ -305,10 +251,6 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
 
   // Load files & CLAUDE.md when viewing those tabs
   useEffect(() => {
-    if (viewMode === 'claude-md' && !claudeMdContent) {
-      loadClaudeMd();
-    }
-
     if (viewMode === 'run') {
       setRunCommands(null);
       window.electronAPI.getRunCommands(project.path).then(setRunCommands).catch(() => setRunCommands([]));
@@ -322,28 +264,8 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
       }).catch(() => setMemoryFiles([]));
     }
 
-    if (viewMode === 'history') {
-      setSessions(null);
-      window.electronAPI.getSessions(project.path, 'all').then(setSessions).catch(() => setSessions([]));
-    }
 
-    if (viewMode === 'files') {
-      setIsLoadingFiles(true);
-      window.electronAPI.listFiles(currentDir)
-        .then((items) => {
-          setFiles(items);
-          if (selectedFile) return;
-          const firstFile = items.find((f) => !f.isDirectory && f.name.toLowerCase() === 'claude.md')
-            || items.find((f) => !f.isDirectory && f.name.toLowerCase() === 'package.json')
-            || items.find((f) => !f.isDirectory);
-          if (firstFile) {
-            loadFilePreview(firstFile);
-          }
-        })
-        .catch(() => setFiles([]))
-        .finally(() => setIsLoadingFiles(false));
-    }
-  }, [viewMode, currentDir]);
+  }, [viewMode]);
 
   const openMemoryFile = (filePath: string) => {
     setMemoryPath(filePath);
@@ -364,96 +286,6 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
     onSaveCustomCommands([...customCommands, { label: command.split(/\s+/).slice(0, 3).join(' '), command, source: 'custom' }]);
     setNewCmd('');
   };
-
-  const loadClaudeMd = () => {
-    setIsLoadingMd(true);
-    window.electronAPI.readFile(`${project.path}/${mdFile}`)
-      .then((res) => {
-        // Missing file → empty state (shows the generator), not an error string.
-        const content = res.error ? '' : res.content;
-        setClaudeMdContent(content);
-        setEditedMdContent(content);
-      })
-      .catch(() => {
-        const notFound = '';
-        setClaudeMdContent(notFound);
-        setEditedMdContent(notFound);
-      })
-      .finally(() => setIsLoadingMd(false));
-  };
-
-  const handleSaveClaudeMd = async () => {
-    setIsSavingMd(true);
-    setMdSaveError(null);
-    playClickSound();
-    try {
-      const res = await window.electronAPI.saveFile(`${project.path}/${mdFile}`, editedMdContent);
-      if (!res.success) {
-        setMdSaveError(res.error || 'Save failed');
-      } else {
-        setClaudeMdContent(editedMdContent);
-        setIsEditingMd(false);
-        setMdSavedToast(true);
-        setTimeout(() => setMdSavedToast(false), 2000);
-      }
-    } catch (err) {
-      console.error('Failed to save CLAUDE.md:', err);
-    } finally {
-      setIsSavingMd(false);
-    }
-  };
-
-  const handleGenerateSmartClaudeMd = () => {
-    playClickSound();
-    const template = `# ${mdFile} - ${project.name} Guidelines
-
-## Project Overview
-This repository contains ${project.name}.
-Follow these engineering guidelines for all code edits, refactors, and feature additions.
-
-## Build & Test Commands
-- **Install dependencies:** \`bun install\` (or \`npm install\`)
-- **Run dev server:** \`bun run dev\` (or \`npm run dev\`)
-- **Run build:** \`bun run build\`
-- **Run tests:** \`bun test\` (or \`npm test\`)
-
-## Code Style & Architecture
-- **Language & Types:** Modern TypeScript with strict typing. Avoid \`any\`.
-- **Modularity:** Keep functions small, single-purpose, and pure where possible.
-- **Error Handling:** Always gracefully handle edge cases, missing files, and network errors.
-
-## Claude Agent Rules
-1. Test and verify all changes before declaring completion.
-2. Maintain existing documentation and preserve docstrings.
-3. Keep UI minimal, fast, and responsive.
-`;
-    setEditedMdContent(template);
-    setIsEditingMd(true);
-  };
-
-  const loadFilePreview = async (file: FileItem) => {
-    playClickSound();
-    if (file.isDirectory) {
-      setFileSearch('');
-      setCurrentDir(file.path);
-      return;
-    }
-    setSelectedFile(file);
-    setIsLoadingContent(true);
-    try {
-      const res = await window.electronAPI.readFile(file.path);
-      setSelectedContent(res.error ? `Error: ${res.error}` : res.content + (res.truncated ? '\n\n… (truncated, open in editor to see the full file)' : ''));
-    } catch (err: any) {
-      setSelectedContent(`Failed to read file: ${err.message}`);
-    } finally {
-      setIsLoadingContent(false);
-    }
-  };
-
-  const filteredFiles = useMemo(() => {
-    if (!fileSearch.trim()) return files;
-    return files.filter((f) => f.name.toLowerCase().includes(fileSearch.toLowerCase()));
-  }, [files, fileSearch]);
 
   const handleSendScratchpadToTerminal = () => {
     if (!scratchpadText.trim()) return;
@@ -1010,158 +842,7 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
         )}
 
         {/* CLAUDE.md Smart Generator & Live Editor */}
-        {viewMode === 'claude-md' && (
-          <div className="flex-1 flex flex-col overflow-hidden p-4 max-w-4xl w-full mx-auto">
-            {/* Toolbar */}
-            <div
-              className="p-3 border rounded-xl flex items-center justify-between text-xs mb-3 flex-shrink-0"
-              style={{
-                backgroundColor: themeConfig.bgCard,
-                borderColor: themeConfig.border
-              }}
-            >
-              <div className="flex items-center gap-2 font-bold" style={{ color: themeConfig.textPrimary }}>
-                <FileText className="w-4 h-4" style={{ color: themeConfig.accent }} />
-                <span>{mdFile} (Project Context &amp; Instructions)</span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {/* Save Confirmation Toast */}
-                {mdSavedToast && (
-                  <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1 animate-fade-in">
-                    <Check className="w-3 h-3" />
-                    <span>Saved!</span>
-                  </span>
-                )}
-
-                {mdSaveError && (
-                  <span className="text-[11px] font-bold text-red-400" title={mdSaveError}>Save failed</span>
-                )}
-
-                {/* Edit / Preview Toggle */}
-                <button
-                  onClick={() => {
-                    playClickSound();
-                    setIsEditingMd(!isEditingMd);
-                  }}
-                  className="px-2 py-1 rounded flex items-center gap-1 text-[11px] border"
-                  style={{
-                    backgroundColor: isEditingMd ? themeConfig.accentBg : themeConfig.bgTabActive,
-                    borderColor: isEditingMd ? themeConfig.accent : themeConfig.border,
-                    color: isEditingMd ? themeConfig.accent : themeConfig.textSecondary
-                  }}
-                >
-                  {isEditingMd ? <Eye className="w-3 h-3" /> : <Edit3 className="w-3 h-3" />}
-                  <span>{isEditingMd ? 'Preview' : 'Edit'}</span>
-                </button>
-
-                {/* Save Button (when editing) */}
-                {isEditingMd && (
-                  <button
-                    onClick={handleSaveClaudeMd}
-                    disabled={isSavingMd}
-                    className="px-2.5 py-1 rounded flex items-center gap-1 text-[11px] font-bold shadow-sm"
-                    style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
-                  >
-                    <Save className="w-3 h-3" />
-                    <span>{isSavingMd ? 'Saving...' : 'Save Changes'}</span>
-                  </button>
-                )}
-
-                <button
-                  onClick={() => {
-                    playClickSound();
-                    navigator.clipboard.writeText(isEditingMd ? editedMdContent : claudeMdContent);
-                    setCopiedMd(true);
-                    setTimeout(() => setCopiedMd(false), 1500);
-                  }}
-                  className="px-2 py-1 rounded flex items-center gap-1 text-[11px] border"
-                  style={{
-                    backgroundColor: themeConfig.bgTabActive,
-                    borderColor: themeConfig.border,
-                    color: themeConfig.textSecondary
-                  }}
-                >
-                  {copiedMd ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                  <span>{copiedMd ? 'Copied' : 'Copy'}</span>
-                </button>
-
-                <button
-                  onClick={() => onOpenEditor(project.path)}
-                  className="px-2 py-1 rounded flex items-center gap-1 text-[11px] border"
-                  style={{
-                    backgroundColor: themeConfig.bgTabActive,
-                    borderColor: themeConfig.border,
-                    color: themeConfig.textSecondary
-                  }}
-                >
-                  <Code2 className="w-3 h-3" />
-                  <span>VS Code</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Content Area */}
-            <div
-              className="flex-1 overflow-auto rounded-xl border text-xs select-text font-mono leading-relaxed flex flex-col"
-              style={{
-                backgroundColor: themeConfig.bgCard,
-                borderColor: themeConfig.border,
-                color: themeConfig.textPrimary
-              }}
-            >
-              {isLoadingMd ? (
-                <div className="text-center py-16" style={{ color: themeConfig.textMuted }}>
-                  Loading {mdFile}...
-                </div>
-              ) : isEditingMd ? (
-                <textarea
-                  value={editedMdContent}
-                  onChange={(e) => setEditedMdContent(e.target.value)}
-                  placeholder="Enter project instructions for Claude Code..."
-                  className="flex-1 w-full h-full p-4 bg-transparent outline-none resize-none font-mono text-xs leading-relaxed"
-                  style={{ color: themeConfig.textPrimary }}
-                />
-              ) : claudeMdContent ? (
-                <div className="p-4 overflow-auto">
-                  <pre className="whitespace-pre-wrap">{claudeMdContent}</pre>
-                </div>
-              ) : (
-                /* Empty State with Smart Generator */
-                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-                  <Sparkles className="w-10 h-10 mb-3" style={{ color: themeConfig.accent }} />
-                  <h3 className="text-sm font-bold" style={{ color: themeConfig.textPrimary }}>
-                    No {mdFile} Found in Project Root
-                  </h3>
-                  <p className="text-xs mt-1 max-w-md leading-relaxed" style={{ color: themeConfig.textMuted }}>
-                    A {mdFile} file helps {agent.name} understand your architecture, build commands, test patterns, and style guide automatically.
-                  </p>
-                  <div className="mt-4 flex items-center gap-2">
-                    <button
-                      onClick={handleGenerateSmartClaudeMd}
-                      className="px-4 py-2 rounded-lg text-xs font-bold shadow-md flex items-center gap-1.5 transition-all active:scale-95"
-                      style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>✦ Generate Smart {mdFile} Template</span>
-                    </button>
-                    <button
-                      onClick={() => handleExecuteCommand('/init')}
-                      className="px-3 py-2 rounded-lg text-xs font-medium border transition-colors"
-                      style={{
-                        backgroundColor: themeConfig.bgTabActive,
-                        borderColor: themeConfig.border,
-                        color: themeConfig.textSecondary
-                      }}
-                    >
-                      Run /init in Terminal
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <InstructionsView key={`md-${agent.id}`} project={project} themeConfig={themeConfig} agent={agent} visible={viewMode === 'claude-md'} onExecute={handleExecuteCommand} onOpenEditor={onOpenEditor} />
 
         {viewMode === 'run' && (
           <div className="flex-1 overflow-y-auto p-4">
@@ -1285,314 +966,11 @@ Follow these engineering guidelines for all code edits, refactors, and feature a
         )}
 
         {/* Files Browser View */}
-        {viewMode === 'history' && (
-          <div className="flex-1 flex overflow-hidden">
-            {/* Sessions / search results */}
-            <div className="w-80 border-r flex flex-col flex-shrink-0" style={{ backgroundColor: themeConfig.bgCard, borderColor: themeConfig.border }}>
-              <div className="p-2 border-b flex items-center gap-1.5" style={{ backgroundColor: themeConfig.bgHeader, borderColor: themeConfig.border }}>
-                <Search className="w-3 h-3 flex-shrink-0" style={{ color: themeConfig.textMuted }} />
-                <input
-                  ref={histSearchRef}
-                  type="search"
-                  placeholder={`Search all conversations (${keyLabel('F')})`}
-                  value={histQuery}
-                  onChange={(e) => setHistQuery(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Escape') setHistQuery(''); }}
-                  aria-label="Search conversations"
-                  className="w-full bg-transparent text-[11px] outline-none"
-                  style={{ color: themeConfig.textPrimary }}
-                />
-              </div>
-              <div className="flex-1 overflow-y-auto p-1.5 flex flex-col gap-1">
-                {hits !== null ? (
-                  hits.length === 0 ? (
-                    <div className="text-center py-10 text-[11px]" style={{ color: themeConfig.textMuted }}>No matches.</div>
-                  ) : (
-                    <>
-                      <div className="px-1.5 py-1 text-[10px]" style={{ color: themeConfig.textMuted }}>
-                        {hits.length}{hits.length >= 200 ? '+' : ''} matches
-                      </div>
-                      {hits.map((h) => (
-                        <button
-                          key={`${h.sessionId}-${h.index}`}
-                          type="button"
-                          onClick={() => openTranscript(sessions?.find((x) => x.id === h.sessionId) || { id: h.sessionId, file: h.file, title: h.title, agent: h.agent, modifiedAt: 0, sizeBytes: 0, formattedSize: '', dateStr: '' }, h.index)}
-                          className="w-full text-left px-2 py-1.5 rounded border transition-colors"
-                          style={{
-                            backgroundColor: openSession?.id === h.sessionId && focusMsg === h.index ? themeConfig.bgTabActive : 'transparent',
-                            borderColor: themeConfig.border
-                          }}
-                        >
-                          <div className="text-[10px] truncate" style={{ color: themeConfig.textMuted }}>
-                            {h.role === 'user' ? 'You' : agentById(h.agent).name} · {h.time ? new Date(h.time).toLocaleString() : ''} · {h.title}
-                          </div>
-                          <div className="text-[11px] mt-0.5 line-clamp-2" style={{ color: themeConfig.textPrimary }}>
-                            <Highlight text={h.snippet} query={histQuery} color={themeConfig.accent} />
-                          </div>
-                        </button>
-                      ))}
-                    </>
-                  )
-                ) : sessions === null ? (
-                  <div className="text-center py-10 text-[11px]" style={{ color: themeConfig.textMuted }}>Loading sessions...</div>
-                ) : sessions.length === 0 ? (
-                  <div className="text-center py-10 text-[11px]" style={{ color: themeConfig.textMuted }}>No saved sessions for this project yet.</div>
-                ) : (
-                  sessions.map((sess) => (
-                    <button
-                      key={sess.id}
-                      type="button"
-                      onClick={() => openTranscript(sess)}
-                      title={sess.title}
-                      className="w-full text-left px-2 py-1.5 rounded border transition-colors"
-                      style={{ backgroundColor: openSession?.id === sess.id ? themeConfig.bgTabActive : 'transparent', borderColor: themeConfig.border }}
-                    >
-                      <div className="text-[11px] truncate" style={{ color: themeConfig.textPrimary }}>{sess.title}</div>
-                      <div className="text-[10px] mt-0.5" style={{ color: themeConfig.textMuted }}>
-                        <span style={{ color: sess.agent === agent.id ? themeConfig.accent : themeConfig.textSecondary }}>{agentById(sess.agent).name}</span> · {sess.dateStr} · {sess.formattedSize}
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
+        <HistoryView key={`history-${agent.id}`} project={project} themeConfig={themeConfig} agent={agent} visible={viewMode === 'history'} searchRef={histSearchRef} onResume={handleResumeSession} onResumeAs={onResumeAs} onHandoffSession={onHandoffSession} />
 
-            {/* Transcript */}
-            <div className="flex-1 flex flex-col min-w-0">
-              {!openSession ? (
-                <div className="flex-1 flex items-center justify-center text-[11px] p-8 text-center" style={{ color: themeConfig.textMuted }}>
-                  Pick a conversation to read it, or search across all of them. Claude Code and Codex conversations in this project are both listed.
-                </div>
-              ) : (
-                <>
-                  <div className="px-4 py-2 border-b flex items-center gap-3" style={{ backgroundColor: themeConfig.bgHeader, borderColor: themeConfig.border }}>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-xs truncate font-bold" style={{ color: themeConfig.textPrimary }}>{openSession.title}</div>
-                      <div className="text-[10px]" style={{ color: themeConfig.textMuted }}>
-                        {transcript?.[0]?.time ? new Date(transcript[0].time).toLocaleString() : openSession.dateStr} · {transcript?.length ?? '…'} messages · {openSession.id.slice(0, 8)}
-                      </div>
-                    </div>
-                    {/* Continue with another agent from this exact conversation (e.g. Codex ran out → Claude). */}
-                    {openSession.file && (
-                      <select
-                        value=""
-                        onChange={(e) => e.target.value && onHandoffSession(e.target.value, openSession.file!, openSession.agent || agent.id)}
-                        title="Hand this conversation, the changes and the project memory to another agent"
-                        aria-label="Continue with another agent"
-                        className="text-[10px] px-1.5 py-1 rounded border outline-none flex-shrink-0"
-                        style={{ backgroundColor: themeConfig.bgMain, borderColor: themeConfig.border, color: themeConfig.textSecondary }}
-                      >
-                        <option value="">Continue with…</option>
-                        {AGENTS.filter((a) => a.id !== (openSession.agent || agent.id)).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-                      </select>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => (openSession.agent && openSession.agent !== agent.id
-                        ? onResumeAs(openSession.agent, openSession.id)
-                        : handleResumeSession(openSession.id))}
-                      title={`Reopen this conversation in ${agentById(openSession.agent || agent.id).name}`}
-                      className="px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 flex-shrink-0"
-                      style={{ backgroundColor: themeConfig.accent, color: themeConfig.accentText }}
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      Resume{openSession.agent && openSession.agent !== agent.id ? ` in ${agentById(openSession.agent).name}` : ''}
-                    </button>
-                  </div>
-                  <div ref={transcriptRef} className="flex-1 overflow-y-auto p-4 select-text">
-                    {transcript === null ? (
-                      <div className="text-center py-10 text-[11px]" style={{ color: themeConfig.textMuted }}>Loading…</div>
-                    ) : transcript.length === 0 ? (
-                      <div className="text-center py-10 text-[11px]" style={{ color: themeConfig.textMuted }}>This conversation has no text messages.</div>
-                    ) : (
-                      <div className="max-w-3xl mx-auto flex flex-col gap-3">
-                        {transcript.map((m, i) => (
-                          <div
-                            key={i}
-                            data-msg={i}
-                            className="rounded-lg border px-3 py-2"
-                            style={{
-                              backgroundColor: m.role === 'user' ? themeConfig.accentBg : themeConfig.bgCard,
-                              borderColor: focusMsg === i ? themeConfig.accent : themeConfig.border
-                            }}
-                          >
-                            <div className="text-[10px] mb-1 font-bold" style={{ color: m.role === 'user' ? themeConfig.accent : themeConfig.textMuted }}>
-                              {m.role === 'user' ? 'You' : agentById(openSession.agent).name}
-                              <span className="font-normal ml-2">{m.time ? new Date(m.time).toLocaleString() : ''}</span>
-                            </div>
-                            <div className="text-xs whitespace-pre-wrap break-words leading-relaxed" style={{ color: themeConfig.textPrimary }}>
-                              <Highlight text={m.text} query={histQuery} color={themeConfig.accent} />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {viewMode === 'files' && (
-          <div className="flex-1 flex overflow-hidden">
-            {/* File List Sidebar */}
-            <div
-              className="w-64 border-r flex flex-col flex-shrink-0"
-              style={{
-                backgroundColor: themeConfig.bgCard,
-                borderColor: themeConfig.border
-              }}
-            >
-              <div
-                className="p-2 border-b flex items-center gap-1.5"
-                style={{
-                  backgroundColor: themeConfig.bgHeader,
-                  borderColor: themeConfig.border
-                }}
-              >
-                <Search className="w-3 h-3 text-zinc-500" />
-                <input
-                  type="text"
-                  placeholder="Filter files..."
-                  value={fileSearch}
-                  onChange={(e) => setFileSearch(e.target.value)}
-                  className="w-full bg-transparent text-[11px] outline-none"
-                  style={{ color: themeConfig.textPrimary }}
-                />
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-1 divide-y" style={{ borderColor: themeConfig.border }}>
-                {isLoadingFiles ? (
-                  <div className="p-4 text-center text-[11px]" style={{ color: themeConfig.textMuted }}>
-                    Scanning directory...
-                  </div>
-                ) : (currentDir !== project.path && (
-                  <div
-                    onClick={() => setCurrentDir(currentDir.replace(/[\\/][^\\/]+[\\/]?$/, '') || project.path)}
-                    title={currentDir}
-                    className="px-2 py-1.5 rounded flex items-center gap-2 cursor-pointer text-[11px]"
-                    style={{ color: themeConfig.textSecondary }}
-                  >
-                    <Folder className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
-                    <span>..</span>
-                  </div>
-                ))}
-                {isLoadingFiles ? null : filteredFiles.length === 0 ? (
-                  <div className="p-4 text-center text-[11px]" style={{ color: themeConfig.textMuted }}>
-                    No files found
-                  </div>
-                ) : (
-                  filteredFiles.map((file) => {
-                    const isSelected = selectedFile?.path === file.path;
-                    return (
-                      <div
-                        key={file.path}
-                        onClick={() => loadFilePreview(file)}
-                        className="px-2 py-1.5 rounded flex items-center gap-2 cursor-pointer transition-colors text-[11px]"
-                        style={{
-                          backgroundColor: isSelected ? themeConfig.bgTabActive : 'transparent',
-                          color: isSelected ? themeConfig.textPrimary : themeConfig.textSecondary
-                        }}
-                      >
-                        {file.isDirectory ? (
-                          <Folder className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
-                        ) : file.name.endsWith('.ts') || file.name.endsWith('.tsx') || file.name.endsWith('.js') ? (
-                          <FileCode className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
-                        ) : file.name.endsWith('.json') ? (
-                          <FileJson className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                        ) : (
-                          <FileIcon className="w-3.5 h-3.5 text-zinc-400 flex-shrink-0" />
-                        )}
-                        <span className="truncate flex-1">{file.name}</span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* File Preview Content */}
-            <div className="flex-1 flex flex-col overflow-hidden" style={{ backgroundColor: themeConfig.bgMain }}>
-              {selectedFile ? (
-                <>
-                  <div
-                    className="h-9 px-4 border-b flex items-center justify-between text-xs"
-                    style={{
-                      backgroundColor: themeConfig.bgHeader,
-                      borderColor: themeConfig.border
-                    }}
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <span className="font-bold" style={{ color: themeConfig.textPrimary }}>{selectedFile.name}</span>
-                      <span className="text-[10px]" style={{ color: themeConfig.textMuted }}>{selectedFile.path}</span>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <button
-                        onClick={() => {
-                          playClickSound();
-                          navigator.clipboard.writeText(selectedContent);
-                          setCopiedFile(true);
-                          setTimeout(() => setCopiedFile(false), 1500);
-                        }}
-                        className="px-2 py-0.5 rounded text-[10px] border flex items-center gap-1"
-                        style={{
-                          backgroundColor: themeConfig.bgTabActive,
-                          borderColor: themeConfig.border,
-                          color: themeConfig.textSecondary
-                        }}
-                      >
-                        {copiedFile ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                        <span>{copiedFile ? 'Copied' : 'Copy'}</span>
-                      </button>
-
-                      <button
-                        onClick={() => onOpenEditor(selectedFile.path)}
-                        className="px-2 py-0.5 rounded text-[10px] border flex items-center gap-1"
-                        style={{
-                          backgroundColor: themeConfig.bgTabActive,
-                          borderColor: themeConfig.border,
-                          color: themeConfig.textSecondary
-                        }}
-                      >
-                        <Code2 className="w-3 h-3" />
-                        <span>Open Editor</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex-1 overflow-auto p-4 text-xs font-mono select-text leading-relaxed">
-                    {isLoadingContent ? (
-                      <div className="text-center py-10" style={{ color: themeConfig.textMuted }}>Reading file...</div>
-                    ) : (
-                      <pre className="whitespace-pre-wrap">{selectedContent}</pre>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="flex-1 flex items-center justify-center text-xs" style={{ color: themeConfig.textMuted }}>
-                  Select a file on the left to preview
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {filesSeen && <FilesView project={project} themeConfig={themeConfig} visible={viewMode === 'files'} onOpenEditor={onOpenEditor} />}
       </div>
     </div>
   );
 };
 
-// Marks every case-insensitive occurrence of query in text.
-const Highlight: React.FC<{ text: string; query: string; color: string }> = ({ text, query, color }) => {
-  const q = query.trim();
-  if (!q) return <>{text}</>;
-  const parts = text.split(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
-  return (
-    <>
-      {parts.map((part, i) =>
-        i % 2 === 1 ? <mark key={i} style={{ backgroundColor: color, color: '#fff', borderRadius: 2 }}>{part}</mark> : part
-      )}
-    </>
-  );
-};

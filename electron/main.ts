@@ -155,6 +155,8 @@ app.on('activate', () => {
 });
 
 app.whenReady().then(() => {
+  // Unpackaged runs (npm start, dev) are the stock Electron binary: show Pilothouse's icon in the Dock anyway.
+  if (!app.isPackaged && process.platform === 'darwin') app.dock?.setIcon(path.join(app.getAppPath(), 'build', 'icon.png'));
   // Windows/Linux: the default menu's accelerators (Ctrl+R reload, Ctrl+Shift+I devtools, Ctrl+W …) would steal
   // terminal and app keys. Text editing keys still work there without a menu; macOS needs its menu for them.
   if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
