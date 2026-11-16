@@ -371,6 +371,8 @@ function registerIpcHandlers() {
   });
   // New pairing code: the old QR stops working; paired phones stay until revoked one by one.
   ipcMain.handle('remote:reset', async () => { resetPairCode(); return remoteInfo(); });
+  // Opens the web remote, paired, in the default browser. Only this one URL, never one from the renderer.
+  ipcMain.handle('remote:open-web', async () => { if (relay) await shell.openExternal(webPairingLink()); });
   ipcMain.handle('remote:revoke', async (_e, deviceId: string) => { revokeDevice(deviceId); return remoteInfo(); });
 
   ipcMain.handle('settings:get', async () => {

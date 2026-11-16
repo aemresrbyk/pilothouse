@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
-import { execFile } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
 import { stripAnsi, pasteText } from './control';
 import { parseChoices, Choice } from '../src/utils/inbox';
 import type { ProjectItem, PtyStatus } from '../src/types';
@@ -167,6 +167,14 @@ export function relayRoom(): { secret: string; room: string } {
   if (!s.relaySecret) { s.relaySecret = crypto.randomBytes(32).toString('hex'); saveState(s); }
   return { secret: s.relaySecret, room: crypto.createHash('sha256').update(s.relaySecret).digest('hex').slice(0, 32) };
 }
+// How this computer is labelled when one browser or phone follows several: the name from System Settings on macOS
+// ("Ali's MacBook Pro"), else the host name without .local.
+export function computerName(): string {
+  let name = '';
+  if (process.platform === 'darwin') try { name = execFileSync('scutil', ['--get', 'ComputerName'], { timeout: 2000 }).toString().trim(); } catch {}
+  if (!name || /^[\d.]+$/.test(name)) name = os.hostname().replace(/\.(local|lan|home)$/i, '');
+  return (/^[\d.]+$/.test(name) ? 'Computer' : name).slice(0, 40);
+}
 export const WEB_APP = process.env.PILOTHOUSE_WEB_APP || 'https://usepilothouse.com/app/';
 // QR for a browser anywhere (no Tailscale): the room to join and the one-time pairing code, after the # so the site
 // never receives them.
@@ -268,7 +276,7 @@ export function remoteApi(deps: RemoteDeps) {
       s.pair = newCode(); s.pairAt = Date.now();
       saveState(s);
       audit(from, 'pair', '', device.name);
-      return reply(200, { token, device: device.id, relayKey: device.relayKey });
+      return reply(200, { token, device: device.id, relayKey: device.relayKey, computer: computerName() });
     }
 
     const device = deviceFor(auth);
