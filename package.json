@@ -1,6 +1,6 @@
 {
   "name": "pilothouse",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "description": "Pilothouse: a desktop cockpit for macOS, Windows and Linux with tabbed embedded terminals for Claude Code, Codex and other terminal AI agents",
   "main": "dist-electron/main.js",
   "scripts": {
