@@ -53,6 +53,7 @@ const RemoteField: React.FC = () => {
   const [qr, setQr] = useState('');
   // Which way in the QR is for: any browser through the encrypted relay, or the iPhone app over Tailscale.
   const [via, setVia] = useState<'web' | 'tailscale'>('web');
+  const [viewCopied, setViewCopied] = useState(false);
   // Polled: a pairing code works once and for 10 minutes, so the QR (and the device list) must follow along.
   useEffect(() => {
     const load = () => window.electronAPI.remoteInfo().then(setInfo).catch(() => {});
@@ -120,6 +121,12 @@ const RemoteField: React.FC = () => {
                     </button>
                   )}
                 </div>
+                {via === 'web' && (
+                  <button type="button" onClick={async () => setViewCopied(!!(await window.electronAPI.copyViewOnlyLink()))} className="self-start px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300"
+                    title="Someone with this link can watch your agents (terminals, changes) but cannot type, approve or open anything. Works once, for 10 minutes; remove them below any time.">
+                    {viewCopied ? 'View-only link copied' : 'Share view-only link'}
+                  </button>
+                )}
                 <span className="text-[10px] text-zinc-600">{info.push === 'direct' ? 'iPhone notifications: sent straight to Apple with your APNs key.' : 'iPhone notifications: end-to-end encrypted through the Pilothouse relay (it cannot read them).'}</span>
               </div>
             </div>
@@ -132,7 +139,7 @@ const RemoteField: React.FC = () => {
           {info.devices.map((d) => (
             <div key={d.id} className="flex items-center justify-between gap-2 text-xs text-zinc-300">
               <span className="truncate">
-                {d.name}
+                {d.name}{d.viewOnly ? ' (view only)' : ''}
                 <span className="text-[10px] text-zinc-600"> · {d.lastSeen ? `seen ${new Date(d.lastSeen).toLocaleString()}` : 'never used'}{d.push ? ' · notifications' : ''}</span>
               </span>
               <button type="button" onClick={async () => setInfo(await window.electronAPI.revokeRemoteDevice(d.id))} className="px-2 py-0.5 rounded border border-zinc-700 text-[11px] text-zinc-400 flex-shrink-0">

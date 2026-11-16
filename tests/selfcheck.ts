@@ -522,6 +522,17 @@ if (bin && hasModel()) {
     assert.equal(await get({ t: Date.now() - 5 * 60_000 }), null);
     const fixed = JSON.stringify({ d: dev, c: await seal(dk, dev, req({ m: 'GET', p: '/api/sessions', a: tok })) });
     assert.ok(await handle(fixed)); assert.equal(await handle(fixed), null);
+    // View-only link: pairs through the same door, reads, but every action is refused.
+    const { viewOnlyLink } = await import('../electron/remote');
+    const vcode = /[#&]p=(\w+)/.exec(viewOnlyLink())![1];
+    const vk = await aes(new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode(vcode))));
+    const vp = await unseal(vk, 'pair', JSON.parse((await handle(JSON.stringify({ d: 'pair', c: await seal(vk, 'pair', req({ m: 'POST', p: '/api/pair', b: { secret: vcode, name: 'guest' } })) })))!).c);
+    assert.equal(vp.b.viewOnly, true);
+    const vdk = await aes(Buffer.from(vp.b.relayKey, 'base64'));
+    const vcall = async (m: string, p: string, b = {}) => unseal(vdk, vp.b.device, JSON.parse((await handle(JSON.stringify({ d: vp.b.device, c: await seal(vdk, vp.b.device, req({ m, p, b, a: vp.b.token })) })))!).c);
+    assert.equal((await vcall('GET', '/api/sessions')).s, 200);
+    for (const p of ['/api/send', '/api/choose', '/api/keys', '/api/stop', '/api/open', '/api/resume', '/api/push-token']) assert.equal((await vcall('POST', p, { id: 'x' })).s, 403, p);
+    assert.equal((await handle(JSON.stringify({ d: 'pair', c: await seal(vk, 'pair', req({ m: 'POST', p: '/api/pair', b: { secret: vcode, name: 'again' } })) }))), null, 'view code works once');
     // Only the pairing route goes with the pairing key; a revoked device is gone for good.
     const code2 = /#p=(\w+)/.exec(pairingLink(''))![1];
     const pk2 = await aes(new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode(code2))));

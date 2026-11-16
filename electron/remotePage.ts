@@ -106,7 +106,7 @@ export const REMOTE_PAGE = `<!doctype html>
       return old && old.token ? [old] : [];
     } catch (e) { return []; }
   })();
-  function saveComps() { try { localStorage.setItem(CKEY, JSON.stringify(comps.map(function (c) { return { room: c.room, device: c.device, key: c.key, token: c.token, name: c.name }; }))); } catch (e) {} }
+  function saveComps() { try { localStorage.setItem(CKEY, JSON.stringify(comps.map(function (c) { return { room: c.room, device: c.device, key: c.key, token: c.token, name: c.name, viewOnly: c.viewOnly }; }))); } catch (e) {} }
   var socks = {}, pending = {};
   var enc = new TextEncoder(), dec = new TextDecoder();
   function b64(buf) { var s = '', a = new Uint8Array(buf); for (var i = 0; i < a.length; i++) s += String.fromCharCode(a[i]); return btoa(s); }
@@ -178,11 +178,13 @@ export const REMOTE_PAGE = `<!doctype html>
     head.appendChild(el('span', 'name', comps.length > 1 && s.c ? s.project + ' · ' + (s.c.name || 'Computer') : s.project));
     head.appendChild(el('span', 'pill ' + s.status, LABEL[s.status] || s.status));
     c.appendChild(head);
+    var ro = !!(s.c && s.c.viewOnly); // a view-only link: read, never act
     var pre = el('pre', null, s.tail.slice(s.status === 'waiting' ? -1200 : -500));
     if (s.status === 'waiting') {
       c.appendChild(pre);
       if (s.risk === 'danger') c.appendChild(el('div', 'danger', 'Risky command (deletes, force-pushes, deploys, sudo or secrets). Read it in full; approving takes two taps.'));
-      var ch = el('div', 'choices');
+      if (ro) { c.appendChild(el('div', 'fine', 'View only: the owner answers this on their computer.')); }
+      var ch = el('div', 'choices'); if (ro) ch.hidden = true;
       s.choices.forEach(function (x, i) {
         var b = el('button', armed[s.id] === x.key ? 'armed' : (i === 0 ? 'primary' : ''), armed[s.id] === x.key ? 'Tap again to approve: ' + x.label : x.key.trim() + '. ' + x.label);
         b.onclick = function () { choose(s, x); };
@@ -202,7 +204,7 @@ export const REMOTE_PAGE = `<!doctype html>
     go.onclick = sendIt;
     input.onkeydown = function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendIt(); } };
     input.oninput = function () { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 160) + 'px'; };
-    row.appendChild(input); row.appendChild(go);
+    if (!ro) { row.appendChild(input); row.appendChild(go); }
     var diffBtn = el('button', null, 'Changes');
     var diffBox = el('pre'); diffBox.hidden = true;
     diffBtn.onclick = function () {
@@ -222,7 +224,7 @@ export const REMOTE_PAGE = `<!doctype html>
     };
     row.appendChild(diffBtn);
     var termBtn = el('button', null, 'Terminal'); termBtn.onclick = function () { openTerm(s); }; row.appendChild(termBtn);
-    if (s.status === 'running') { var stop = el('button', null, 'Stop'); stop.onclick = function () { api('POST', '/api/stop', { id: s.id }, s.c).then(load); }; row.appendChild(stop); }
+    if (s.status === 'running' && !ro) { var stop = el('button', null, 'Stop'); stop.onclick = function () { api('POST', '/api/stop', { id: s.id }, s.c).then(load); }; row.appendChild(stop); }
     c.appendChild(row);
     c.appendChild(diffBox);
     return c;
@@ -270,6 +272,8 @@ export const REMOTE_PAGE = `<!doctype html>
     termId = s.id; termC = s.c; lastScreen = '';
     document.getElementById('tname').textContent = s.project + ' · ' + s.agent;
     term.hidden = false; scr.replaceChildren();
+    var ro = !!(termC && termC.viewOnly);
+    document.getElementById('tkeys').hidden = ro; tin.parentNode.hidden = ro;
     drawScreen(); termTimer = setInterval(drawScreen, 700);
   }
   function closeTerm() { termId = null; clearInterval(termTimer); term.hidden = true; last = ''; load(); }
@@ -327,7 +331,7 @@ export const REMOTE_PAGE = `<!doctype html>
     clist.replaceChildren.apply(clist, comps.map(function (c) {
       var x = results.filter(function (r) { return r.c === c; })[0];
       var row = el('div', 'card proj');
-      row.appendChild(el('span', 'name', (c.name || 'Computer') + (x && x.err ? ' · offline' : '')));
+      row.appendChild(el('span', 'name', (c.name || 'Computer') + (c.viewOnly ? ' · view only' : '') + (x && x.err ? ' · offline' : '')));
       var b = el('button', null, 'Forget');
       b.onclick = function () {
         api('POST', '/api/unpair', {}, c).catch(function () {});
@@ -350,7 +354,7 @@ export const REMOTE_PAGE = `<!doctype html>
       plist.replaceChildren.apply(plist, rows.map(function (x) {
         var row = el('div', 'card proj');
         row.appendChild(el('span', 'name', comps.length > 1 && x.c ? x.p.name + ' · ' + (x.c.name || 'Computer') : x.p.name));
-        var b = el('button', null, 'Open agent');
+        var b = el('button', null, 'Open agent'); if (x.c && x.c.viewOnly) b.hidden = true;
         b.onclick = function () {
           b.disabled = true; b.textContent = 'Opening…';
           api('POST', '/api/open', { project: x.p.id }, x.c).then(function (r) {
@@ -410,7 +414,7 @@ export const REMOTE_PAGE = `<!doctype html>
       if (r.status !== 200 || !r.body.relayKey) { msg.textContent = r.body.error || 'Pairing failed.'; return false; }
       if (socks[room] && socks[room].ws) socks[room].ws.close();
       comps = comps.filter(function (c) { return c.room !== room; });
-      comps.push({ room: room, device: r.body.device, key: r.body.relayKey, token: r.body.token, name: r.body.computer || 'Computer ' + (comps.length + 1) });
+      comps.push({ room: room, device: r.body.device, key: r.body.relayKey, token: r.body.token, name: r.body.computer || 'Computer ' + (comps.length + 1), viewOnly: !!r.body.viewOnly });
       saveComps();
       return true;
     }).catch(function () { msg.textContent = 'Your computer did not answer. Is Pilothouse open with Remote control on?'; return false; });
