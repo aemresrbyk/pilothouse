@@ -252,7 +252,7 @@ function runNextQueued(id: string) {
   if (!m.sender.isDestroyed()) m.sender.send('queue:changed', { id, queue: m.queue });
 }
 
-// Phone remote (Settings → Phone remote). Started and stopped live; the link carries the token.
+// Remote control (Settings → Remote control). Started and stopped live; the QR link carries a one-time code.
 let remote: { server: http.Server; url: string } | null = null;
 let remoteError = '';
 // Two ways in, same API: the Tailscale server (iPhone app, any browser on the tailnet) and the encrypted web relay

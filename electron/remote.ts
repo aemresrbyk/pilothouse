@@ -1,8 +1,9 @@
-// Phone remote: a JSON API (plus a small web page) so a phone can see every agent tab across projects and agents,
-// answer approval prompts, send messages, read diffs and open projects. Listens only on this computer's Tailscale
-// address: traffic is WireGuard-encrypted and reachable only from your own tailnet devices. Never on the LAN, where
-// plain HTTP could be sniffed. Each phone pairs once (QR code) and gets its own revocable token. Every remote
-// action is appended to ~/.pilothouse/remote-audit.jsonl.
+// Remote control: a JSON API (plus a small web page) so phones and browsers can see every agent tab across projects
+// and agents, answer approval prompts, send messages, watch the live terminal, read diffs and open projects.
+// Two ways in, one API (remoteApi): the HTTP server here, which listens only on this computer's Tailscale address
+// (WireGuard-encrypted, never the LAN), and the end-to-end encrypted web relay (relayLink.ts). Each device pairs once
+// with a one-time QR code and gets its own revocable token. Every remote action is appended to
+// ~/.pilothouse/remote-audit.jsonl.
 import http from 'http';
 import fs from 'fs';
 import path from 'path';

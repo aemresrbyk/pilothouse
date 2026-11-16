@@ -92,23 +92,22 @@ This puts the AppImage in `~/.local/bin` and adds Pilothouse to your app menu (U
 
 ---
 
-## On your phone
+## From your phone or any browser
 
-<p align="center"><em>iOS app (and any phone browser), over your own Tailscale network. No account, no server of ours.</em></p>
+<p align="center"><em>The iOS app, or <a href="https://usepilothouse.com/app/">usepilothouse.com/app</a> in any browser. One QR code, no account, no VPN to set up, end-to-end encrypted.</em></p>
 
-- **Every agent, every project, one list.** What needs you is on top, with the agent each tab runs (Claude Code, Codex, Gemini …) and its last message.
-- **Approve from the phone, safely.** The agent's own options as buttons. Risky commands take two taps and Face ID. If the prompt changed since you looked, your tap is refused instead of approving something else.
-- **Lock-screen notifications** when an agent needs you or finishes, with Approve / Deny right on the notification. End-to-end encrypted: they pass through a tiny [relay](relay) that cannot read them and keeps nothing.
-- **Usage left.** Claude Code's 5-hour and weekly limits and Codex's limits, with reset times, read from files the CLIs keep on your computer. No provider calls, no tokens touched.
-- **Changes and to-dos.** A tab's uncommitted diff, coloured; a project's `TODO` / `FIXME` comments and open `- [ ]` checkboxes.
-- **Talk instead of typing.** Speak a message; recognised on the iPhone itself.
-- **Open any project's agent** from the phone, or stop a running one.
-- **Widgets.** Home screen (how many agents need you, and which) and lock screen.
+- **Every agent, every computer, one list.** What needs you is on top, with the agent each tab runs and its last message. One browser can follow several computers and servers.
+- **The live terminal**, exactly as on the desktop, with a key bar (Esc, Tab, arrows, Enter, Ctrl+C) and multi-line messages.
+- **Approve safely.** The agent's own options as buttons. Risky commands take two taps (and Face ID on the iPhone). If the prompt changed since you looked, your tap is refused instead of approving something else. "What changed" sits right under the prompt.
+- **Notifications** when an agent needs you or finishes: lock-screen ones with Approve / Deny on the iPhone, browser notifications in the web app, and a **Live Activity** with the counts.
+- **Usage.** How much of Claude Code's 5-hour and weekly limits (and Codex's) you have used, with reset times, read from files the CLIs keep on your computer.
+- **Changes and to-dos**, **open any project's agent**, stop a running one, **talk instead of typing**, **widgets**.
+- **View-only links** let someone watch without being able to act. **Pilothouse server** runs agents on a Linux box, VPS or Mac mini without a window ([`server`](server)).
 - **Audit log.** Every remote action goes to `~/.pilothouse/remote-audit.jsonl` on your computer.
 
-**Set up:** install [Tailscale](https://tailscale.com) (free for personal use) on the computer and the phone, sign in to the same account, then Pilothouse → Settings → **Phone remote** and scan the QR code with the Pilothouse iOS app (or the phone's camera, for the web version). Each phone gets its own key; remove one any time in Settings.
+**Set up:** Pilothouse → Settings → **Remote control** → scan the QR code with your phone (or click *Open in browser* on another computer). Each code pairs one device and expires after 10 minutes; remove a device any time in Settings.
 
-**Security:** the remote listens only on the computer's Tailscale address (WireGuard-encrypted, reachable only from your own devices), never on your Wi-Fi network. It checks the `Host` header against DNS rebinding, stores only a hash of each phone's key, and keeps nothing on any server.
+**Security:** two ways in, the same API. Through the [relay](relay) (`relay.usepilothouse.com`), every request and reply is sealed with AES-256-GCM using a key that only your computer and that device hold, bound to the device id, with a timestamp and nonce against replays; the relay only passes sealed messages and stores nothing. Or over Tailscale: the computer listens only on its Tailscale address, never on your Wi-Fi network, and checks the `Host` header against DNS rebinding. Either way the computer stores only a hash of each device's token and refuses actions from view-only devices.
 
 The iOS app lives in [`mobile/ios`](mobile/ios) (SwiftUI + WidgetKit; generate the project with `xcodegen`).
 
@@ -116,7 +115,7 @@ The iOS app lives in [`mobile/ios`](mobile/ios) (SwiftUI + WidgetKit; generate t
 
 ## Privacy
 
-Pilothouse collects nothing. No accounts, no analytics, no telemetry, no crash reporting. Your code, prompts and terminal output stay on your computer and your own phone.
+Pilothouse collects nothing. No accounts, no analytics, no telemetry, no crash reporting. Your code, prompts and terminal output stay on your computer and the devices you pair.
 
 What it talks to on the network, and why:
 
@@ -124,8 +123,9 @@ What it talks to on the network, and why:
 |---|---|
 | GitHub Releases | update check |
 | Hugging Face | one-time voice model download, only if you turn voice on |
-| Your phone, over Tailscale | only if you turn Phone remote on |
-| Pilothouse push relay (Cloudflare) → Apple Push Notification service | only if you allow notifications on the phone: an encrypted blob only your phone can open, plus the phone's push address. The relay keeps no logs |
+| Your paired devices, through the Pilothouse relay (Cloudflare) or over Tailscale | only if you turn Remote control on; end-to-end encrypted, the relay stores nothing |
+| Pilothouse relay → Apple Push Notification service | iPhone notifications: an encrypted blob only your phone can open. Live Activity: two numbers (agents needing you, agents working) |
+| Your browser's push service | only if you turn on notifications in the web app; encrypted for that browser |
 
 Your agents (Claude Code, Codex …) talk to their own providers as they always do; Pilothouse doesn't sit in between.
 
