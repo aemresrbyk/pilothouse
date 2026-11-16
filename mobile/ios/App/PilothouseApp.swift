@@ -45,7 +45,7 @@ final class Model: ObservableObject {
             Client.shared.forget()
             paired = false
         } catch {
-            self.error = "Cannot reach your computer. Is it awake, with Pilothouse open and Tailscale on?"
+            self.error = "Cannot reach your computer. Is it awake, with Pilothouse open and Remote control on?"
         }
     }
 
