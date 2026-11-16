@@ -12,7 +12,7 @@ import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './t
 import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions, readTranscript, searchHistory, isSessionFile, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
 import { startControlServer, CONTROL_FILE, stripAnsi } from './control';
 import { Activity, newActivity, noteOutput, nextStatus, hitLimit } from './activity';
-import { startRemoteServer, remoteApi, webPairingLink, RemoteDeps, pairingLink, resetPairCode, revokeDevice, listDevices, pushTargets, forgetPushTokens, webPushTargets, forgetWebPush, vapidKeys, sessionView, autoChoice, isRefusal, audit } from './remote';
+import { startRemoteServer, remoteApi, webPairingLink, viewOnlyLink, RemoteDeps, pairingLink, resetPairCode, revokeDevice, listDevices, pushTargets, forgetPushTokens, webPushTargets, forgetWebPush, vapidKeys, sessionView, autoChoice, isRefusal, audit } from './remote';
 import { apnsConfig, sendPush, sendWebPush } from './push';
 import { agentOfCommand, withClaudeStatus, ensureClaudeStatusHook } from './usage';
 import http from 'http';
@@ -371,6 +371,8 @@ function registerIpcHandlers() {
   });
   // New pairing code: the old QR stops working; paired phones stay until revoked one by one.
   ipcMain.handle('remote:reset', async () => { resetPairCode(); return remoteInfo(); });
+  // A view-only link (watch, never act), copied for the user to send to someone.
+  ipcMain.handle('remote:view-link', async () => { if (!relay) return ''; const l = viewOnlyLink(); clipboard.writeText(l); return l; });
   // Opens the web remote, paired, in the default browser. Only this one URL, never one from the renderer.
   ipcMain.handle('remote:open-web', async () => { if (relay) await shell.openExternal(webPairingLink()); });
   ipcMain.handle('remote:revoke', async (_e, deviceId: string) => { revokeDevice(deviceId); return remoteInfo(); });
