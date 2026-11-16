@@ -358,7 +358,7 @@ export const REMOTE_PAGE = `<!doctype html>
         b.onclick = function () {
           b.disabled = true; b.textContent = 'Opening…';
           api('POST', '/api/open', { project: x.p.id }, x.c).then(function (r) {
-            if (r.status !== 200) msg.textContent = r.body.error || 'Failed';
+            if (r.status !== 200) { msg.textContent = 'Could not open it: ' + (r.body.error || 'failed'); b.disabled = false; b.textContent = 'Open agent'; return; }
             last = ''; lastProj = ''; setTimeout(function () { load(); loadProjects(); }, 1500);
           });
         };

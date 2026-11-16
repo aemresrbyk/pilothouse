@@ -48,3 +48,5 @@ vendor/
 mobile/ios/Pilothouse.xcodeproj
 mobile/ios/build
 scripts/.demo.mjs
+server/dist/
+server/node_modules/
