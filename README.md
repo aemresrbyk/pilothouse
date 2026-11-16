@@ -19,7 +19,7 @@
 
 > Built with the [Electron framework](https://www.electronjs.org/); not affiliated with the OpenJS Foundation or the Electron project.
 
-**Website:** [kitefoldgames.com/pilothouse-site](https://kitefoldgames.com/pilothouse-site/)
+**Website:** [usepilothouse.com](https://usepilothouse.com)
 
 Pilothouse keeps all your AI coding projects in one window, and in your pocket: every project gets its own real terminal tab (`node-pty` + `xterm.js`) that starts your agent (`claude`, `codex`, `gemini` or `opencode`) with the flags you choose. You can switch between projects with `⌘1-9`, edit `CLAUDE.md`, browse files and send prompts without leaving the app, and answer your agents from your phone. Free and open source (MIT), no account, no data collected.
 
