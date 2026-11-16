@@ -53,7 +53,8 @@ interface TabWorkspaceProps {
   quickCommands?: string[];
   onSwitchAgent: (projectId: string, agentId: string) => void;
   onRunCommand: (command: string) => void;
-  onOpenWorktree: () => void;
+  // prompt: start the new worktree's agent on this task.
+  onOpenWorktree: (prompt?: string) => void;
   onHandoff: (agentId: string) => void;
   onHandoffSession: (agentId: string, sessionFile: string, fromAgent: string) => void;
   onResumeAs: (agentId: string, sessionId: string) => void;
@@ -852,6 +853,15 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
                   }}
                 >
                   Copy
+                </button>
+                <button
+                  onClick={() => { if (!scratchpadText.trim()) return; playClickSound(); onOpenWorktree(scratchpadText); setScratchpadText(''); }}
+                  disabled={!scratchpadText.trim()}
+                  title="Run this task in parallel: a new git worktree (its own branch and folder) and a new tab whose agent starts on it"
+                  className="px-2 py-1 rounded text-[10px] border disabled:opacity-40"
+                  style={{ backgroundColor: themeConfig.bgTabActive, borderColor: themeConfig.border, color: themeConfig.textSecondary }}
+                >
+                  Worktree
                 </button>
                 <button
                   onClick={addToQueue}

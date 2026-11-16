@@ -346,14 +346,16 @@ export const App: React.FC = () => {
     window.electronAPI.updateProject(projectId, updates);
   };
 
-  const handleAddProject = async (folderPath: string) => {
+  const handleAddProject = async (folderPath: string): Promise<string> => {
     try {
       const newProj = await window.electronAPI.addProject(folderPath);
       await loadData();
-      handleNewTab(newProj.id);
+      const tabId = handleNewTab(newProj.id);
       showToast(`REGISTERED: ${newProj.name}`);
+      return tabId;
     } catch (err: any) {
       showToast(`FAILED: ${err.message}`, 'error');
+      return '';
     }
   };
 
@@ -384,10 +386,12 @@ export const App: React.FC = () => {
   };
 
   // A new tab in its own git worktree + branch, registered as a project so it gets history, CLAUDE.md etc.
-  const handleOpenWorktree = async (projectPath: string) => {
+  // prompt: a task from Drafts & queue; it starts the new worktree's agent, so parallel tasks never share files.
+  const handleOpenWorktree = async (projectPath: string, prompt?: string) => {
     const r = await window.electronAPI.addWorktree(projectPath);
     if (!r.path) return showToast(`WORKTREE FAILED: ${r.error || 'unknown error'}`, 'error');
-    await handleAddProject(r.path);
+    const tabId = await handleAddProject(r.path);
+    if (tabId && prompt?.trim()) setPendingLaunches((p) => ({ ...p, [tabId]: { prompt: prompt.trim() } }));
   };
 
   const handleOpenFolder = async (path: string) => {
@@ -606,7 +610,7 @@ export const App: React.FC = () => {
                   quickCommands={settings.quickCommands}
                   onSwitchAgent={handleSwitchAgent}
                   onRunCommand={(cmd) => handleNewTab(proj.id, cmd)}
-                  onOpenWorktree={() => handleOpenWorktree(proj.path)}
+                  onOpenWorktree={(prompt) => handleOpenWorktree(proj.path, prompt)}
                   onHandoff={(agentId) => handleHandoff(tab.id, agentId)}
                   onHandoffSession={(agentId, sessionFile, fromAgent) => handleHandoff(tab.id, agentId, sessionFile, fromAgent)}
                   onResumeAs={(agentId, sessionId) => handleResumeAs(tab.id, agentId, sessionId)}
