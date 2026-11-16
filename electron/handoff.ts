@@ -47,21 +47,26 @@ export function formatHandoff(h: HandoffInput): string {
   return out.join('\n');
 }
 
+// Keep .pilothouse/ (hand-off, debate) out of commits without touching the repo's .gitignore.
+export async function excludePilothouse(cwd: string) {
+  try {
+    const { stdout } = await run('git', ['-C', cwd, 'rev-parse', '--git-path', 'info/exclude'], { timeout: 10_000 });
+    const exclude = path.resolve(cwd, stdout.trim());
+    const cur = fs.existsSync(exclude) ? fs.readFileSync(exclude, 'utf-8') : '';
+    if (!cur.split(/\r?\n/).includes('.pilothouse/')) {
+      fs.mkdirSync(path.dirname(exclude), { recursive: true });
+      fs.appendFileSync(exclude, `${cur && !cur.endsWith('\n') ? '\n' : ''}.pilothouse/\n`);
+    }
+  } catch {} // not a git repo, or no git: the file still works without it
+}
+
 async function gitInfo(cwd: string) {
   // Each call may fail on its own (a repo without commits has no HEAD), so failures become empty text.
   const git = (...args: string[]) =>
     run('git', ['-C', cwd, ...args], { timeout: 10_000, maxBuffer: 4 * 1024 * 1024 }).then((r) => r.stdout, () => '');
   if ((await git('rev-parse', '--is-inside-work-tree')).trim() !== 'true') return null;
   const [status, diffStat, log] = await Promise.all([git('status', '--short'), git('diff', '--stat', 'HEAD'), git('log', '--oneline', '-10')]);
-  try {
-    // Keep the hand-off file out of commits without touching the repo's .gitignore.
-    const exclude = path.resolve(cwd, (await git('rev-parse', '--git-path', 'info/exclude')).trim());
-    const cur = fs.existsSync(exclude) ? fs.readFileSync(exclude, 'utf-8') : '';
-    if (!cur.split(/\r?\n/).includes('.pilothouse/')) {
-      fs.mkdirSync(path.dirname(exclude), { recursive: true });
-      fs.appendFileSync(exclude, `${cur && !cur.endsWith('\n') ? '\n' : ''}.pilothouse/\n`);
-    }
-  } catch {} // exclude list is a nicety; the hand-off still works without it
+  await excludePilothouse(cwd);
   return { status: clip(status, 4000), diffStat: clip(diffStat, 4000), log };
 }
 

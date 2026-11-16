@@ -17,7 +17,9 @@ import { apnsConfig, sendPush, sendWebPush, sendActivity } from './push';
 import { agentOfCommand, withClaudeStatus, ensureClaudeStatusHook } from './usage';
 import http from 'http';
 import { writeHandoff } from './handoff';
-import { detectAgents, scanProjects } from './setup';
+import { detectAgents, scanProjects, findAgentBinary } from './setup';
+import { runDebate, askAgent, DEBATE_AGENTS } from './debate';
+import type { ChildProcess } from 'child_process';
 import { agentOptions } from './agentOptions';
 import { geminiKeyStatus, setGeminiApiKey } from './geminiKey';
 import { processUsage } from './resources';
@@ -607,6 +609,40 @@ function registerIpcHandlers() {
     if (!storage.listStoredProjects().some((p) => p.path === projectPath)) return { error: 'Unknown project' };
     if (sessionFile && !isSessionFile(sessionFile)) return { error: 'Not a session file' };
     return writeHandoff(projectPath, fromAgent, sessionFile);
+  });
+
+  // Debate: agents take turns on one question in .pilothouse/debate.md; one debate per project at a time.
+  const debates = new Map<string, { child: ChildProcess | null; stopped: boolean }>();
+  ipcMain.handle('debate:start', async (_e, projectPath: string, topic: string, agents: string[], rounds: number) => {
+    if (!storage.listStoredProjects().some((p) => p.path === projectPath)) return { error: 'Unknown project' };
+    if (debates.has(projectPath)) return { error: 'A debate is already running here' };
+    topic = String(topic ?? '').trim().slice(0, 4000);
+    agents = [...new Set((Array.isArray(agents) ? agents : []).filter((a) => DEBATE_AGENTS.includes(a)))];
+    if (!topic || agents.length < 2) return { error: 'Pick at least two agents and write the question' };
+    const settings = storage.getSettings();
+    const bins: Record<string, string> = {};
+    for (const a of agents) {
+      const set = settings.agentPaths?.[a] || (a === 'claude' ? settings.claudePath : '');
+      const bin = set && fs.existsSync(set) ? set : await findAgentBinary(agentById(a).command);
+      if (!bin) return { error: `${agentById(a).name} is not installed` };
+      bins[a] = bin;
+    }
+    const run = { child: null as ChildProcess | null, stopped: false };
+    debates.set(projectPath, run);
+    const send = (m: object) => win?.webContents.send('debate:update', { projectPath, ...m });
+    const env = { ...process.env, PATH: [...new Set(Object.values(bins).map((b) => path.dirname(b))), `${os.homedir()}/.local/bin`, '/opt/homebrew/bin', '/usr/local/bin', process.env.PATH].join(path.delimiter) };
+    runDebate({
+      projectPath, topic, agents, rounds: Number(rounds) || 3,
+      ask: (a, prompt) => askAgent(bins[a], a, prompt, projectPath, env, (c) => { run.child = c; }),
+      onUpdate: (markdown) => send({ markdown }),
+      stopped: () => run.stopped
+    }).then(() => send({ done: true }), (err) => send({ done: true, error: String(err?.message || err) }))
+      .finally(() => debates.delete(projectPath));
+    return { ok: true };
+  });
+  ipcMain.handle('debate:stop', async (_e, projectPath: string) => {
+    const run = debates.get(projectPath);
+    if (run) { run.stopped = true; run.child?.kill(); }
   });
 
   ipcMain.handle('pty:resources', async () => {
