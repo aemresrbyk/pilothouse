@@ -100,6 +100,22 @@ export default {
     const token = String(body?.token || '');
     const enc = String(body?.enc || '');
     const kind = String(body?.kind || '');
+    // Live Activity update: the system draws it, so it carries two small numbers in the clear and nothing else.
+    if (kind === 'activity') {
+      const n = (x) => (Number.isInteger(x) && x >= 0 && x < 1000 ? x : null);
+      const needsYou = n(body?.state?.needsYou), working = n(body?.state?.working);
+      if (!/^[0-9a-f]{64,400}$/i.test(token) || needsYou === null || working === null) return json(400, { error: 'bad request' });
+      const now = Math.floor(Date.now() / 1000);
+      const aps = { timestamp: now, event: body.end === true ? 'end' : 'update', 'content-state': { needsYou, working }, ...(body.end === true ? { 'dismissal-date': now + 60 } : {}) };
+      const res = await fetch(`https://${body.sandbox === true ? 'api.sandbox.push.apple.com' : 'api.push.apple.com'}/3/device/${token}`, {
+        method: 'POST',
+        headers: { authorization: `bearer ${await apnsJwt(env)}`, 'apns-topic': `${env.APNS_TOPIC}.push-type.liveactivity`, 'apns-push-type': 'liveactivity', 'apns-priority': '10' },
+        body: JSON.stringify({ aps })
+      });
+      if (res.status === 200) return json(200, { ok: true });
+      const reason = (await res.json().catch(() => ({}))).reason || '';
+      return json(res.status === 410 || reason === 'BadDeviceToken' ? 410 : 502, { error: reason || `APNs ${res.status}` });
+    }
     if (!/^[0-9a-f]{64,200}$/i.test(token) || !(kind in KINDS) || !/^[A-Za-z0-9+/=]{24,3000}$/.test(enc)) return json(400, { error: 'bad request' });
 
     const payload = {

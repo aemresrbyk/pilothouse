@@ -471,6 +471,15 @@ if (bin && hasModel()) {
   assert.deepStrictEqual(webPushTargets(), [goodSub]);
   assert.equal((await call('/api/web-push', { subscription: null })).status, 200);
   assert.deepStrictEqual(webPushTargets(), []);
+  // Live Activity token: stored per phone; the relay refuses anything but two small counts.
+  assert.equal((await call('/api/activity-token', { token: 'zz' })).status, 400);
+  assert.equal((await call('/api/activity-token', { token: 'ab'.repeat(40), sandbox: true })).status, 200);
+  const { activityTargets } = await import('../electron/remote');
+  assert.deepStrictEqual(activityTargets(), [{ token: 'ab'.repeat(40), sandbox: true }]);
+  const relayWorker = (await import('../relay/worker.js')).default;
+  const relayPost = (b: unknown) => relayWorker.fetch(new Request('https://relay/push', { method: 'POST', body: JSON.stringify(b) }), { APNS_TOPIC: 't' } as any);
+  assert.equal((await relayPost({ kind: 'activity', token: 'ab'.repeat(40), state: { needsYou: 'Secret project', working: 1 } })).status, 400);
+  assert.equal((await relayPost({ kind: 'activity', token: 'ab'.repeat(40), state: { needsYou: -1, working: 1 } })).status, 400);
   // Hostile input: oversized and broken bodies, tokens of the wrong shape.
   assert.equal((await call('/api/send', { id: 't1', text: 'x'.repeat(30_000) })).status, 413);
   assert.equal((await call('/api/sessions', undefined, token + '0')).status, 401);

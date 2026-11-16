@@ -21,3 +21,4 @@ jobs:
       - run: bun install
       - run: bun run typecheck
       - run: bun tests/selfcheck.ts
+      - run: bun run build:server

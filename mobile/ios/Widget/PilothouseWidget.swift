@@ -1,6 +1,7 @@
 // Home-screen and lock-screen widget: how many agents need you, and which.
 // Refreshes every 15 minutes on its own, and right away when a push arrives or the app is open.
 import WidgetKit
+import ActivityKit
 import SwiftUI
 
 struct Entry: TimelineEntry {
@@ -135,7 +136,49 @@ struct PilothouseWidget: Widget {
     }
 }
 
+// Lock screen and Dynamic Island: counts only (see Shared/AgentsActivity.swift).
+struct AgentsLiveActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: AgentsActivityAttributes.self) { ctx in
+            HStack(spacing: 14) {
+                Image(systemName: "location.north.circle.fill").font(.title2).foregroundStyle(Color.lime)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(ctx.state.needsYou > 0 ? "\(ctx.state.needsYou) need\(ctx.state.needsYou == 1 ? "s" : "") you" : "All agents on it")
+                        .font(.headline).foregroundStyle(ctx.state.needsYou > 0 ? Color.amber : .white)
+                    Text("\(ctx.state.working) working").font(.subheadline).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding()
+            .activityBackgroundTint(Color.ink)
+            .activitySystemActionForegroundColor(Color.lime)
+        } dynamicIsland: { ctx in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    Label("\(ctx.state.needsYou)", systemImage: "hand.raised.fill").foregroundStyle(Color.amber)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    Label("\(ctx.state.working)", systemImage: "bolt.fill").foregroundStyle(Color.lime)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    Text(ctx.state.needsYou > 0 ? "Open Pilothouse to answer" : "Your agents are working").font(.caption).foregroundStyle(.secondary)
+                }
+            } compactLeading: {
+                Text("\(ctx.state.needsYou)").foregroundStyle(ctx.state.needsYou > 0 ? Color.amber : .secondary)
+            } compactTrailing: {
+                Text("\(ctx.state.working)").foregroundStyle(Color.lime)
+            } minimal: {
+                Text("\(ctx.state.needsYou + ctx.state.working)").foregroundStyle(ctx.state.needsYou > 0 ? Color.amber : Color.lime)
+            }
+            .widgetURL(URL(string: "pilothouse://home"))
+        }
+    }
+}
+
 @main
 struct PilothouseWidgetBundle: WidgetBundle {
-    var body: some Widget { PilothouseWidget() }
+    var body: some Widget {
+        PilothouseWidget()
+        AgentsLiveActivity()
+    }
 }

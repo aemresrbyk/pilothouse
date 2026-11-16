@@ -34,6 +34,7 @@ targets:
         NSMicrophoneUsageDescription: Speak a message to your agent instead of typing it.
         NSSpeechRecognitionUsageDescription: Turns what you say into a message for your agent, on this iPhone when it can.
         NSFaceIDUsageDescription: Confirms it is you before a risky command is approved.
+        NSSupportsLiveActivities: true
         # Talks plain HTTP to your computer's Tailscale address; Tailscale itself encrypts the traffic.
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true

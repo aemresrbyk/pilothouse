@@ -150,3 +150,35 @@ export async function sendWebPush(vapid: { publicKey: string; privateKey: string
   }));
   return dead;
 }
+
+// ---- Live Activity (iPhone lock screen / Dynamic Island) ----
+// The content is drawn by the system and cannot be encrypted, so it is two numbers: agents that need you, agents
+// working. No names. end: nothing is left, the activity goes away.
+export interface ActivityState { needsYou: number; working: number }
+export async function sendActivity(targets: PushTarget[], state: ActivityState, end = false): Promise<string[]> {
+  if (!targets.length) return [];
+  const c = apnsConfig();
+  const dead: string[] = [];
+  const aps = { timestamp: Math.floor(Date.now() / 1000), event: end ? 'end' : 'update', 'content-state': state, ...(end ? { 'dismissal-date': Math.floor(Date.now() / 1000) + 60 } : {}) };
+  await Promise.all(targets.map(async (t) => {
+    try {
+      if (!c) {
+        const res = await fetch(RELAY_URL, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: t.token, sandbox: !!t.sandbox, kind: 'activity', state, end }), signal: AbortSignal.timeout(10_000) });
+        if (res.status === 410) dead.push(t.token);
+        return;
+      }
+      const session = http2.connect(t.sandbox ? 'https://api.sandbox.push.apple.com' : 'https://api.push.apple.com');
+      await new Promise<void>((resolve) => {
+        const req = session.request({ ':method': 'POST', ':path': `/3/device/${t.token}`, authorization: `bearer ${apnsJwt(c)}`, 'apns-topic': `${c.bundleId}.push-type.liveactivity`, 'apns-push-type': 'liveactivity', 'apns-priority': '10' });
+        let status = 0;
+        req.on('response', (h) => { status = Number(h[':status']); });
+        req.on('end', () => { if (status === 410) dead.push(t.token); resolve(); });
+        req.on('error', () => resolve());
+        req.setTimeout(10_000, () => { req.close(); resolve(); });
+        req.end(JSON.stringify({ aps }));
+      });
+      session.close();
+    } catch (err: any) { console.error('Live Activity push:', err.message); }
+  }));
+  return dead;
+}

@@ -131,7 +131,7 @@ export function autoChoice(v: SessionView, rules: string[]): Choice | null {
 
 // pushKey: AES-256 key shared with the phone, so notification text is end-to-end encrypted through the relay.
 // relayKey: AES-256 key for the web relay (usepilothouse.com/app): requests and replies are sealed with it end to end.
-interface Device { id: string; name: string; hash: string; created: number; lastSeen?: number; apns?: string; sandbox?: boolean; pushKey?: string; relayKey?: string; webPush?: WebPushSub; viewOnly?: boolean }
+interface Device { id: string; name: string; hash: string; created: number; lastSeen?: number; apns?: string; sandbox?: boolean; pushKey?: string; relayKey?: string; webPush?: WebPushSub; viewOnly?: boolean; activity?: string; activitySandbox?: boolean }
 // pairAt: when the pairing code was made. A code works once and for PAIR_TTL, so an old screenshot of the QR is useless.
 // relaySecret: proves to the relay that this computer owns its room (room id = sha256(secret)); never leaves here.
 // vapid: this computer's Web Push keys (made here, never shared except the public half).
@@ -211,6 +211,13 @@ export function vapidKeys() {
   const s = remoteState();
   if (!s.vapid) { s.vapid = newVapidKeys(); saveState(s); }
   return s.vapid!;
+}
+export const activityTargets = () => remoteState().devices.flatMap(d => (d.activity ? [{ token: d.activity, sandbox: d.activitySandbox }] : []));
+export function forgetActivityTokens(tokens: string[]) {
+  if (!tokens.length) return;
+  const s = remoteState();
+  for (const d of s.devices) if (d.activity && tokens.includes(d.activity)) delete d.activity;
+  saveState(s);
 }
 export const webPushTargets = () => remoteState().devices.flatMap(d => (d.webPush ? [d.webPush] : []));
 export function forgetWebPush(endpoints: string[]) {
@@ -387,6 +394,17 @@ export function remoteApi(deps: RemoteDeps) {
         return reply(200, { ok: true, pushKey: d.pushKey });
       }
       // Browser notifications for the web remote: the page asks for the public key, then hands over its subscription.
+      // The iPhone's Live Activity push token: the computer keeps the lock-screen counts current with it.
+      if (route === 'POST /api/activity-token') {
+        const token = String(body.token || '');
+        if (!/^[0-9a-f]{64,400}$/i.test(token)) return reply(400, { error: 'bad token' });
+        const s = remoteState();
+        const d = s.devices.find(x => x.id === device.id);
+        if (!d) return reply(404, { error: 'device not found' });
+        d.activity = token; d.activitySandbox = body.sandbox === true;
+        saveState(s);
+        return reply(200, { ok: true });
+      }
       if (route === 'GET /api/web-push-key') return reply(200, { key: vapidKeys().publicKey });
       if (route === 'POST /api/web-push') {
         const s = remoteState();

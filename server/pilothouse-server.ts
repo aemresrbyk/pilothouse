@@ -14,13 +14,13 @@ import readline from 'readline';
 import { createRequire } from 'module';
 import * as pty from 'node-pty';
 import QRCode from 'qrcode';
-import { remoteApi, startRemoteServer, webPairingLink, pairingLink, pushTargets, forgetPushTokens, webPushTargets, forgetWebPush, vapidKeys, sessionView, audit, RemoteDeps } from '../electron/remote';
+import { remoteApi, startRemoteServer, webPairingLink, pairingLink, pushTargets, forgetPushTokens, activityTargets, forgetActivityTokens, webPushTargets, forgetWebPush, vapidKeys, sessionView, audit, RemoteDeps } from '../electron/remote';
 import { startRelayLink } from '../electron/relayLink';
 import { Screen } from '../electron/screen';
 import { newActivity, noteOutput, nextStatus, Activity } from '../electron/activity';
 import { stripAnsi } from '../electron/control';
 import { agentOfCommand, withClaudeStatus, ensureClaudeStatusHook } from '../electron/usage';
-import { sendPush, sendWebPush } from '../electron/push';
+import { sendPush, sendWebPush, sendActivity } from '../electron/push';
 import { agentById, buildAgentCommand, ProjectItem, PtyStatus } from '../src/types';
 
 const OUTPUT_KEEP = 60_000;
@@ -80,8 +80,16 @@ const deps: RemoteDeps = {
 };
 
 // Status every second, as the desktop does; a tab that needs you (or finished) pushes to paired phones/browsers.
+let lastActivity = '';
 setInterval(() => {
   const now = Date.now();
+  const counts = [...tabs.values()].map((t) => t.act.status);
+  const state = { needsYou: counts.filter((s) => s === 'waiting').length, working: counts.filter((s) => s === 'running').length };
+  if (JSON.stringify(state) !== lastActivity) {
+    lastActivity = JSON.stringify(state);
+    const targets = activityTargets();
+    if (targets.length) sendActivity(targets, state, state.needsYou + state.working === 0).then(forgetActivityTokens).catch(() => {});
+  }
   for (const [id, t] of tabs) {
     const tail = stripAnsi(t.buf.slice(-2000)).slice(-600);
     const status: PtyStatus = nextStatus(t.act, now, tail);
