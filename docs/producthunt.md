@@ -70,3 +70,23 @@ The maker account must look like a person: first and last name, a clear photo of
 
 Post page (as maker) → arrow next to the title → **Embed** → pick the theme; once ranked, the "Featured" / "Top Post" variants appear. Put it in the usepilothouse.com footer linking to the product page (not phrased as an upvote request).
 
+
+## Pre-launch forum threads (post from your own account, answer every reply the same day)
+
+1. **Now, `p/introduce-yourself`** (plain B1–B2 English, written as yourself):
+
+   **Title:** Hi from Turkey, first post here
+
+   Hi everyone, I'm Ali. I studied electrical engineering and I live in Turkey. I make small puzzle games at Kitefold Games, and sometimes I build tools for myself when I need them.
+
+   These days I use Claude Code and Codex a lot. My problem was simple: I start 3 or 4 agents in different projects, I go make a coffee, and when I come back one of them was waiting for my "yes" for 15 minutes. So I started building a small app for this. It shows all my agents in one window and I can answer them from my phone too. It's called Pilothouse, it's free and open source, and I want to launch it here soon.
+
+   I never launched on Product Hunt before, so two questions:
+   - What do you wish you knew before your first launch?
+   - If you use coding agents, what annoys you the most?
+
+   Thanks for reading :)
+
+2. **2–3 days later, `p/vibecoding`:** "How do you know when your coding agent is waiting for you?" Ask how people notice approvals across several agents (notifications, tmux, auto-approve and where they draw the line). Don't mention Pilothouse unless someone asks.
+
+3. **Nov 28–29, `p/self-promotion`:** "Launching Pilothouse on Dec 1: which tagline is clearer?" A) "One window for your coding agents. Approve from your phone." B) "Never miss an agent waiting for your approval." Ask for feedback on usepilothouse.com. No upvote ask.
