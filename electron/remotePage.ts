@@ -38,6 +38,7 @@ export const REMOTE_PAGE = `<!doctype html>
   h2 { font-size:14px; color:var(--dim); margin:20px 0 8px; font-weight:600; }
   .proj { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0 6px 12px; }
   details summary { color:var(--dim); font-size:13px; margin-top:8px; }
+  #pcode { text-align:center; padding:18px 12px; } #pcode b { display:block; font:600 34px/1.2 ui-monospace,Menlo,monospace; letter-spacing:.08em; color:var(--lime); margin:6px 0; } #pcode span { color:var(--dim); font-size:13px; }
   #setup ol { padding-left:20px; margin:10px 0; color:var(--dim); } #setup b { color:var(--text); } .fine { color:var(--dim); font-size:12px; margin:10px 0 0; }
   #term { position:fixed; inset:0; background:var(--bg); display:flex; flex-direction:column; padding:calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)); z-index:10; }
   #term[hidden] { display:none; }
@@ -51,13 +52,17 @@ export const REMOTE_PAGE = `<!doctype html>
 <body>
 <h1><b>●</b> Pilothouse <button id="notify" hidden></button></h1>
 <div id="msg">Connecting…</div>
+<div id="pcode" class="card" hidden><span>Security code</span><b></b><span>Your computer shows a code too. Click <b style="display:inline;font:inherit;color:var(--text);letter-spacing:0">Allow</b> there if they match.</span></div>
 <div id="setup" class="card" hidden>
   <b>Use Pilothouse from this browser</b>
   <ol>
     <li>On your computer, open Pilothouse → Settings → <b>Remote control</b> and turn it on.</li>
-    <li>Scan the QR code with your phone's camera, click <b>Open in browser</b> there, or paste the link here:</li>
+    <li>Scan the QR code with your phone's camera.</li>
+    <li>Check that both screens show the same security code, then click <b>Allow</b> on the computer.</li>
   </ol>
+  <details class="fine"><summary>On a computer without a camera? Paste the link</summary>
   <div class="row"><input id="plink" placeholder="https://usepilothouse.com/app/#r=…" autocomplete="off" spellcheck="false"><button id="pgo" class="primary">Connect</button></div>
+  </details>
   <p class="fine">No account. The link pairs this browser once and expires after 10 minutes. Everything between here and your computer is end-to-end encrypted; the relay in between cannot read it.</p>
 </div>
 <div id="list"></div>
@@ -145,7 +150,7 @@ export const REMOTE_PAGE = `<!doctype html>
     });
     return sk.ready;
   }
-  function relayApi(c, method, path, body) {
+  function relayApi(c, method, path, body, wait) {
     if (!c) return Promise.reject(new Error('not paired'));
     var d = c.device || 'pair';
     var id = hex(rand(8));
@@ -153,7 +158,7 @@ export const REMOTE_PAGE = `<!doctype html>
       return seal(k, d, { id: id, t: Date.now(), n: hex(rand(12)), m: method, p: path, b: body || {}, a: c.token });
     }).then(function (box) {
       return new Promise(function (resolve, reject) {
-        pending[id] = { room: c.room, resolve: resolve, reject: reject, timer: setTimeout(function () { delete pending[id]; reject(new Error('offline')); }, 15000) };
+        pending[id] = { room: c.room, resolve: resolve, reject: reject, timer: setTimeout(function () { delete pending[id]; reject(new Error('offline')); }, wait || 15000) };
         socks[c.room].ws.send(JSON.stringify({ d: d, c: box }));
       });
     });
@@ -409,17 +414,28 @@ export const REMOTE_PAGE = `<!doctype html>
   }
   // A fresh QR link always pairs, even over an old token (that one may have been revoked or be from another computer).
   // Pairing adds this computer to the list (or replaces its old entry); the others stay.
+  // The security code both screens show (electron/remote.ts securityCode): picked here, sent inside the pairing request.
+  var pcode = document.getElementById('pcode');
+  function newCode() {
+    var a = new Uint32Array(1); crypto.getRandomValues(a);
+    var n = String(a[0] % 1000000); while (n.length < 6) n = '0' + n;
+    pcode.querySelector('b').textContent = n.slice(0, 3) + ' ' + n.slice(3);
+    pcode.hidden = false;
+    msg.textContent = 'Waiting for your computer…';
+    return n;
+  }
   function pairWith(room, code) {
     var pc = { room: room, pair: code };
-    msg.textContent = 'Pairing…';
-    return relayApi(pc, 'POST', '/api/pair', { secret: code, name: 'Browser · ' + (navigator.platform || 'web') }).then(function (r) {
+    // The person at the computer has up to 2 minutes to compare the codes and click Allow.
+    return relayApi(pc, 'POST', '/api/pair', { secret: code, code: newCode(), name: 'Browser · ' + (navigator.platform || 'web') }, 130000).then(function (r) {
+      pcode.hidden = true;
       if (r.status !== 200 || !r.body.relayKey) { msg.textContent = r.body.error || 'Pairing failed.'; return false; }
       if (socks[room] && socks[room].ws) socks[room].ws.close();
       comps = comps.filter(function (c) { return c.room !== room; });
       comps.push({ room: room, device: r.body.device, key: r.body.relayKey, token: r.body.token, name: r.body.computer || 'Computer ' + (comps.length + 1), viewOnly: !!r.body.viewOnly });
       saveComps();
       return true;
-    }).catch(function () { msg.textContent = 'Your computer did not answer. Is Pilothouse open with Remote control on?'; return false; });
+    }).catch(function () { pcode.hidden = true; msg.textContent = 'Your computer did not answer. Is Pilothouse open with Remote control on?'; return false; });
   }
   var setup = document.getElementById('setup');
   document.getElementById('pgo').onclick = function () {
@@ -433,10 +449,10 @@ export const REMOTE_PAGE = `<!doctype html>
   } else if (relayMode) {
     start();
   } else if (pair) {
-    fetch('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: pair[1], name: 'Browser · ' + (navigator.platform || 'phone') }) })
+    fetch('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret: pair[1], code: newCode(), name: 'Browser · ' + (navigator.platform || 'phone') }) })
       .then(function (r) { return r.json(); })
-      .then(function (j) { if (j.token) { token = j.token; try { localStorage.setItem(KEY, token); } catch (e) {} } else msg.textContent = j.error; start(); })
-      .catch(function () { msg.textContent = 'Pairing failed. Is Tailscale on?'; });
+      .then(function (j) { pcode.hidden = true; if (j.token) { token = j.token; try { localStorage.setItem(KEY, token); } catch (e) {} } else msg.textContent = j.error; start(); })
+      .catch(function () { pcode.hidden = true; msg.textContent = 'Pairing failed. Is Tailscale on?'; });
   } else start();
   // shortcut: polling every 2 s (start()); switch to server-sent events if many phones or battery use become a problem.
 })();

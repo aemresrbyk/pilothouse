@@ -29,12 +29,13 @@ export function openBox(key: Buffer, aad: string, box: string): any {
   return JSON.parse(Buffer.concat([d.update(raw.subarray(12, raw.length - 16)), d.final()]).toString());
 }
 
-type Api = (route: string, url: URL, body: any, auth: string | undefined, from: string | undefined) => Promise<ApiResult>;
+type Api = (route: string, url: URL, body: any, auth: string | undefined, from: string | undefined, location?: string) => Promise<ApiResult>;
 
 // One sealed request from a browser -> the sealed reply (or null: not ours, tampered, stale or replayed; dropped).
 export function relayHandler(api: Api, now = () => Date.now()) {
   const seen = new Map<string, number>(); // nonce -> time, for replay protection
-  return async (msg: string): Promise<string | null> => {
+  // loc: the device's approximate location as the relay saw it (city, country), outside the sealed box.
+  return async (msg: string, loc?: string): Promise<string | null> => {
     let env: { d?: unknown; c?: unknown };
     try { env = JSON.parse(msg); } catch { return null; }
     const d = String(env.d ?? ''), c = String(env.c ?? '');
@@ -67,7 +68,7 @@ export function relayHandler(api: Api, now = () => Date.now()) {
     if (d !== 'pair' && !remoteState().devices.some(x => x.id === d && req.a && x.hash === crypto.createHash('sha256').update(String(req.a)).digest('hex'))) {
       r = { status: 401, body: { error: 'unauthorized' } };
     } else {
-      r = await api(`${method} ${url.pathname}`, url, req.b && typeof req.b === 'object' ? req.b : {}, d === 'pair' ? undefined : `Bearer ${req.a}`, `web ${d}`);
+      r = await api(`${method} ${url.pathname}`, url, req.b && typeof req.b === 'object' ? req.b : {}, d === 'pair' ? undefined : `Bearer ${req.a}`, `web ${d}`, d === 'pair' && typeof loc === 'string' ? loc : undefined);
     }
     return JSON.stringify({ d, c: sealBox(key, d, { id: req.id, s: r.status, b: r.body }) });
   };
@@ -83,10 +84,10 @@ export function startRelayLink(api: Api) {
     ws = new WebSocket(`${RELAY_WS}/room/${room}?host=${secret}`);
     ws.onopen = () => { online = true; delay = 1000; };
     ws.onmessage = async (e) => {
-      let m: { from?: string; data?: string };
+      let m: { from?: string; data?: string; loc?: string };
       try { m = JSON.parse(String(e.data)); } catch { return; }
       if (!m.from || typeof m.data !== 'string') return;
-      const out = await handle(m.data);
+      const out = await handle(m.data, m.loc);
       if (out && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ to: m.from, data: out }));
     };
     ws.onclose = () => {

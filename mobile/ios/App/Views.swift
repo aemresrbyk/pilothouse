@@ -19,6 +19,7 @@ struct PairView: View {
     @State private var link = ""
     @State private var error: String?
     @State private var busy = false
+    @State private var securityCode: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -37,7 +38,20 @@ struct PairView: View {
                 TextField("…or paste the link", text: $link).textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.never)
                 Button("Pair") { pair(link) }.disabled(link.isEmpty || busy)
             }
-            if busy { ProgressView() }
+            if let securityCode {
+                VStack(spacing: 6) {
+                    Text("Security code").font(.callout).foregroundStyle(.secondary)
+                    Text("\(securityCode.prefix(3)) \(securityCode.suffix(3))")
+                        .font(.system(size: 40, weight: .semibold, design: .monospaced)).foregroundStyle(Color.lime)
+                    Text("Your computer shows a code too. Click Allow there if they match.")
+                        .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    ProgressView()
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+                .accessibilityElement(children: .combine)
+            } else if busy { ProgressView() }
             if let error { Text(error).foregroundStyle(.orange).font(.callout) }
             if !adding {
                 Button("No computer at hand? Try a demo") {
@@ -58,10 +72,12 @@ struct PairView: View {
     private func pair(_ code: String) {
         busy = true
         error = nil
+        let shown = Client.newSecurityCode()
+        securityCode = shown
         Task {
-            defer { busy = false }
+            defer { busy = false; securityCode = nil }
             do {
-                try await Client.pair(link: code, name: UIDevice.current.name)
+                try await Client.pair(link: code, name: UIDevice.current.name, securityCode: shown)
                 Push.enable() // registers the push token with the new computer too
                 model.paired = true
                 await model.refresh()

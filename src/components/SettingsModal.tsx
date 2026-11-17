@@ -84,53 +84,45 @@ const RemoteField: React.FC = () => {
       </label>
       {info?.enabled && (
         <div className="ml-5 flex flex-col gap-2">
-          <div className="flex gap-1 text-[11px]" role="tablist">
-            {([['web', 'Any browser'], ['tailscale', 'iPhone app']] as const).map(([k, label]) => (
-              <button key={k} type="button" role="tab" aria-selected={via === k} onClick={() => setVia(k)}
-                className={`px-2 py-0.5 rounded border ${via === k ? 'border-[#C8FF2E] text-[#C8FF2E]' : 'border-zinc-700 text-zinc-400'}`}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {via === 'tailscale' && info.error && <span className="text-[10px] text-red-400">{info.error}</span>}
+          {/* One QR for everything: the phone's camera opens the web app, the iPhone app pairs with it too. */}
           {link && (
-            <div className="flex items-start gap-3">
-              {qr && <img src={qr} alt={via === 'web' ? 'QR code to open Pilothouse in a browser' : 'QR code to pair the Pilothouse iPhone app'} width={120} height={120} className="rounded bg-white" />}
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] text-zinc-500">
-                  {via === 'web'
-                    ? 'Scan with your phone, or open the link on another computer. Works from anywhere, nothing to install. '
-                    : 'Scan with the Pilothouse iPhone app, signed in to the same Tailscale account. '}
-                  Each code pairs one device and expires after 10 minutes.
-                </span>
+            <div className="flex items-center gap-4">
+              {qr && <img src={qr} alt={via === 'web' ? 'QR code to pair a phone or browser' : 'QR code to pair the Pilothouse iPhone app over Tailscale'} width={168} height={168} className="rounded-lg bg-white p-1" />}
+              <div className="flex flex-col gap-1.5 text-[11px] text-zinc-400 max-w-[220px]">
+                <span className="text-xs text-zinc-200">Scan with your phone</span>
+                <span>The camera opens the web app; the Pilothouse iPhone app scans it too.</span>
+                <span>Both screens then show a security code. Click <b className="text-zinc-200">Allow</b> here if they match.</span>
                 {via === 'web' && (
-                  <span className="text-[10px]" style={{ color: info.webOnline ? '#C8FF2E' : '#f87171' }}>
-                    {info.webOnline ? '● Reachable from the web' : '● Connecting to the relay…'}
+                  <span style={{ color: info.webOnline ? '#C8FF2E' : '#f87171' }}>
+                    {info.webOnline ? '● Ready' : '● Connecting to the relay…'}
                   </span>
                 )}
-                <div className="flex gap-1.5">
-                  <button type="button" onClick={async () => setInfo(await window.electronAPI.resetRemote())} className="px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300">
-                    New code
-                  </button>
-                  <button type="button" onClick={() => window.electronAPI.copyToClipboard(link)} className="px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300">
-                    Copy link
-                  </button>
-                  {via === 'web' && (
-                    <button type="button" onClick={() => window.electronAPI.openRemoteWeb()} className="px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300">
-                      Open in browser
-                    </button>
-                  )}
-                </div>
+              </div>
+            </div>
+          )}
+          {via === 'tailscale' && info.error && <span className="text-[10px] text-red-400">{info.error}</span>}
+          <details className="text-[11px] text-zinc-500">
+            <summary className="cursor-pointer select-none">More options</summary>
+            <div className="flex flex-col gap-1.5 mt-1.5">
+              <span className="text-[10px]">Each code pairs one device and expires after 10 minutes.</span>
+              <div className="flex flex-wrap gap-1.5">
+                <button type="button" onClick={async () => setInfo(await window.electronAPI.resetRemote())} className="px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300">New code</button>
+                {link && <button type="button" onClick={() => window.electronAPI.copyToClipboard(link)} className="px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300">Copy link</button>}
+                {via === 'web' && <button type="button" onClick={() => window.electronAPI.openRemoteWeb()} className="px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300">Open in browser</button>}
                 {via === 'web' && (
-                  <button type="button" onClick={async () => setViewCopied(!!(await window.electronAPI.copyViewOnlyLink()))} className="self-start px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300"
+                  <button type="button" onClick={async () => setViewCopied(!!(await window.electronAPI.copyViewOnlyLink()))} className="px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300"
                     title="Someone with this link can watch your agents (terminals, changes) but cannot type, approve or open anything. Works once, for 10 minutes; remove them below any time.">
                     {viewCopied ? 'View-only link copied' : 'Share view-only link'}
                   </button>
                 )}
-                <span className="text-[10px] text-zinc-600">{info.push === 'direct' ? 'iPhone notifications: sent straight to Apple with your APNs key.' : 'iPhone notifications: end-to-end encrypted through the Pilothouse relay (it cannot read them).'}</span>
               </div>
+              <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input type="checkbox" checked={via === 'tailscale'} onChange={(e) => setVia(e.target.checked ? 'tailscale' : 'web')} className="w-3 h-3 accent-[#C8FF2E]" />
+                Pair over Tailscale instead of the relay (iPhone app, same Tailscale account)
+              </label>
+              <span className="text-[10px] text-zinc-600">{info.push === 'direct' ? 'iPhone notifications: sent straight to Apple with your APNs key.' : 'iPhone notifications: end-to-end encrypted through the Pilothouse relay (it cannot read them).'}</span>
             </div>
-          )}
+          </details>
         </div>
       )}
       {!!info?.devices?.length && (

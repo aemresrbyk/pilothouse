@@ -277,6 +277,22 @@ async function applyRemote(enabled: boolean) {
     resume: (projectId, agentId, sessionId) => {
       const agent = agentById(agentId);
       return openTabViaRenderer(projectId, buildAgentCommand(agent, agentBinary(agent, storage.getSettings()), [], undefined, sessionId));
+    },
+    // A device scanned the QR: let it in only if the person here sees the same code it shows. Unanswered in 2 min: no.
+    confirmPair: async ({ name, code, location, viewOnly }) => {
+      if (!win) return false;
+      if (win.isMinimized()) win.restore();
+      win.show(); win.focus(); app.focus({ steal: true });
+      const ac = new AbortController();
+      const t = setTimeout(() => ac.abort(), 120_000);
+      try {
+        const { response } = await dialog.showMessageBox(win, {
+          type: 'question', buttons: ['Allow', 'Deny'], defaultId: 1, cancelId: 1, signal: ac.signal,
+          message: `Let “${name}” ${viewOnly ? 'watch your agents' : 'control your agents'}?`,
+          detail: `Security code:  ${code}\n${location ? `Location:  ${location} (approximate)\n` : ''}\nAllow only if the device shows the same code.`
+        });
+        return response === 0;
+      } catch { return false; } finally { clearTimeout(t); }
     }
   };
   relay = startRelayLink(remoteApi(deps));

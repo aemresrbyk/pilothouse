@@ -55,7 +55,11 @@ async function joinRoom(req, env, url) {
     if (!success) return new Response('slow down', { status: 429 });
   }
   const stub = env.ROOMS.get(env.ROOMS.idFromName(room));
-  return stub.fetch(new Request(`https://room/${secret !== null ? 'host' : 'client'}`, req));
+  const fwd = new Request(`https://room/${secret !== null ? 'host' : 'client'}`, req);
+  // Roughly where a device is (city, country), shown on the computer while it pairs. Nothing is kept.
+  const loc = [req.cf?.city, req.cf?.country].filter(Boolean).join(', ');
+  if (secret === null && loc) fwd.headers.set('x-ph-loc', loc.slice(0, 80));
+  return stub.fetch(fwd);
 }
 
 export class Room {
@@ -66,6 +70,7 @@ export class Room {
     const tag = role === 'host' ? 'host' : `c${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
     if (tag === 'host') for (const old of this.state.getWebSockets('host')) old.close(4000, 'replaced');
     this.state.acceptWebSocket(server, [tag]); // hibernation: an idle room costs nothing
+    if (tag !== 'host') server.serializeAttachment({ loc: req.headers.get('x-ph-loc') || '' });
     return new Response(null, { status: 101, webSocket: client });
   }
   webSocketMessage(ws, msg) {
@@ -79,7 +84,7 @@ export class Room {
     }
     const [host] = this.state.getWebSockets('host');
     if (!host) return ws.send(JSON.stringify({ offline: true }));
-    host.send(JSON.stringify({ from: tag, data: msg }));
+    host.send(JSON.stringify({ from: tag, data: msg, loc: ws.deserializeAttachment()?.loc || undefined }));
   }
   webSocketClose(ws, code) { try { ws.close(code === 1005 ? 1000 : code); } catch {} }
   webSocketError(ws) { try { ws.close(1011); } catch {} }
