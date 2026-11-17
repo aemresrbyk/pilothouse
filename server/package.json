@@ -1,6 +1,6 @@
 {
   "name": "pilothouse-server",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "Pilothouse without the window: run coding agents on a server, answer them from usepilothouse.com/app or the iPhone app.",
   "license": "MIT",
   "homepage": "https://usepilothouse.com",
