@@ -21,6 +21,14 @@ import { playClickSound } from '../utils/audio';
 import { AppLogo } from './AppLogo';
 import { isMac, keyLabel } from '../utils/platform';
 
+// "/Users/me/.local/bin/claude --resume 83d2ee14-6cb7-…" → "claude --resume 83d2ee14…" for the tab label.
+export function shortCommand(cmd: string): string {
+  const m = /^\s*(?:"([^"]+)"|(\S+))(.*)$/s.exec(cmd);
+  if (!m) return cmd;
+  const bin = (m[1] ?? m[2]).split(/[\\/]/).pop();
+  return `${bin}${m[3]}`.replace(/\b([0-9a-f]{8})-[0-9a-f-]{8,}\b/gi, '$1…');
+}
+
 interface ChromeTabBarProps {
   tabs: TabSession[];
   activeTabId: string;
@@ -28,6 +36,7 @@ interface ChromeTabBarProps {
   projects: ProjectItem[];
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
+  onMoveTab: (fromId: string, toId: string) => void;
   onNewTab: (projectId?: string) => void;
   onBrowseFolder: () => void;
   onOpenAddModal: () => void;
@@ -57,6 +66,7 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
   projects,
   onSelectTab,
   onCloseTab,
+  onMoveTab,
   onNewTab,
   onBrowseFolder,
   onOpenAddModal,
@@ -127,11 +137,15 @@ export const ChromeTabBar: React.FC<ChromeTabBarProps> = ({
             const projectTabs = tabs.filter((t) => t.projectId === tab.projectId);
             const tabIndex = projectTabs.findIndex((t) => t.id === tab.id);
             const baseName = project?.name || 'Terminal';
-            const tabName = tab.initialCommand ? `${baseName} · ${tab.initialCommand}` : projectTabs.length > 1 ? `${baseName} #${tabIndex + 1}` : baseName;
+            const tabName = tab.initialCommand ? `${baseName} · ${shortCommand(tab.initialCommand)}` : projectTabs.length > 1 ? `${baseName} #${tabIndex + 1}` : baseName;
 
             return (
               <div
                 key={tab.id}
+                draggable
+                onDragStart={(e) => { e.dataTransfer.setData('application/x-pilothouse-tab', tab.id); e.dataTransfer.effectAllowed = 'move'; }}
+                onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-pilothouse-tab')) e.preventDefault(); }}
+                onDrop={(e) => { const from = e.dataTransfer.getData('application/x-pilothouse-tab'); if (from) { e.preventDefault(); onMoveTab(from, tab.id); } }}
                 onClick={() => {
                   playClickSound();
                   onSelectTab(tab.id);

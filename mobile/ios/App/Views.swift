@@ -39,6 +39,14 @@ struct PairView: View {
             }
             if busy { ProgressView() }
             if let error { Text(error).foregroundStyle(.orange).font(.callout) }
+            if !adding {
+                Button("No computer at hand? Try a demo") {
+                    Client.startDemo()
+                    model.paired = true
+                    Task { await model.refresh() }
+                }
+                .font(.callout)
+            }
             Spacer()
         }
         .padding(24)

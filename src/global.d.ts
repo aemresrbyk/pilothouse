@@ -61,6 +61,7 @@ declare global {
       pickFile: (title: string) => Promise<string | null>;
       debateStart: (projectPath: string, topic: string, agents: string[], rounds: number) => Promise<{ ok?: true; error?: string }>;
       debateStop: (projectPath: string) => Promise<void>;
+      debateAgents: () => Promise<string[]>;
       onDebateUpdate: (callback: (u: { projectPath: string; markdown?: string; done?: boolean; error?: string }) => void) => () => void;
       agentOptions: (agentId: string) => Promise<AgentOptions>;
       geminiKeyStatus: () => Promise<{ hasKey: boolean; last4?: string }>;

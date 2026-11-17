@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { isMac, APP_KEYS } from '../utils/platform';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { WebglAddon } from '@xterm/addon-webgl';
 import '@xterm/xterm/css/xterm.css';
 import { ThemeConfig } from '../theme';
 
@@ -46,6 +47,13 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(containerRef.current);
+    // GPU rendering: far cheaper than the DOM renderer when a tab is shown or scrolls. Browsers cap WebGL contexts
+    // (~16), so a lost one falls back to the DOM renderer instead of a blank terminal.
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose());
+      term.loadAddon(webgl);
+    } catch {}
 
     termRef.current = term;
     fitAddonRef.current = fitAddon;
@@ -59,7 +67,7 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({
 
       try {
         const dims = fitAddon.proposeDimensions();
-        if (dims && dims.cols >= 40 && dims.rows >= 8) {
+        if (dims && dims.cols >= 40 && dims.rows >= 8 && (dims.cols !== term.cols || dims.rows !== term.rows)) {
           term.resize(dims.cols, dims.rows);
           window.electronAPI.ptyResize(tabId, dims.cols, dims.rows);
         }
@@ -172,8 +180,10 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({
       const timer = setTimeout(() => {
         try {
           const dims = fitAddonRef.current?.proposeDimensions();
-          if (dims && dims.cols >= 40 && dims.rows >= 8) {
-            termRef.current?.resize(dims.cols, dims.rows);
+          const t = termRef.current;
+          // Same size: no resize, so the agent isn't told to redraw its whole screen on every tab switch.
+          if (t && dims && dims.cols >= 40 && dims.rows >= 8 && (dims.cols !== t.cols || dims.rows !== t.rows)) {
+            t.resize(dims.cols, dims.rows);
             window.electronAPI.ptyResize(tabId, dims.cols, dims.rows);
           }
           termRef.current?.focus();

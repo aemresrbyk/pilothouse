@@ -151,9 +151,9 @@ final class Client {
     var name: String { defaults.string(forKey: k("name")) ?? "Computer" }
     var base: URL? { defaults.string(forKey: k("base")).flatMap(URL.init(string:)) }
     var relayRoom: String? { defaults.string(forKey: k("relayRoom")) }
-    var paired: Bool { (base != nil || relayRoom != nil) && Keychain.get(k("token")) != nil }
+    var paired: Bool { id == Demo.id ? defaults.bool(forKey: "demo") : (base != nil || relayRoom != nil) && Keychain.get(k("token")) != nil }
     // Shown in Settings: where this phone reaches the computer.
-    var connection: String { relayRoom != nil ? "Pilothouse relay (end-to-end encrypted)" : base?.host ?? "Not paired" }
+    var connection: String { id == Demo.id ? "Demo: sample data on this iPhone" : relayRoom != nil ? "Pilothouse relay (end-to-end encrypted)" : base?.host ?? "Not paired" }
     var pushKey: String? { Keychain.get(k("pushKey")) }
 
     private struct ErrorBody: Decodable { let error: String }
@@ -161,6 +161,7 @@ final class Client {
     private struct Paired: Decodable { let token: String; let device: String?; let relayKey: String?; let computer: String? }
 
     func send<T: Decodable>(_ method: String, _ path: String, _ body: [String: Any]? = nil, base: URL? = nil, auth: Bool = true) async throws -> T {
+        if id == Demo.id { return try Self.decode(200, Demo.reply(method, path)) }
         if base == nil, let room = relayRoom {
             guard let device = defaults.string(forKey: k("relayDevice")), let key = Keychain.get(k("relayKey")), let token = Keychain.get(k("token"))
             else { throw PilotError.notPaired }
@@ -224,6 +225,15 @@ final class Client {
         return c
     }
 
+    // Try the app without a computer: a demo computer with sample agents (Unpair removes it).
+    static func startDemo() {
+        let c = Client(id: Demo.id)
+        store.set(true, forKey: "demo")
+        store.set("Demo Mac", forKey: c.k("name"))
+        Demo.answered = false
+        if !ids.contains(Demo.id) { ids = ids.filter { Client(id: $0).paired } + [Demo.id] }
+    }
+
     // The entry for a computer this phone already knew, else a free one.
     private static func slot(_ same: (Client) -> Bool) -> Client {
         if let known = all.first(where: same) { return known }
@@ -239,6 +249,7 @@ final class Client {
     func forget() {
         for key in ["token", "pushKey", "relayKey"] { Keychain.set(nil, for: k(key)) }
         for key in ["base", "relayRoom", "relayDevice", "name"] { defaults.removeObject(forKey: k(key)) }
+        if id == Demo.id { defaults.removeObject(forKey: "demo") }
         Self.ids = Self.ids.filter { $0 != id }
         if Self.ids.isEmpty { Self.ids = [""] }
     }

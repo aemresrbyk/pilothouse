@@ -13,6 +13,8 @@ open Pilothouse.xcodeproj    # set your team in project.yml (DEVELOPMENT_TEAM) a
 
 Run on a device, then pair: Pilothouse → Settings → Remote control → scan the QR code.
 
+No computer at hand? **Try a demo** on the first screen loads sample agents made up on the phone (`Shared/Demo.swift`, no network); Unpair in Settings removes it. App Review uses this too.
+
 ## Notifications (optional)
 
 Pilothouse sends pushes straight from your computer to Apple, signed with an APNs key from your own Apple Developer account:

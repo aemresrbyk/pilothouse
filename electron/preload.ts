@@ -133,6 +133,7 @@ export const electronAPI = {
   debateStart: (projectPath: string, topic: string, agents: string[], rounds: number): Promise<{ ok?: true; error?: string }> =>
     ipcRenderer.invoke('debate:start', projectPath, topic, agents, rounds),
   debateStop: (projectPath: string): Promise<void> => ipcRenderer.invoke('debate:stop', projectPath),
+  debateAgents: (): Promise<string[]> => ipcRenderer.invoke('debate:agents'),
   onDebateUpdate: (callback: (u: { projectPath: string; markdown?: string; done?: boolean; error?: string }) => void): (() => void) => {
     const listener = (_e: any, u: any) => callback(u);
     ipcRenderer.on('debate:update', listener);

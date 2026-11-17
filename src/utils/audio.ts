@@ -16,6 +16,12 @@ function getAudioContext(): AudioContext | null {
   return audioCtx;
 }
 
+// Creating an AudioContext takes ~200 ms; do it while the app is idle, not inside the first click.
+if (typeof window !== 'undefined') {
+  const warm = () => { if (!audioCtx && (window.AudioContext || (window as any).webkitAudioContext)) audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)(); };
+  'requestIdleCallback' in window ? window.requestIdleCallback(warm, { timeout: 3000 }) : setTimeout(warm, 1500);
+}
+
 export function isSoundEnabled(): boolean {
   return soundEnabled;
 }

@@ -149,6 +149,15 @@ export const App: React.FC = () => {
     setActiveTabId(tabId);
   };
 
+  // Drag a tab onto another to move it there (also changes ⌘1-9 and grid order; terminals keep running).
+  const handleMoveTab = (fromId: string, toId: string) => setTabs((prev) => {
+    const from = prev.findIndex((t) => t.id === fromId), to = prev.findIndex((t) => t.id === toId);
+    if (from < 0 || to < 0 || from === to) return prev;
+    const next = [...prev];
+    next.splice(to, 0, next.splice(from, 1)[0]);
+    return next;
+  });
+
   const handleCloseTab = (tabId: string) => {
     const remaining = tabs.filter((t) => t.id !== tabId);
     setTabs(remaining);
@@ -546,6 +555,7 @@ export const App: React.FC = () => {
         projects={projects}
         onSelectTab={handleSelectTab}
         onCloseTab={handleCloseTab}
+        onMoveTab={handleMoveTab}
         onNewTab={handleNewTab}
         onBrowseFolder={handleBrowseFolder}
         onOpenAddModal={() => setIsAddProjectOpen(true)}

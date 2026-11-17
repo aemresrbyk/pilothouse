@@ -13,7 +13,15 @@ export const DebateView: React.FC<{
   onUseDecision: (text: string) => void;
 }> = ({ project, themeConfig: t, initialTopic, onClose, onUseDecision }) => {
   const [topic, setTopic] = useState(initialTopic);
-  const [picked, setPicked] = useState<string[]>(() => [...new Set([project.agent || 'claude', ...DEBATE_AGENTS])].filter((a) => DEBATE_AGENTS.includes(a)).slice(0, 2));
+  const [picked, setPicked] = useState<string[]>([]);
+  const [installed, setInstalled] = useState<string[] | null>(null);
+  // Preselect two installed agents, the project's own first.
+  useEffect(() => {
+    window.electronAPI.debateAgents().then((list) => {
+      setInstalled(list);
+      setPicked([...new Set([project.agent || 'claude', ...list])].filter((a) => list.includes(a)).slice(0, 2));
+    }).catch(() => setInstalled([]));
+  }, [project.agent]);
   const [rounds, setRounds] = useState(3);
   const [running, setRunning] = useState(false);
   const [markdown, setMarkdown] = useState('');
@@ -54,10 +62,10 @@ export const DebateView: React.FC<{
         {AGENTS.filter((a) => DEBATE_AGENTS.includes(a.id)).map((a) => {
           const on = picked.includes(a.id);
           return (
-            <button key={a.id} disabled={running} aria-pressed={on}
+            <button key={a.id} disabled={running} aria-pressed={on} title={installed && !installed.includes(a.id) ? `${a.name} is not installed on this computer` : undefined}
               onClick={() => setPicked(on ? picked.filter((x) => x !== a.id) : [...picked, a.id])}
               className="px-2 py-0.5 rounded border disabled:opacity-50"
-              style={on ? { backgroundColor: t.accent, borderColor: t.accent, color: t.accentText } : box}>
+              style={on ? { backgroundColor: t.accent, borderColor: t.accent, color: t.accentText } : { ...box, opacity: installed && !installed.includes(a.id) ? 0.5 : 1 }}>
               {a.name}
             </button>
           );
