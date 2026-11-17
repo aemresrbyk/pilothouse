@@ -17,6 +17,7 @@ import { ChromeTabBar } from './components/ChromeTabBar';
 import { TabWorkspace } from './components/TabWorkspace';
 import { SettingsModal } from './components/SettingsModal';
 import { AddProjectModal } from './components/AddProjectModal';
+import { applyLanguage, uiLanguageFor } from './i18n';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 import {
   isSoundEnabled,
@@ -102,6 +103,9 @@ export const App: React.FC = () => {
       console.error('Error loading data:', err);
     }
   };
+
+  // Interface language: follows the setting, or the system language when it is 'auto'.
+  useEffect(() => { applyLanguage(uiLanguageFor(settings.uiLanguage)); }, [settings.uiLanguage]);
 
   useEffect(() => {
     loadData();

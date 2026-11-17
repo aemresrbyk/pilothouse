@@ -28,7 +28,15 @@ export default defineConfig({
         },
       }
     ]),
-    renderer()
+    renderer(),
+    // ORT's .wasm (~15 MB) is handed to the renderer as bytes by main (wake:assets), so the copy Vite emits is never
+    // loaded; dropping it keeps the app from shipping the file twice.
+    {
+      name: 'drop-unused-ort-wasm',
+      generateBundle(_opts, bundle) {
+        for (const f of Object.keys(bundle)) if (/ort-wasm.*\.wasm$/.test(f)) delete bundle[f];
+      }
+    }
   ],
   resolve: {
     alias: {
