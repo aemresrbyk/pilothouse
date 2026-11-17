@@ -21,51 +21,86 @@ struct PairView: View {
     @State private var busy = false
     @State private var securityCode: String?
 
+    @State private var showPaste = false
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Spacer()
-            Image(systemName: "location.north.circle").font(.system(size: 56)).foregroundStyle(Color.lime)
-            Text("Pilothouse").font(.largeTitle.bold())
-            Text("On your computer: Pilothouse → Settings → Remote control. Scan the QR code. Works anywhere, end-to-end encrypted, no account.")
-                .foregroundStyle(.secondary)
-            Button { scanning = true } label: {
-                Label("Scan QR code", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity).padding(.vertical, 6)
+        // Scanning the QR is the only way in, so it fills the screen; pasting a link and the demo stay small.
+        VStack(spacing: 20) {
+            HStack(spacing: 8) {
+                Image(systemName: "location.north.circle.fill").foregroundStyle(Color.lime)
+                Text("Pilothouse").font(.headline)
+                Spacer()
             }
-            .buttonStyle(.borderedProminent)
-            .foregroundStyle(.black)
-            .disabled(busy || !DataScannerViewController.isSupported)
-            HStack {
-                TextField("…or paste the link", text: $link).textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.never)
-                Button("Pair") { pair(link) }.disabled(link.isEmpty || busy)
-            }
+            Spacer(minLength: 0)
             if let securityCode {
-                VStack(spacing: 6) {
-                    Text("Security code").font(.callout).foregroundStyle(.secondary)
+                VStack(spacing: 10) {
+                    Text("Security code").font(.headline).foregroundStyle(.secondary)
                     Text("\(securityCode.prefix(3)) \(securityCode.suffix(3))")
-                        .font(.system(size: 40, weight: .semibold, design: .monospaced)).foregroundStyle(Color.lime)
+                        .font(.system(size: 52, weight: .semibold, design: .monospaced)).foregroundStyle(Color.lime)
                     Text("Your computer shows a code too. Click Allow there if they match.")
-                        .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    ProgressView()
+                        .foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    ProgressView().padding(.top, 4)
                 }
                 .frame(maxWidth: .infinity)
-                .padding()
-                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+                .padding(28)
+                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 24))
                 .accessibilityElement(children: .combine)
-            } else if busy { ProgressView() }
-            if let error { Text(error).foregroundStyle(.orange).font(.callout) }
-            if !adding {
-                Button("No computer at hand? Try a demo") {
-                    Client.startDemo()
-                    model.paired = true
-                    Task { await model.refresh() }
+            } else {
+                Button { scanning = true } label: {
+                    VStack(spacing: 16) {
+                        Image(systemName: "qrcode.viewfinder").font(.system(size: 96, weight: .light))
+                        Text("Scan QR code").font(.title.bold())
+                    }
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 44)
+                    .background(Color.lime, in: RoundedRectangle(cornerRadius: 28))
                 }
-                .font(.callout)
+                .buttonStyle(.plain)
+                .disabled(busy || !DataScannerViewController.isSupported)
+                .accessibilityHint("Opens the camera to scan the QR code shown in Pilothouse on your computer")
+                VStack(alignment: .leading, spacing: 8) {
+                    step(1, "Open Pilothouse on your computer")
+                    step(2, "Settings → Remote control")
+                    step(3, "Scan it, then click Allow there")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if !DataScannerViewController.isSupported {
+                    Text("This iPhone can't scan codes here. Paste the link instead.").font(.callout).foregroundStyle(.orange)
+                }
             }
-            Spacer()
+            if busy && securityCode == nil { ProgressView() }
+            if let error { Text(error).foregroundStyle(.orange).font(.callout).multilineTextAlignment(.center) }
+            Spacer(minLength: 0)
+            VStack(spacing: 12) {
+                if showPaste || !DataScannerViewController.isSupported {
+                    HStack {
+                        TextField("Paste the link", text: $link).textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.never)
+                        Button("Pair") { pair(link) }.disabled(link.isEmpty || busy)
+                    }
+                } else {
+                    Button("Paste a link instead") { showPaste = true }.font(.callout).foregroundStyle(.secondary)
+                }
+                if !adding {
+                    Button("No computer at hand? Try a demo") {
+                        Client.startDemo()
+                        model.paired = true
+                        Task { await model.refresh() }
+                    }
+                    .font(.callout)
+                }
+            }
         }
         .padding(24)
         .sheet(isPresented: $scanning) {
             QRScanner { code in scanning = false; pair(code) }.ignoresSafeArea()
+        }
+    }
+
+    private func step(_ n: Int, _ text: String) -> some View {
+        HStack(spacing: 10) {
+            Text("\(n)").font(.callout.bold()).foregroundStyle(.black).frame(width: 24, height: 24).background(Color.lime, in: Circle())
+            Text(text).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -171,7 +206,10 @@ struct HomeView: View {
             }
             .navigationTitle("Pilothouse")
             .navigationDestination(for: String.self) { id in SessionView(id: id) }
-            .toolbar { NavigationLink { SettingsView() } label: { Image(systemName: "gearshape") } }
+            .toolbar {
+                NavigationLink { PairView(adding: true) } label: { Image(systemName: "qrcode.viewfinder") }.accessibilityLabel("Add a computer")
+                NavigationLink { SettingsView() } label: { Image(systemName: "gearshape") }
+            }
             .refreshable { await model.refresh(); await model.refreshProjects() }
         }
         // On the stack, not the list: the list disappears when a session is pushed, and polling must go on.
