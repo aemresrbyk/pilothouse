@@ -769,4 +769,23 @@ assert.equal(shortCommand('/Users/me/.local/bin/claude --resume 83d2ee14-6cb7-41
 assert.equal(shortCommand('"C:\\Program Files\\x\\codex.cmd" resume 83d2ee14-6cb7-418c-b831-8c4c698994a8'), 'codex.cmd resume 83d2ee14…');
 assert.equal(shortCommand('npm run dev'), 'npm run dev');
 
+{
+  // Translations: every language has the same keys, and every key is text the app (or web page) really shows,
+  // so a reworded English string can't leave stale translations behind.
+  const { REMOTE_I18N } = await import('../electron/remoteI18n');
+  const { REMOTE_PAGE } = await import('../electron/remotePage');
+  const webKeys = Object.keys(REMOTE_I18N.tr).sort();
+  for (const [lang, d] of Object.entries(REMOTE_I18N)) assert.deepStrictEqual(Object.keys(d).sort(), webKeys, `web ${lang} keys`);
+  const pageSrc = fs.readFileSync(path.join(import.meta.dir, '../electron/remotePage.ts'), 'utf-8');
+  for (const k of webKeys) assert.ok(pageSrc.includes(k.replace('%n waiting', ' waiting').replace(/^%n/, '')) || REMOTE_PAGE.includes(k), `web key not in page: ${k}`);
+  const langs = ['tr', 'es', 'pt', 'de', 'fr', 'ru', 'zh', 'ja', 'ko'];
+  const dicts = await Promise.all(langs.map(async (l) => (await import(`../src/i18n/${l}.ts`)).default as Record<string, string>));
+  const keys = Object.keys(dicts[0]).sort();
+  dicts.forEach((d, i) => assert.deepStrictEqual(Object.keys(d).sort(), keys, `${langs[i]} keys`));
+  const src = ['src/App.tsx', ...fs.readdirSync(path.join(import.meta.dir, '../src/components')).map((f) => `src/components/${f}`)]
+    .map((f) => fs.readFileSync(path.join(import.meta.dir, '..', f), 'utf-8').replace(/&amp;/g, '&')).join('\n');
+  const missing = keys.filter((k) => !src.includes(k) && !src.includes(k.replace(/'/g, "\\'")));
+  assert.deepStrictEqual(missing, [], 'desktop translation keys not found in the UI');
+}
+
 console.log('selfcheck ok');

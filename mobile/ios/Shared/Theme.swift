@@ -22,8 +22,8 @@ extension Color {
 
 func statusLabel(_ s: String) -> String {
     switch s {
-    case "waiting": return "needs you"
-    case "running": return "working"
-    default: return "idle"
+    case "waiting": return String(localized: "needs you")
+    case "running": return String(localized: "working")
+    default: return String(localized: "idle")
     }
 }

@@ -97,7 +97,7 @@ struct PairView: View {
         }
     }
 
-    private func step(_ n: Int, _ text: String) -> some View {
+    private func step(_ n: Int, _ text: LocalizedStringKey) -> some View {
         HStack(spacing: 10) {
             Text("\(n)").font(.callout.bold()).foregroundStyle(.black).frame(width: 24, height: 24).background(Color.lime, in: Circle())
             Text(text).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -356,7 +356,7 @@ struct SessionView: View {
                 ForEach(Array(s.choices.enumerated()), id: \.element) { i, c in
                     let isArmed = armed == c.key
                     Button { choose(s, c) } label: {
-                        Text(isArmed ? "Tap again to approve: \(c.label)" : "\(c.key.trimmingCharacters(in: .whitespacesAndNewlines)). \(c.label)")
+                        Text(isArmed ? LocalizedStringKey("Tap again to approve: \(c.label)") : LocalizedStringKey(stringLiteral: "\(c.key.trimmingCharacters(in: .whitespacesAndNewlines)). \(c.label)"))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 4)
                     }
@@ -370,7 +370,7 @@ struct SessionView: View {
             if chat == nil || showTerminal { KeyBar(id: id) }
             if let e = error ?? speech.problem { Text(e).font(.caption).foregroundStyle(.orange) }
             HStack(alignment: .bottom) {
-                TextField(speech.listening ? "Listening…" : "Message the agent", text: $text, axis: .vertical)
+                TextField(speech.listening ? LocalizedStringKey("Listening…") : "Message the agent", text: $text, axis: .vertical)
                     .lineLimit(1...4)
                     .textFieldStyle(.roundedBorder)
                     .focused($typing)
@@ -378,7 +378,7 @@ struct SessionView: View {
                     Image(systemName: speech.listening ? "stop.circle.fill" : "mic.circle").font(.title2)
                 }
                 .foregroundStyle(speech.listening ? .red : .lime)
-                .accessibilityLabel(speech.listening ? "Stop listening" : "Speak a message")
+                .accessibilityLabel(Text(speech.listening ? LocalizedStringKey("Stop listening") : "Speak a message"))
                 Button { send() } label: { Image(systemName: "arrow.up.circle.fill").font(.title2) }
                     .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy)
                     .accessibilityLabel("Send")
@@ -624,7 +624,7 @@ struct ConversationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(resumed ? "Opened" : "Continue here") { confirmResume = true }.disabled(resumed || c.projectId.isEmpty)
+                Button(resumed ? LocalizedStringKey("Opened") : "Continue here") { confirmResume = true }.disabled(resumed || c.projectId.isEmpty)
             }
         }
         .confirmationDialog("Continue this conversation in a Pilothouse tab?", isPresented: $confirmResume, titleVisibility: .visible) {
