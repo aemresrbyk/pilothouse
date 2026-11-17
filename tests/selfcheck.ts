@@ -22,6 +22,7 @@ import { promptArgs, handoffPrompt, AGENTS } from '../src/types';
 import { execFileSync } from 'child_process';
 import { mergeProjects } from '../electron/setup';
 import { setGeminiApiKey, geminiKeyStatus } from '../electron/geminiKey';
+import { shortCommand } from '../src/components/ChromeTabBar';
 import { runDebate, allAgree, debatePrompt, DEBATE_FILE } from '../electron/debate';
 
 {
@@ -745,5 +746,9 @@ if (bin && hasModel()) {
   await runDebate({ projectPath: dir, topic: 'y', agents: ['gemini', 'claude', 'codex'], rounds: 2, ask: async (a) => { seen.push(a); return a === 'gemini' ? '(no answer: not logged in)' : 'DISAGREE'; }, onUpdate: () => {}, stopped: () => false });
   assert.deepStrictEqual(seen, ['gemini', 'claude', 'codex', 'claude', 'codex', 'claude']); // failed agent sits out; an answering one decides
 }
+
+assert.equal(shortCommand('/Users/me/.local/bin/claude --resume 83d2ee14-6cb7-418c-b831-8c4c698994a8'), 'claude --resume 83d2ee14…');
+assert.equal(shortCommand('"C:\\Program Files\\x\\codex.cmd" resume 83d2ee14-6cb7-418c-b831-8c4c698994a8'), 'codex.cmd resume 83d2ee14…');
+assert.equal(shortCommand('npm run dev'), 'npm run dev');
 
 console.log('selfcheck ok');

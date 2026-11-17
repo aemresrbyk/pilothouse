@@ -5,17 +5,8 @@
     "": {
       "name": "electron-app",
       "dependencies": {
-        "@xterm/addon-fit": "^0.11.0",
-        "@xterm/headless": "^6.0.0",
-        "@xterm/xterm": "^6.0.0",
         "electron-updater": "^6.8.11",
-        "lucide-react": "^1.65.0",
         "node-pty": "^1.1.0",
-        "onnxruntime-web": "^1.31.1",
-        "qrcode": "^1.5.4",
-        "react": "^19.3.1",
-        "react-dom": "^19.3.1",
-        "web-push": "3",
       },
       "devDependencies": {
         "@types/node": "^26.6.6",
@@ -24,15 +15,25 @@
         "@types/react-dom": "^19.3.0",
         "@types/web-push": "^3.6.4",
         "@vitejs/plugin-react": "^6.1.2",
+        "@xterm/addon-fit": "^0.11.0",
+        "@xterm/addon-webgl": "0.19.0",
+        "@xterm/headless": "^6.0.0",
+        "@xterm/xterm": "^6.0.0",
         "autoprefixer": "^10.6.2",
         "electron": "^45.1.0",
         "electron-builder": "^26.18.0",
+        "lucide-react": "^1.65.0",
+        "onnxruntime-web": "^1.31.1",
         "postcss": "^8.5.32",
+        "qrcode": "^1.5.4",
+        "react": "^19.3.1",
+        "react-dom": "^19.3.1",
         "tailwindcss": "^3.4.17",
         "typescript": "^7.0.2",
         "vite": "^8.3.5",
         "vite-plugin-electron": "^1.1.2",
         "vite-plugin-electron-renderer": "^1.0.0",
+        "web-push": "^3.6.7",
       },
     },
   },
@@ -212,6 +213,8 @@
     "@xmldom/xmldom": ["@xmldom/xmldom@0.8.15", "", {}, "sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA=="],
 
     "@xterm/addon-fit": ["@xterm/addon-fit@0.11.0", "", {}, "sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g=="],
+
+    "@xterm/addon-webgl": ["@xterm/addon-webgl@0.19.0", "", {}, "sha512-b3fMOsyLVuCeNJWxolACEUED0vm7qC0cy4wRvf3oURSzDTYVQiGPhTnhWZwIHdvC48Y+oLhvYXnY4XDXPoJo6A=="],
 
     "@xterm/headless": ["@xterm/headless@6.0.0", "", {}, "sha512-5Yj1QINYCyzrZtf8OFIHi47iQtI+0qYFPHmouEfG8dHNxbZ9Tb9YGSuLcsEwj9Z+OL75GJqPyJbyoFer80a2Hw=="],
 

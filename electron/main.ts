@@ -640,6 +640,15 @@ function registerIpcHandlers() {
       .finally(() => debates.delete(projectPath));
     return { ok: true };
   });
+  // Which debate agents this computer has, so the panel only preselects ones that can answer.
+  ipcMain.handle('debate:agents', async () => {
+    const settings = storage.getSettings();
+    const found = await Promise.all(DEBATE_AGENTS.map(async (a) => {
+      const set = settings.agentPaths?.[a] || (a === 'claude' ? settings.claudePath : '');
+      return (set && fs.existsSync(set)) || !!(await findAgentBinary(agentById(a).command)) ? a : null;
+    }));
+    return found.filter(Boolean);
+  });
   ipcMain.handle('debate:stop', async (_e, projectPath: string) => {
     const run = debates.get(projectPath);
     if (run) { run.stopped = true; run.child?.kill(); }

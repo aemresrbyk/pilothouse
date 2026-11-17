@@ -123,7 +123,7 @@
     "anthropic",
     "electron"
   ],
-  "author": "Ali Emre Sar\u0131b\u0131y\u0131k (aemresrbyk) <https://github.com/aemresrbyk>",
+  "author": "Ali Emre Sarıbıyık (aemresrbyk) <https://github.com/aemresrbyk>",
   "repository": {
     "type": "git",
     "url": "https://github.com/aemresrbyk/pilothouse.git"
@@ -134,17 +134,8 @@
   "homepage": "https://usepilothouse.com",
   "license": "MIT",
   "dependencies": {
-    "@xterm/addon-fit": "^0.11.0",
-    "@xterm/headless": "^6.0.0",
-    "@xterm/xterm": "^6.0.0",
     "electron-updater": "^6.8.11",
-    "lucide-react": "^1.65.0",
-    "node-pty": "^1.1.0",
-    "onnxruntime-web": "^1.31.1",
-    "qrcode": "^1.5.4",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1",
-    "web-push": "^3.6.7"
+    "node-pty": "^1.1.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
@@ -153,14 +144,24 @@
     "@types/react-dom": "^19.3.0",
     "@types/web-push": "^3.6.4",
     "@vitejs/plugin-react": "^6.1.2",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-webgl": "0.19.0",
+    "@xterm/headless": "^6.0.0",
+    "@xterm/xterm": "^6.0.0",
     "autoprefixer": "^10.6.2",
     "electron": "^45.1.0",
     "electron-builder": "^26.18.0",
+    "lucide-react": "^1.65.0",
+    "onnxruntime-web": "^1.31.1",
     "postcss": "^8.5.32",
+    "qrcode": "^1.5.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vite-plugin-electron": "^1.1.2",
-    "vite-plugin-electron-renderer": "^1.0.0"
+    "vite-plugin-electron-renderer": "^1.0.0",
+    "web-push": "^3.6.7"
   }
 }
