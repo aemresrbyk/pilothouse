@@ -73,15 +73,25 @@ Post page (as maker) → arrow next to the title → **Embed** → pick the them
 
 ## Pre-launch forum threads (post from your own account, answer every reply the same day)
 
-1. **Now, `p/introduce-yourself`** (no product pitch, no story; reads like a person):
+1. **Now, `p/introduce-yourself`** (why it's free, no money expected, what it solves; plain, no story):
 
-   **Title:** Hello from Turkey
+   **Title:** Hello from Turkey, building a free tool for people who use coding agents
 
-   Hey everyone, I'm Ali. I'm an electrical engineer based in Turkey. I make small puzzle games at Kitefold Games, and these days I spend most of my time on developer tools for AI coding agents.
+   Hey everyone, I'm Ali, an electrical engineer from Turkey. I make small puzzle games at Kitefold Games, and lately I've been working on a tool for my own workflow with AI coding agents.
 
-   I'm planning my first launch here later this year, so for now I'm mostly reading, trying out products and getting a feel for how things work around here.
+   I use Claude Code and Codex every day, usually a few of them at once in different projects, and keeping track of them was getting messy. I couldn't find anything that did what I wanted, so I started building it myself. It's called Pilothouse. It's free and open source (MIT), there's no account and it doesn't collect any data. I'm not trying to make money from it, I'd just like other people with the same problem to be able to use it too.
 
-   If you've launched on Product Hunt before, what's one thing you'd do differently?
+   What it does right now:
+   - runs Claude Code, Codex, Gemini CLI, Antigravity and opencode side by side in tabs, each with its own model and flags
+   - collects every approval request from every agent in one inbox, with an extra confirmation for risky commands like rm -rf or force-push
+   - lets you check in from your phone (iPhone app or any browser): live terminal, approvals and diffs, end-to-end encrypted
+   - hands the work to another agent with the context when one hits its usage limit
+   - lets two agents debate a plan and write down the decision
+   - voice input, if you'd rather talk than type
+
+   The part I don't really know is how to get it in front of people. I've never launched anything like this before, so I'm planning to launch here in December and learn as I go.
+
+   If you've launched on Product Hunt before, what's one thing you'd do differently? And if you use coding agents, I'd like to hear what bothers you the most.
 
 2. **2–3 days later, `p/vibecoding`:** "How do you know when your coding agent is waiting for you?" Ask how people notice approvals across several agents (notifications, tmux, auto-approve and where they draw the line). Don't mention Pilothouse unless someone asks.
 
