@@ -12,8 +12,23 @@ final class Speech: ObservableObject {
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
 
+    // Every language this iPhone can recognise, each named in its own language (Türkçe, Deutsch, 日本語 …).
+    static let languages: [(id: String, name: String)] = SFSpeechRecognizer.supportedLocales()
+        .map { l in
+            let id = l.identifier.replacingOccurrences(of: "_", with: "-")
+            return (id, (l.localizedString(forIdentifier: l.identifier) ?? id).capitalized(with: l))
+        }
+        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+    // Saved choice, else the iPhone's own language when it can be recognised, else English.
     static var language: String {
-        get { UserDefaults.standard.string(forKey: "voiceLanguage") ?? "tr-TR" }
+        get {
+            if let saved = UserDefaults.standard.string(forKey: "voiceLanguage") { return saved }
+            let mine = Locale.current.identifier.replacingOccurrences(of: "_", with: "-")
+            if languages.contains(where: { $0.id == mine }) { return mine }
+            let lang = Locale.current.language.languageCode?.identifier ?? "en"
+            return languages.first(where: { $0.id.hasPrefix(lang + "-") })?.id ?? "en-US"
+        }
         set { UserDefaults.standard.set(newValue, forKey: "voiceLanguage") }
     }
 

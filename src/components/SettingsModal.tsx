@@ -47,6 +47,15 @@ const GeminiKeyField: React.FC = () => {
   );
 };
 
+// Languages Whisper recognises well, by its own codes, each named in its own language.
+const VOICE_LANGUAGES: [string, string][] = [
+  ['ar', 'العربية'], ['cs', 'Čeština'], ['da', 'Dansk'], ['de', 'Deutsch'], ['el', 'Ελληνικά'], ['en', 'English'], ['es', 'Español'],
+  ['fa', 'فارسی'], ['fi', 'Suomi'], ['fr', 'Français'], ['he', 'עברית'], ['hi', 'हिन्दी'], ['hu', 'Magyar'], ['id', 'Bahasa Indonesia'],
+  ['it', 'Italiano'], ['ja', '日本語'], ['ko', '한국어'], ['ms', 'Bahasa Melayu'], ['nl', 'Nederlands'], ['no', 'Norsk'], ['pl', 'Polski'],
+  ['pt', 'Português'], ['ro', 'Română'], ['ru', 'Русский'], ['sv', 'Svenska'], ['th', 'ไทย'], ['tr', 'Türkçe'], ['uk', 'Українська'],
+  ['ur', 'اردو'], ['vi', 'Tiếng Việt'], ['zh', '中文']
+];
+
 // Remote control: applied live (not on SAVE), so the QR code shows up right away.
 const RemoteField: React.FC = () => {
   const [info, setInfo] = useState<RemoteInfo | null>(null);
@@ -479,11 +488,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   className="bg-[#0c0e14] border border-[#1b2233] text-xs text-zinc-200 rounded px-1.5 py-0.5 outline-none"
                 >
                   <option value="auto">Auto-detect (slower)</option>
-                  <option value="en">English</option>
-                  <option value="tr">Türkçe</option>
-                  <option value="de">Deutsch</option>
-                  <option value="es">Español</option>
-                  <option value="fr">Français</option>
+                  {VOICE_LANGUAGES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
                 </select>
               </div>
               <label className="flex items-start gap-2 cursor-pointer select-none">
