@@ -73,19 +73,15 @@ Post page (as maker) → arrow next to the title → **Embed** → pick the them
 
 ## Pre-launch forum threads (post from your own account, answer every reply the same day)
 
-1. **Now, `p/introduce-yourself`** (plain B1–B2 English, written as yourself):
+1. **Now, `p/introduce-yourself`** (no product pitch, no story; reads like a person):
 
-   **Title:** Hi from Turkey, first post here
+   **Title:** Hello from Turkey
 
-   Hi everyone, I'm Ali. I studied electrical engineering and I live in Turkey. I make small puzzle games at Kitefold Games, and sometimes I build tools for myself when I need them.
+   Hey everyone, I'm Ali. I'm an electrical engineer based in Turkey. I make small puzzle games at Kitefold Games, and these days I spend most of my time on developer tools for AI coding agents.
 
-   These days I use Claude Code and Codex a lot. My problem was simple: I start 3 or 4 agents in different projects, I go make a coffee, and when I come back one of them was waiting for my "yes" for 15 minutes. So I started building a small app for this. It shows all my agents in one window and I can answer them from my phone too. It's called Pilothouse, it's free and open source, and I want to launch it here soon.
+   I'm planning my first launch here later this year, so for now I'm mostly reading, trying out products and getting a feel for how things work around here.
 
-   I never launched on Product Hunt before, so two questions:
-   - What do you wish you knew before your first launch?
-   - If you use coding agents, what annoys you the most?
-
-   Thanks for reading :)
+   If you've launched on Product Hunt before, what's one thing you'd do differently?
 
 2. **2–3 days later, `p/vibecoding`:** "How do you know when your coding agent is waiting for you?" Ask how people notice approvals across several agents (notifications, tmux, auto-approve and where they draw the line). Don't mention Pilothouse unless someone asks.
 
