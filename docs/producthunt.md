@@ -1,6 +1,6 @@
 # Product Hunt launch kit
 
-Follows Product Hunt's [Launch Guide](https://help.producthunt.com/en/collections/19793093-launch-guide) (read 2026-11-17).
+Follows Product Hunt's [Launch Guide](https://help.producthunt.com/en/collections/19793093-launch-guide), [Featuring Guidelines](https://help.producthunt.com/en/articles/9883485-product-hunt-featuring-guidelines) and [Community Guidelines](https://help.producthunt.com/en/articles/3615694-community-guidelines) (read 2026-11-17).
 
 ## Product page fields
 
@@ -48,3 +48,25 @@ Hi Product Hunt! I'm Ali, and I built Pilothouse because I kept losing track of 
 - **Never:** ask for upvotes, giveaways tied to upvotes, paid votes/comments, mass DMs, extra accounts, a company account.
 - **Goal:** e.g. 200 downloads and 50 GitHub stars from the launch; turn feedback into the next release.
 - **Relaunch:** only after a major update; within two months of a launch it needs a relaunch request.
+
+## Featuring (editorial, not guaranteed)
+
+- Judged on **Useful, Novel, High Craft, Creative**; a launch can spike in one or two. Lead with what's novel: one Inbox across every agent, approve from the phone with a security-code pairing, hand-off and debate between agents.
+- **Only products available now.** On launch day the desktop download, the web app and the **App Store listing** must all be live (TestFlight or "in review" doesn't count). If the App Store review isn't through by 2026-11-29, move the date rather than launch without it, or drop the iPhone from the tagline.
+- Not featured: waitlists, templates/boilerplates, services, vaporware, "minimal, undifferentiated products" chasing money. Free + open source + no account is on our side.
+- Contacting the team rarely helps; only for critical missing information (hello@producthunt.com).
+
+## Profile (Community Guidelines)
+
+The maker account must look like a person: first and last name, a clear photo of yourself, a headline/about, a personal (non-company) username. No brand account as maker.
+
+## Launch day rules (Community Guidelines)
+
+- No asking for upvotes anywhere (posts, DMs, groups), no mass messages, no bots, no incentives. Say "we launched today, I'd love your feedback".
+- Don't self-promote in other launches' comments; reply to questions in ours with facts.
+- Breaking these can remove the launch or suspend the account.
+
+## Badge (after launch)
+
+Post page (as maker) → arrow next to the title → **Embed** → pick the theme; once ranked, the "Featured" / "Top Post" variants appear. Put it in the usepilothouse.com footer linking to the product page (not phrased as an upvote request).
+
