@@ -232,6 +232,7 @@ export interface AppSettings {
   voiceEnabled?: boolean;
   voiceHotkey?: string; // Electron accelerator, default CommandOrControl+Shift+Space
   voiceLanguage?: string; // 'auto' | 'en' | 'tr' …
+  uiLanguage?: string; // interface language: 'auto' (system) | 'en' | 'tr' … (src/i18n)
   voiceAutoSend?: boolean; // press Enter after typing the transcript
   voiceConversation?: boolean; // talk back: read answers aloud, ask to repeat, approve by voice (default on)
   wakeWordEnabled?: boolean; // keep the mic open for "Hey Pilothouse"

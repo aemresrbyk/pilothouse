@@ -1,6 +1,6 @@
 name: Check
 
-# Typecheck and the self-check suite (security tests included) on every PR and push to main.
+# Typecheck, the self-check suite (security tests included) and a UI smoke test on every PR and push to main.
 # Linux runners are free for public repositories.
 on:
   pull_request:
@@ -22,3 +22,9 @@ jobs:
       - run: bun run typecheck
       - run: bun tests/selfcheck.ts
       - run: bun run build:server
+      # UI smoke test: the built app in a throwaway home, clicked through over the DevTools protocol (tests/ui-smoke.ts).
+      # node-pty has no Linux prebuild, so build it for Electron first; xvfb gives Electron a screen.
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - run: bunx @electron/rebuild -f -o node-pty
+      - run: bun run build
+      - run: xvfb-run -a bun tests/ui-smoke.ts

@@ -51,7 +51,7 @@ If you run `./install.sh` inside a clone, it builds from source instead of downl
 
 ### Windows
 
-Download `Pilothouse-Setup-x64.exe` (installer) or `Pilothouse-Portable-x64.exe` (no install) from [Releases](https://github.com/aemresrbyk/pilothouse/releases/latest). The build isn't code-signed yet, so SmartScreen asks once: **More info → Run anyway**.
+Download `Pilothouse-Setup-x64.exe` (installer) or `Pilothouse-Portable-x64.exe` (no install) from [Releases](https://github.com/aemresrbyk/pilothouse/releases/latest). The build isn't code-signed yet (a certificate costs money every year and Pilothouse is free), so SmartScreen shows *Windows protected your PC* the first time: click **More info**, check it says `Pilothouse-Setup-x64.exe`, then **Run anyway**. Download it only from usepilothouse.com or this repo's Releases. [Details](https://usepilothouse.com/support.html#windows).
 
 ### Linux (x64)
 
@@ -87,6 +87,7 @@ This puts the AppImage in `~/.local/bin` and adds Pilothouse to your app menu (U
 - **Prompt drafter.** A per-project scratchpad for multi-line prompts, sent to the terminal with one click.
 - **Git badge.** Shows the current branch and the number of modified files.
 - **Project discovery.** On first run, imports the projects Claude Code already knows about (`~/.claude.json`). Use the sync button to pick up new ones later. You can add folders with the picker, by typing a path, or by drag & drop.
+- **Your language.** The interface speaks English, Türkçe, Español, Português, Deutsch, Français, Русский, 中文, 日本語 and 한국어 (Settings → Interface language; Auto follows your system).
 - **4 themes.** Pilothouse (default: near-black with one signal-lime accent, the logo's colours), OLED Black, Nord Frost and Paper.
 
 > All flags start **off**, including `--dangerously-skip-permissions` (shown in red when on: Claude then runs tools without asking first).

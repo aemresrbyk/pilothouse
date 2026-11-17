@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Settings, Terminal, Code2, Sliders, Check, Palette } from 'lucide-react';
 import QRCode from 'qrcode';
+import { UI_LANGUAGES } from '../i18n';
 import { AppSettings, TerminalOption, AppTheme, isDangerFlag, DEFAULT_QUICK_COMMANDS, AGENTS, agentFlagPresets, RemoteInfo } from '../types';
 import { THEMES, themeOrDefault } from '../theme';
 import { playClickSound } from '../utils/audio';
@@ -100,7 +101,7 @@ const RemoteField: React.FC = () => {
               <div className="flex flex-col gap-1.5 text-[11px] text-zinc-400 max-w-[220px]">
                 <span className="text-xs text-zinc-200">Scan with your phone</span>
                 <span>The camera opens the web app; the Pilothouse iPhone app scans it too.</span>
-                <span>Both screens then show a security code. Click <b className="text-zinc-200">Allow</b> here if they match.</span>
+                <span>Both screens then show a security code. Click Allow here if they match.</span>
                 {via === 'web' && (
                   <span style={{ color: info.webOnline ? '#C8FF2E' : '#f87171' }}>
                     {info.webOnline ? '● Ready' : '● Connecting to the relay…'}
@@ -254,6 +255,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
 
           {/* Theme Selection */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-300">Interface language</span>
+            <select
+              aria-label="Interface language"
+              value={formData.uiLanguage || 'auto'}
+              onChange={(e) => setFormData({ ...formData, uiLanguage: e.target.value })}
+              className="bg-[#0c0e14] border border-[#1b2233] text-xs text-zinc-200 rounded px-1.5 py-0.5 outline-none"
+            >
+              {UI_LANGUAGES.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+            </select>
+          </div>
+
           <div>
             <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 mb-2">
               <Palette className="w-3.5 h-3.5 text-[#C8FF2E]" />
