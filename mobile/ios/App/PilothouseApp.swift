@@ -19,6 +19,9 @@ struct PilothouseApp: App {
                 .onOpenURL { url in
                     if url.host == "session" { model.openSession = url.lastPathComponent }
                 }
+                #if DEBUG
+                .task { if CommandLine.arguments.contains("-shots") { await Shots.run(model) } }
+                #endif
         }
     }
 }

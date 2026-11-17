@@ -15,6 +15,8 @@ Run on a device, then pair: Pilothouse → Settings → Remote control → scan 
 
 No computer at hand? **Try a demo** on the first screen loads sample agents made up on the phone (`Shared/Demo.swift`, no network); Unpair in Settings removes it. App Review uses this too.
 
+**App Store screenshots:** run a Debug build with the `-shots` launch argument (`xcrun simctl launch <device> com.aemresrbyk.pilothouse.mobile -shots`). It walks the demo and saves what its window draws to `Documents/shot-*.png` (`App/Shots.swift`, Debug only), so no screen capture is needed.
+
 ## Notifications (optional)
 
 Pilothouse sends pushes straight from your computer to Apple, signed with an APNs key from your own Apple Developer account:
