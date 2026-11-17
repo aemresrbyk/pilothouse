@@ -1,5 +1,7 @@
 // The phone page served by remote.ts. Plain HTML + JS so it needs no build step on the phone.
 // Terminal text is untrusted (agents print whatever a repo contains), so it only ever goes in through textContent.
+import { REMOTE_I18N } from './remoteI18n';
+
 export const REMOTE_PAGE = `<!doctype html>
 <html lang="en">
 <head>
@@ -52,13 +54,13 @@ export const REMOTE_PAGE = `<!doctype html>
 <body>
 <h1><b>●</b> Pilothouse <button id="notify" hidden></button></h1>
 <div id="msg">Connecting…</div>
-<div id="pcode" class="card" hidden><span>Security code</span><b></b><span>Your computer shows a code too. Click <b style="display:inline;font:inherit;color:var(--text);letter-spacing:0">Allow</b> there if they match.</span></div>
+<div id="pcode" class="card" hidden><span>Security code</span><b></b><span>Your computer shows a code too. Click Allow there if they match.</span></div>
 <div id="setup" class="card" hidden>
   <b>Use Pilothouse from this browser</b>
   <ol>
-    <li>On your computer, open Pilothouse → Settings → <b>Remote control</b> and turn it on.</li>
+    <li>On your computer, open Pilothouse → Settings → Remote control and turn it on.</li>
     <li>Scan the QR code with your phone's camera.</li>
-    <li>Check that both screens show the same security code, then click <b>Allow</b> on the computer.</li>
+    <li>Check that both screens show the same security code, then click Allow on the computer.</li>
   </ol>
   <details class="fine"><summary>On a computer without a camera? Paste the link</summary>
   <div class="row"><input id="plink" placeholder="https://usepilothouse.com/app/#r=…" autocomplete="off" spellcheck="false"><button id="pgo" class="primary">Connect</button></div>
@@ -77,6 +79,33 @@ export const REMOTE_PAGE = `<!doctype html>
   <div class="row"><textarea id="tin" rows="1" placeholder="Type, then Send (Shift+Enter: new line)"></textarea><button id="tsend">Send</button></div>
 </div>
 <script>
+// Interface language: the browser's, when there is a translation (electron/remoteI18n.ts). Swaps whole strings that
+// match exactly, in text and placeholders/titles; agent output (pre, inputs) is never touched.
+(function () {
+  var dict = (${JSON.stringify(REMOTE_I18N)})[(navigator.language || 'en').slice(0, 2).toLowerCase()];
+  window.T = function (s) { return (dict && dict[s]) || s; };
+  if (!dict) return;
+  document.documentElement.lang = navigator.language.slice(0, 2);
+  function text(n) {
+    if (!n.parentElement || n.parentElement.closest('pre, textarea, script, style')) return;
+    var k = (n.nodeValue || '').trim();
+    if (k && dict[k]) n.nodeValue = n.nodeValue.replace(k, dict[k]);
+  }
+  function attrs(e) {
+    ['placeholder', 'title', 'aria-label'].forEach(function (a) { var v = e.getAttribute(a); if (v && dict[v]) e.setAttribute(a, dict[v]); });
+  }
+  function walk(r) {
+    if (r.nodeType === 3) return text(r);
+    if (r.nodeType !== 1) return;
+    attrs(r);
+    var w = document.createTreeWalker(r, 5);
+    for (var n = w.nextNode(); n; n = w.nextNode()) n.nodeType === 3 ? text(n) : attrs(n);
+  }
+  walk(document.body);
+  new MutationObserver(function (rs) {
+    rs.forEach(function (x) { if (x.type === 'characterData') text(x.target); else if (x.type === 'attributes') attrs(x.target); else x.addedNodes.forEach(walk); });
+  }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['placeholder', 'title', 'aria-label'] });
+})();
 (function () {
   var KEY = 'pilothouse-device-token';
   var token = (function () { try { return localStorage.getItem(KEY); } catch (e) { return null; } })();
@@ -322,7 +351,7 @@ export const REMOTE_PAGE = `<!doctype html>
       if (key === last) return;
       last = key;
       var waiting = all.filter(function (s) { return s.status === 'waiting'; }).length;
-      var state = all.length ? (waiting ? waiting + ' waiting for you' : 'All agents are working or idle') : (notes.length ? '' : 'No terminals open in Pilothouse.');
+      var state = all.length ? (waiting ? T('%n waiting for you').replace('%n', waiting) : 'All agents are working or idle') : (notes.length ? '' : 'No terminals open in Pilothouse.');
       msg.textContent = [state].concat(notes).filter(Boolean).join(' · ');
       document.title = waiting ? '(' + waiting + ') Pilothouse' : 'Pilothouse';
       list.replaceChildren.apply(list, all.map(card));

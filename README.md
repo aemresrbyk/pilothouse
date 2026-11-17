@@ -87,7 +87,7 @@ This puts the AppImage in `~/.local/bin` and adds Pilothouse to your app menu (U
 - **Prompt drafter.** A per-project scratchpad for multi-line prompts, sent to the terminal with one click.
 - **Git badge.** Shows the current branch and the number of modified files.
 - **Project discovery.** On first run, imports the projects Claude Code already knows about (`~/.claude.json`). Use the sync button to pick up new ones later. You can add folders with the picker, by typing a path, or by drag & drop.
-- **Your language.** The interface speaks English, Türkçe, Español, Português, Deutsch, Français, Русский, 中文, 日本語 and 한국어 (Settings → Interface language; Auto follows your system).
+- **Your language.** The interface speaks English, Türkçe, Español, Português, Deutsch, Français, Русский, 中文, 日本語 and 한국어 (Settings → Interface language; Auto follows your system). The iPhone app and the web app follow your phone's or browser's language.
 - **4 themes.** Pilothouse (default: near-black with one signal-lime accent, the logo's colours), OLED Black, Nord Frost and Paper.
 
 > All flags start **off**, including `--dangerously-skip-permissions` (shown in red when on: Claude then runs tools without asking first).
