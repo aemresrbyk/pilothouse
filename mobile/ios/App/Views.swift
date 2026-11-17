@@ -776,9 +776,9 @@ struct SettingsView: View {
             } header: { Text("Computers") } footer: { Text("Swipe left to unpair one. All their agents show up in one list.") }
             Section("Voice") {
                 Picker("Language", selection: $language) {
-                    Text("Türkçe").tag("tr-TR")
-                    Text("English").tag("en-US")
+                    ForEach(Speech.languages, id: \.id) { l in Text(l.name).tag(l.id) }
                 }
+                .pickerStyle(.navigationLink)
                 .onChange(of: language) { _, v in Speech.language = v }
             }
             Section("Safety") {
