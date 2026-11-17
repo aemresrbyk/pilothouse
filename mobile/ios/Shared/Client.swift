@@ -160,7 +160,7 @@ final class Client {
     private struct OK: Decodable { let ok: Bool }
     private struct Paired: Decodable { let token: String; let device: String?; let relayKey: String?; let computer: String? }
 
-    func send<T: Decodable>(_ method: String, _ path: String, _ body: [String: Any]? = nil, base: URL? = nil, auth: Bool = true) async throws -> T {
+    func send<T: Decodable>(_ method: String, _ path: String, _ body: [String: Any]? = nil, base: URL? = nil, auth: Bool = true, wait: TimeInterval = 10) async throws -> T {
         if id == Demo.id { return try Self.decode(200, Demo.reply(method, path)) }
         if base == nil, let room = relayRoom {
             guard let device = defaults.string(forKey: k("relayDevice")), let key = Keychain.get(k("relayKey")), let token = Keychain.get(k("token"))
@@ -171,7 +171,7 @@ final class Client {
         guard let root = base ?? self.base, let url = URL(string: path, relativeTo: root) else { throw PilotError.notPaired }
         var req = URLRequest(url: url)
         req.httpMethod = method
-        req.timeoutInterval = 10
+        req.timeoutInterval = wait
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if auth {
             guard let token = Keychain.get(k("token")) else { throw PilotError.notPaired }
@@ -194,7 +194,11 @@ final class Client {
     //   http://100.x.y.z:4747/#p=<pairing code>                     (Tailscale)
     // Adds that computer (or re-pairs it, if this phone knew it already). The others stay.
     @discardableResult
-    static func pair(link: String, name: String) async throws -> Client {
+    // A random 6-digit security code for pairing (electron/remote.ts securityCode).
+    static func newSecurityCode() -> String { String(format: "%06d", Int.random(in: 0..<1_000_000)) }
+
+    // securityCode: shown on this phone while the computer shows it too; the person there allows the pairing.
+    static func pair(link: String, name: String, securityCode: String) async throws -> Client {
         let text = link.trimmingCharacters(in: .whitespacesAndNewlines)
         if let parts = URLComponents(string: text), parts.scheme == "https", parts.host == "usepilothouse.com" || parts.host == "www.usepilothouse.com" {
             let fields = Dictionary((parts.fragment ?? "").split(separator: "&").compactMap { kv -> (String, String)? in
@@ -202,7 +206,7 @@ final class Client {
             }, uniquingKeysWith: { a, _ in a })
             guard let room = fields["r"], room.count == 32, let code = fields["p"] else { throw PilotError.badLink }
             let (status, data) = try await RelayLink.shared.request(room: room, device: "pair", key: nil, pairCode: code, token: nil,
-                                                                    method: "POST", path: "/api/pair", body: ["secret": code, "name": name])
+                                                                    wait: 130, method: "POST", path: "/api/pair", body: ["secret": code, "name": name, "code": securityCode])
             let res: Paired = try decode(status, data)
             guard let device = res.device, let relayKey = res.relayKey else { throw PilotError.badLink }
             let c = slot { $0.relayRoom == room }
@@ -217,7 +221,7 @@ final class Client {
         parts.fragment = nil
         parts.path = "/"
         guard let base = parts.url else { throw PilotError.badLink }
-        let res: Paired = try await Client(id: "~probe").send("POST", "/api/pair", ["secret": String(fragment.dropFirst(2)), "name": name], base: base, auth: false)
+        let res: Paired = try await Client(id: "~probe").send("POST", "/api/pair", ["secret": String(fragment.dropFirst(2)), "name": name, "code": securityCode], base: base, auth: false, wait: 130)
         let c = slot { $0.base == base }
         c.forget()
         c.defaults.set(base.absoluteString, forKey: c.k("base"))
@@ -318,7 +322,7 @@ actor RelayLink {
     private var waiting: [String: CheckedContinuation<(Int, Data), Error>] = [:]
     private var keys: [String: SymmetricKey] = [:] // device id ("pair" while pairing) -> key, to open replies
 
-    func request(room: String, device: String, key: String?, pairCode: String? = nil, token: String?,
+    func request(room: String, device: String, key: String?, pairCode: String? = nil, token: String?, wait: Int = 15,
                  method: String, path: String, body: [String: Any]) async throws -> (Int, Data) {
         let symmetric: SymmetricKey
         if let pairCode { symmetric = SymmetricKey(data: SHA256.hash(data: Data(pairCode.utf8))) }
@@ -336,7 +340,7 @@ actor RelayLink {
         return try await withCheckedThrowingContinuation { cont in
             waiting[id] = cont
             ws.send(.string(envelope)) { error in if let error { Task { await self.fail(id, error) } } }
-            Task { try? await Task.sleep(for: .seconds(15)); await self.fail(id, PilotError.server(0, "Your computer did not answer. Is Pilothouse open?")) }
+            Task { try? await Task.sleep(for: .seconds(wait)); await self.fail(id, PilotError.server(0, "Your computer did not answer. Is Pilothouse open?")) }
         }
     }
 

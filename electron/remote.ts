@@ -33,7 +33,17 @@ export interface RemoteDeps {
   openTab: (projectId: string) => Promise<string>;
   // Opens a tab that resumes an agent conversation (claude --resume <id>, codex resume <id>).
   resume: (projectId: string, agentId: string, sessionId: string) => Promise<string>;
+  // Asks the person at the computer to let a device in, showing the security code the device shows too.
+  // Without it (headless server) pairing needs the QR alone.
+  confirmPair?: (p: { name: string; code: string; location?: string; viewOnly: boolean }) => Promise<boolean>;
 }
+
+// The 6-digit security code a pairing device shows. It picks the code itself and sends it inside the
+// authenticated pairing request; a second device racing with a photo of the same QR shows a different one.
+export const securityCode = (raw: unknown): string | null => {
+  const d = String(raw ?? '').replace(/\s/g, '');
+  return /^\d{6}$/.test(d) ? `${d.slice(0, 3)} ${d.slice(3)}` : null;
+};
 
 export const REMOTE_PORT = 4747;
 // Resolved per call so tests can use a temp dir.
@@ -286,15 +296,27 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 // The remote API itself, independent of how a request arrives (HTTP over Tailscale, or the encrypted web relay).
 // auth: the "Bearer <token>" header; from: who is asking, for the audit log.
 export function remoteApi(deps: RemoteDeps) {
-  return async (route: string, url: URL, body: any, auth: string | undefined, from: string | undefined): Promise<ApiResult> => {
+  // location: roughly where the device is (city from the relay, or its Tailscale address), shown while pairing.
+  return async (route: string, url: URL, body: any, auth: string | undefined, from: string | undefined, location?: string): Promise<ApiResult> => {
     const reply = (status: number, b: unknown): ApiResult => ({ status, body: b });
     // Pairing: the QR code's one secret buys each phone its own token. Only the hash is stored.
     if (route === 'POST /api/pair') {
       const s = remoteState();
       const viewOnly = !!s.viewPair && !!s.viewPairAt && Date.now() - s.viewPairAt <= PAIR_TTL && secretOk(body.secret, s.viewPair);
     if (!viewOnly && (pairExpired(s) || !secretOk(body.secret, s.pair))) { audit(from, 'pair-refused', '', ''); return reply(401, { error: 'This code is no longer valid. Scan the new one in Pilothouse Settings.' }); }
+      const name = String(body.name || 'Phone').slice(0, 60);
+      if (deps.confirmPair) {
+        const code = securityCode(body.code);
+        if (!code) return reply(400, { error: 'Update the app to pair with this version of Pilothouse.' });
+        const ok = await deps.confirmPair({ name, code, location: location ? String(location).slice(0, 80) : undefined, viewOnly });
+        if (!ok) { audit(from, 'pair-denied', '', name); return reply(403, { error: 'Pairing was declined on the computer.' }); }
+        // The code may have been used meanwhile (the QR pairs one device).
+        const now = remoteState();
+        if (viewOnly ? now.viewPair !== s.viewPair : (pairExpired(now) || now.pair !== s.pair)) return reply(401, { error: 'This code is no longer valid. Scan the new one in Pilothouse Settings.' });
+        Object.assign(s, now);
+      }
       const token = crypto.randomBytes(24).toString('hex');
-      const device: Device = { id: crypto.randomBytes(6).toString('hex'), name: String(body.name || 'Phone').slice(0, 60), hash: hashOf(token), created: Date.now(), relayKey: crypto.randomBytes(32).toString('base64'), ...(viewOnly ? { viewOnly: true } : {}) };
+      const device: Device = { id: crypto.randomBytes(6).toString('hex'), name, hash: hashOf(token), created: Date.now(), relayKey: crypto.randomBytes(32).toString('base64'), ...(viewOnly ? { viewOnly: true } : {}) };
       s.devices.push(device);
       // One code, one device: the next phone needs the fresh QR from Settings.
       if (viewOnly) delete s.viewPair; else { s.pair = newCode(); s.pairAt = Date.now(); }
@@ -527,7 +549,7 @@ export function startRemoteServer(deps: RemoteDeps, ip = tailscaleIp(), port = R
       try { body = raw ? JSON.parse(raw) : {}; } catch { return send(400, { error: 'bad json' }); }
     }
 
-    const r = await api(route, url, body, req.headers.authorization, req.socket.remoteAddress);
+    const r = await api(route, url, body, req.headers.authorization, req.socket.remoteAddress, `Tailscale ${req.socket.remoteAddress || ''}`.trim());
     return send(r.status, r.body);
   });
 

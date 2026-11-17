@@ -557,6 +557,24 @@ if (bin && hasModel()) {
     assert.equal(await roomOf(relayRoom().secret), relayRoom().room);
     assert.match(webPairingLink(), /^https:\/\/usepilothouse\.com\/app\/#r=[0-9a-f]{32}&p=[0-9a-f]{48}$/);
   }
+  {
+    // Pairing with a person at the computer: the device's security code and location are shown; Deny keeps it out,
+    // Allow lets it in; a device without a code is asked to update; the QR still pairs only once.
+    const { remoteApi, securityCode, pairingLink: link } = await import('../electron/remote');
+    assert.equal(securityCode('482913'), '482 913'); assert.equal(securityCode('48291'), null); assert.equal(securityCode(undefined), null);
+    const asked: any[] = []; let answer = false;
+    const api = remoteApi({ listProjects: () => [], sessions: () => [], write: () => true, screen: () => null, openTab: async () => '', resume: async () => '',
+      confirmPair: async (p) => { asked.push(p); return answer; } });
+    const u = new URL('https://x/api/pair');
+    let secret = /#p=(\w+)/.exec(link(''))![1];
+    assert.equal((await api('POST /api/pair', u, { secret, name: 'old app' }, undefined, 't')).status, 400);
+    assert.equal((await api('POST /api/pair', u, { secret, name: 'thief', code: '111111' }, undefined, 't', 'Lagos, NG')).status, 403);
+    assert.deepStrictEqual(asked[0], { name: 'thief', code: '111 111', location: 'Lagos, NG', viewOnly: false });
+    answer = true;
+    const ok = await api('POST /api/pair', u, { secret, name: 'iPhone', code: '482913' }, undefined, 't', 'Istanbul, TR');
+    assert.equal(ok.status, 200); assert.ok((ok.body as any).token);
+    assert.equal((await api('POST /api/pair', u, { secret, name: 'again', code: '000001' }, undefined, 't')).status, 401, 'one QR, one device');
+  }
   r.server.close();
   delete process.env.PILOTHOUSE_DIR;
 

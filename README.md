@@ -107,7 +107,7 @@ This puts the AppImage in `~/.local/bin` and adds Pilothouse to your app menu (U
 - **View-only links** let someone watch without being able to act. **Pilothouse server** runs agents on a Linux box, VPS or Mac mini without a window ([`server`](server)).
 - **Audit log.** Every remote action goes to `~/.pilothouse/remote-audit.jsonl` on your computer.
 
-**Set up:** Pilothouse → Settings → **Remote control** → scan the QR code with your phone (or click *Open in browser* on another computer). Each code pairs one device and expires after 10 minutes; remove a device any time in Settings.
+**Set up:** Pilothouse → Settings → **Remote control** → scan the QR code with your phone's camera or the iPhone app. The phone shows a 6-digit security code; your computer shows the same code with the device's approximate location (city, from the relay). Click **Allow** if they match, and the phone is ready. Each QR pairs one device and expires after 10 minutes; remove a device any time in Settings.
 
 **Security** ([full write-up](https://usepilothouse.com/security.html))**:** two ways in, the same API. Through the [relay](relay) (`relay.usepilothouse.com`), every request and reply is sealed with AES-256-GCM using a key that only your computer and that device hold, bound to the device id, with a timestamp and nonce against replays; the relay only passes sealed messages and stores nothing. Or over Tailscale: the computer listens only on its Tailscale address, never on your Wi-Fi network, and checks the `Host` header against DNS rebinding. Either way the computer stores only a hash of each device's token and refuses actions from view-only devices.
 
