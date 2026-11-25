@@ -171,6 +171,38 @@ assert.deepStrictEqual(toFlagList(undefined), []);
   const b = newActivity(0);
   for (let t = 6000; t <= 9000; t += 100) { b.lastInput = t - 50; noteOutput(b, t); }
   assert.equal(nextStatus(b, 9100, ''), 'idle', 'typing echo is not a run');
+  // Later, an idle agent redrawing for 3 s is not a run (no "Finished" every minute); after input it is.
+  const c = newActivity(0);
+  c.lastEnd = 200_000;
+  for (let t = 300_000; t <= 303_000; t += 100) noteOutput(c, t);
+  assert.equal(nextStatus(c, 303_050, ''), 'idle', 'redraw without input is not a run');
+  c.lastInput = 310_000;
+  for (let t = 310_500; t <= 313_500; t += 100) noteOutput(c, t);
+  assert.equal(c.status = nextStatus(c, 313_550, ''), 'running');
+  assert.equal(nextStatus(c, 316_000, 'All done.'), 'idle');
+  assert.equal(c.lastEnd, 316_000);
+}
+{
+  // Inbox summary: last request, final answer (not the narration before tools), steps with errors flagged.
+  const { lastTurn } = await import('../electron/scanner');
+  const { parseCheck } = await import('../electron/debate');
+  const f = path.join(os.tmpdir(), `ph-turn-${process.pid}.jsonl`);
+  const L = (o: object) => JSON.stringify(o);
+  fs.writeFileSync(f, [
+    L({ type: 'user', message: { content: 'old request' } }),
+    L({ type: 'user', message: { content: 'fix the build and add a test' } }),
+    L({ type: 'assistant', message: { content: [{ type: 'text', text: 'Let me look.' }, { type: 'tool_use', id: 'a', name: 'Bash', input: { command: 'npm test', description: 'Run tests' } }] } }),
+    L({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'a', content: 'Error: 1 failed', is_error: true }] } }),
+    L({ type: 'assistant', message: { content: [{ type: 'text', text: 'Fixed the build. The test still fails.' }] } })
+  ].join('\n'));
+  const turn = lastTurn(f)!;
+  fs.rmSync(f);
+  assert.equal(turn.request, 'fix the build and add a test');
+  assert.equal(turn.reply, 'Fixed the build. The test still fails.');
+  assert.deepStrictEqual(turn.steps.map((x) => [x.title, !!x.error]), [['Bash(Run tests)', true]]);
+  assert.ok(turn.steps[0].detail.includes('Error: 1 failed'));
+  assert.deepStrictEqual(parseCheck('Sure:\n- DONE: fix the build\nNOT DONE: add a test - it fails'),
+    [{ text: 'fix the build', done: true }, { text: 'add a test - it fails', done: false }]);
 }
 
 // Agent commands: resume goes right after the binary (Codex uses a subcommand), --continue is dropped on resume.

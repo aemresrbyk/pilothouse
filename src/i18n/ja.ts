@@ -200,5 +200,15 @@ export default {
   'Drafts & queue': '下書きとキュー',
   'Show in Finder': 'Finder で表示',
   'Show in folder': 'フォルダで表示',
-  'Agents answer in turns and can read the project, but not change it. It stops early when all agree; the last turn writes the decision to .pilothouse/debate.md.': 'エージェントは交代で答え、プロジェクトを読めますが変更はできません。全員が合意すると早めに終わり、最後のターンで結論を .pilothouse/debate.md に書きます。'
+  'Agents answer in turns and can read the project, but not change it. It stops early when all agree; the last turn writes the decision to .pilothouse/debate.md.': 'エージェントは交代で答え、プロジェクトを読めますが変更はできません。全員が合意すると早めに終わり、最後のターンで結論を .pilothouse/debate.md に書きます。',
+  'Finished': '完了',
+  'Resources': 'リソース',
+  'Needs you': 'あなたの対応待ち',
+  'Failed': '失敗',
+  'Limit reached': '上限に達しました',
+  'Errors': 'エラー',
+  'Steps': 'ステップ',
+  'Check what was done': '何が完了したか確認',
+  'Checking…': '確認中…',
+  'Asks your own agent CLI whether each thing you asked for was done (uses your tokens)': '依頼した各項目が完了したかを、あなた自身のエージェント CLI に確認します（あなたのトークンを使います）'
 } as Record<string, string>;

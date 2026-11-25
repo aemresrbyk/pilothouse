@@ -200,5 +200,15 @@ export default {
   'Drafts & queue': '초안과 대기열',
   'Show in Finder': 'Finder에서 보기',
   'Show in folder': '폴더에서 보기',
-  'Agents answer in turns and can read the project, but not change it. It stops early when all agree; the last turn writes the decision to .pilothouse/debate.md.': '에이전트는 번갈아 답하며 프로젝트를 읽을 수는 있지만 바꿀 수는 없습니다. 모두 동의하면 일찍 끝나고, 마지막 차례에서 결론을 .pilothouse/debate.md에 씁니다.'
+  'Agents answer in turns and can read the project, but not change it. It stops early when all agree; the last turn writes the decision to .pilothouse/debate.md.': '에이전트는 번갈아 답하며 프로젝트를 읽을 수는 있지만 바꿀 수는 없습니다. 모두 동의하면 일찍 끝나고, 마지막 차례에서 결론을 .pilothouse/debate.md에 씁니다.',
+  'Finished': '완료',
+  'Resources': '리소스',
+  'Needs you': '확인 필요',
+  'Failed': '실패',
+  'Limit reached': '한도 도달',
+  'Errors': '오류',
+  'Steps': '단계',
+  'Check what was done': '완료된 작업 확인',
+  'Checking…': '확인 중…',
+  'Asks your own agent CLI whether each thing you asked for was done (uses your tokens)': '요청한 각 항목이 완료됐는지 내 에이전트 CLI에 물어봅니다(내 토큰 사용)'
 } as Record<string, string>;

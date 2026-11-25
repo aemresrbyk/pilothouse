@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Inbox, X, Cpu, ArrowRight, Square, CornerDownLeft } from 'lucide-react';
-import { ProjectItem, TabSession, TabState, InboxEvent, AGENTS } from '../types';
+import { Inbox, X, Cpu, ArrowRight, Square, CornerDownLeft, Check, AlertTriangle, ListChecks } from 'lucide-react';
+import { ProjectItem, TabSession, TabState, InboxEvent, AGENTS, LastTurn, TurnCheck } from '../types';
 import { ThemeConfig } from '../theme';
 import { parseChoices, Choice } from '../utils/inbox';
 
@@ -38,6 +38,9 @@ export const InboxPanel: React.FC<InboxPanelProps> = ({
   const [choices, setChoices] = useState<Record<string, Choice[]>>({});
   const [replies, setReplies] = useState<Record<string, string>>({});
   const [usage, setUsage] = useState<{ id: string; cpu: number; memMB: number }[]>([]);
+  const [turns, setTurns] = useState<Record<string, LastTurn | null>>({});
+  const [checks, setChecks] = useState<Record<string, { items?: TurnCheck[]; error?: string; busy?: boolean }>>({});
+  const [openReply, setOpenReply] = useState<Record<string, boolean>>({});
   // Take focus from the terminal, or 1–9 would also be typed into it.
   const boxRef = useRef<HTMLDivElement>(null);
   useEffect(() => { if (isOpen) boxRef.current?.focus(); }, [isOpen]);
@@ -61,6 +64,22 @@ export const InboxPanel: React.FC<InboxPanelProps> = ({
       .then((rows) => live && setChoices(Object.fromEntries(rows)));
     return () => { live = false; };
   }, [isOpen, waitingKey]);
+
+  // What each finished agent answered and did, from its own conversation log.
+  const finishedKey = finished.map((x) => x.id).join(',');
+  useEffect(() => {
+    if (!isOpen) return;
+    let live = true;
+    Promise.all(finished.map(async (x) => [x.id, await window.electronAPI.tabLastTurn(x.id).catch(() => null)] as const))
+      .then((rows) => live && setTurns(Object.fromEntries(rows)));
+    return () => { live = false; };
+  }, [isOpen, finishedKey]);
+
+  const runCheck = async (tabId: string) => {
+    setChecks((c) => ({ ...c, [tabId]: { busy: true } }));
+    const r = await window.electronAPI.tabCheck(tabId).catch((e) => ({ error: String(e?.message || e) }));
+    setChecks((c) => ({ ...c, [tabId]: r }));
+  };
 
   useEffect(() => {
     if (!isOpen || view !== 'resources') return;
@@ -116,6 +135,62 @@ export const InboxPanel: React.FC<InboxPanelProps> = ({
     </div>
   );
 
+  // The agent's answer, its errors, each step as one line that opens to the details (like its terminal), and an
+  // on-demand "was everything done" check. data-no-i18n: the agent's own words are never swapped.
+  const summary = (tab: TabSession) => {
+    const turn = turns[tab.id];
+    if (!turn) return null;
+    const errs = turn.steps.filter((x) => x.error);
+    const check = checks[tab.id];
+    const pre = 'mt-1 p-2 rounded text-[10px] font-mono whitespace-pre-wrap break-words max-h-48 overflow-auto';
+    return (
+      <div className="flex flex-col gap-2 text-xs">
+        {turn.reply && (
+          <p data-no-i18n onClick={() => setOpenReply((o) => ({ ...o, [tab.id]: !o[tab.id] }))}
+            className={`whitespace-pre-wrap break-words cursor-pointer ${openReply[tab.id] ? '' : 'line-clamp-4'}`} style={{ color: t.textPrimary }}>
+            {turn.reply}
+          </p>
+        )}
+        {errs.length > 0 && (
+          <div className="flex flex-col gap-0.5 rounded border px-2 py-1.5" style={{ borderColor: RED + '66', backgroundColor: RED + '14' }}>
+            <span className="flex items-center gap-1 font-bold" style={{ color: RED }}><AlertTriangle className="w-3 h-3" /> Errors</span>
+            {errs.map((x, i) => <span key={i} data-no-i18n className="font-mono text-[11px] truncate" style={{ color: RED }} title={x.detail}>{x.title}</span>)}
+          </div>
+        )}
+        {turn.steps.length > 0 && (
+          <div className="flex flex-col max-h-56 overflow-auto" aria-label="Steps">
+            {turn.steps.map((x, i) => (
+              <details key={i} data-no-i18n>
+                <summary className="font-mono text-[11px] cursor-pointer truncate list-none py-0.5" style={{ color: x.error ? RED : t.textSecondary }}>
+                  <span style={{ color: x.error ? RED : GREEN }}>⏺</span> {x.title}
+                </summary>
+                <pre className={pre} style={{ backgroundColor: t.bgCard, color: t.textSecondary }}>{x.detail}</pre>
+              </details>
+            ))}
+          </div>
+        )}
+        {check?.items ? (
+          <div className="flex flex-col gap-0.5" data-no-i18n>
+            {check.items.map((x, i) => (
+              <span key={i} className="flex items-start gap-1.5" style={{ color: x.done ? t.textPrimary : RED }}>
+                {x.done ? <Check className="w-3.5 h-3.5 flex-shrink-0" style={{ color: GREEN }} /> : <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />}
+                {x.text}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <button onClick={() => runCheck(tab.id)} disabled={check?.busy}
+            title="Asks your own agent CLI whether each thing you asked for was done (uses your tokens)"
+            className="self-start flex items-center gap-1 px-2 py-1 rounded border hover:opacity-80 disabled:opacity-50"
+            style={{ borderColor: t.border, color: t.accent }}>
+            <ListChecks className="w-3 h-3" /> {check?.busy ? 'Checking…' : 'Check what was done'}
+          </button>
+        )}
+        {check?.error && <span data-no-i18n style={{ color: RED }}>{check.error}</span>}
+      </div>
+    );
+  };
+
   const inbox = (
     <div className="flex flex-col gap-2">
       {awaySince && (
@@ -152,7 +227,8 @@ export const InboxPanel: React.FC<InboxPanelProps> = ({
       {failed.map((tab) => card(tab, 'failed', (
         <span className="text-xs" style={{ color: t.textSecondary }}>Exited with code {tabStatus[tab.id]?.failed}.</span>
       )))}
-      {finished.map((tab) => card(tab, 'finished', (
+      {finished.map((tab) => card(tab, 'finished', (<>
+        {summary(tab)}
         <form onSubmit={(e) => { e.preventDefault(); reply(tab.id); }} className="flex gap-1.5">
           <input value={replies[tab.id] || ''} onChange={(e) => setReplies((r) => ({ ...r, [tab.id]: e.target.value }))}
             placeholder="Reply to the agent…" aria-label={`Reply to ${name(tab)}`}
@@ -162,7 +238,7 @@ export const InboxPanel: React.FC<InboxPanelProps> = ({
             <CornerDownLeft className="w-3 h-3" />
           </button>
         </form>
-      )))}
+      </>)))}
       {!limited.length && !waiting.length && !failed.length && !finished.length && (
         <p className="text-xs py-6 text-center" style={{ color: t.textMuted }}>Nothing needs you right now.</p>
       )}

@@ -81,3 +81,7 @@ export function askAgent(bin: string, agent: string, prompt: string, cwd: string
     track(child);
   });
 }
+
+// "DONE: x" / "NOT DONE: y - why" lines from the Inbox check; anything else the agent says is ignored.
+export const parseCheck = (out: string) => out.split('\n').map((l) => l.replace(/^[\s*>\-•]+/, '').match(/^(NOT DONE|DONE)\s*[:：]\s*(.+)$/i))
+  .filter((m): m is RegExpMatchArray => !!m).map((m) => ({ text: m[2].trim(), done: m[1].toUpperCase() === 'DONE' }));
