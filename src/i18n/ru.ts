@@ -159,7 +159,6 @@ export default {
   'Change': 'Изменить',
   'Choose…': 'Выбрать…',
   'Add another folder': 'Добавить ещё папку',
-  'Default model': 'Модель по умолчанию',
   'Continue with': 'Продолжить с',
   'Takes effect on the next Run.': 'Применится при следующем запуске.',
   'Terminal': 'Терминал',

@@ -159,7 +159,6 @@ export default {
   'Change': '변경',
   'Choose…': '선택…',
   'Add another folder': '폴더 더 추가',
-  'Default model': '기본 모델',
   'Continue with': '다음으로 계속',
   'Takes effect on the next Run.': '다음 실행부터 적용됩니다.',
   'Terminal': '터미널',

@@ -159,7 +159,6 @@ export default {
   'Change': '更改',
   'Choose…': '选择…',
   'Add another folder': '再添加一个文件夹',
-  'Default model': '默认模型',
   'Continue with': '继续使用',
   'Takes effect on the next Run.': '下次运行时生效。',
   'Terminal': '终端',

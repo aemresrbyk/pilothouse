@@ -159,7 +159,6 @@ export default {
   'Change': '変更',
   'Choose…': '選択…',
   'Add another folder': 'フォルダを追加',
-  'Default model': 'デフォルトのモデル',
   'Continue with': '次で続ける',
   'Takes effect on the next Run.': '次回の実行から有効です。',
   'Terminal': 'ターミナル',

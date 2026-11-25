@@ -631,8 +631,8 @@ export const App: React.FC = () => {
                   onResumeAs={(agentId, sessionId) => handleResumeAs(tab.id, agentId, sessionId)}
                   pendingLaunch={pendingLaunches[tab.id]}
                   modelChoice={proj.agentModels?.[proj.agent || 'claude']}
-                  onSetModel={(choice) => {
-                    const agentModels = { ...(proj.agentModels || {}), [proj.agent || 'claude']: choice };
+                  onSetModel={(choice, agentId = proj.agent || 'claude') => {
+                    const agentModels = { ...(proj.agentModels || {}), [agentId]: choice };
                     setProjects((prev) => prev.map((p) => (p.id === proj.id ? { ...p, agentModels } : p)));
                     window.electronAPI.updateProject(proj.id, { agentModels });
                   }}
