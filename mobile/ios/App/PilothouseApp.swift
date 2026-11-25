@@ -85,6 +85,9 @@ enum Push {
     #endif
 
     static func enable() {
+        #if DEBUG
+        if CommandLine.arguments.contains("-shots") { return } // no permission alert over App Store screenshots
+        #endif
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
             if granted { DispatchQueue.main.async { UIApplication.shared.registerForRemoteNotifications() } }
         }

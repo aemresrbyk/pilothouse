@@ -57,7 +57,7 @@ struct PairView: View {
                     .background(Color.lime, in: RoundedRectangle(cornerRadius: 28))
                 }
                 .buttonStyle(.plain)
-                .disabled(busy || !DataScannerViewController.isSupported)
+                .disabled(busy || !canScan)
                 .accessibilityHint("Opens the camera to scan the QR code shown in Pilothouse on your computer")
                 VStack(alignment: .leading, spacing: 8) {
                     step(1, "Open Pilothouse on your computer")
@@ -65,7 +65,7 @@ struct PairView: View {
                     step(3, "Scan it, then click Allow there")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                if !DataScannerViewController.isSupported {
+                if !canScan {
                     Text("This iPhone can't scan codes here. Paste the link instead.").font(.callout).foregroundStyle(.orange)
                 }
             }
@@ -73,7 +73,7 @@ struct PairView: View {
             if let error { Text(error).foregroundStyle(.orange).font(.callout).multilineTextAlignment(.center) }
             Spacer(minLength: 0)
             VStack(spacing: 12) {
-                if showPaste || !DataScannerViewController.isSupported {
+                if showPaste || !canScan {
                     HStack {
                         TextField("Paste the link", text: $link).textFieldStyle(.roundedBorder).autocorrectionDisabled().textInputAutocapitalization(.never)
                         Button("Pair") { pair(link) }.disabled(link.isEmpty || busy)
@@ -261,6 +261,13 @@ struct SessionRow: View {
 
 // MARK: - Session
 
+// App Store screenshots run on a simulator, which has no camera; show the pair screen as a phone shows it.
+#if DEBUG
+@MainActor private var canScan: Bool { DataScannerViewController.isSupported || CommandLine.arguments.contains("-shots") }
+#else
+@MainActor private var canScan: Bool { DataScannerViewController.isSupported }
+#endif
+
 struct SessionView: View {
     let id: String
     @EnvironmentObject var model: Model
@@ -272,6 +279,9 @@ struct SessionView: View {
     @State private var chat: ChatLog?
     @State private var showTerminal = false
     @FocusState private var typing: Bool
+    #if DEBUG
+    @State private var shotsDiff = false
+    #endif
 
     private var session: Session? { model.sessions.first { $0.id == id } }
 
@@ -337,6 +347,11 @@ struct SessionView: View {
         }
         .onChange(of: speech.text) { _, t in if !t.isEmpty { text = t } }
         .onChange(of: session?.sig) { _, _ in armed = nil }
+        #if DEBUG
+        .onReceive(NotificationCenter.default.publisher(for: Shots.terminal)) { _ in showTerminal = true }
+        .onReceive(NotificationCenter.default.publisher(for: Shots.changes)) { _ in shotsDiff = true }
+        .navigationDestination(isPresented: $shotsDiff) { DiffView(id: id) }
+        #endif
     }
 
     @ViewBuilder private var controls: some View {
@@ -554,7 +569,7 @@ struct DiffView: View {
             .padding(10)
         }
         .background(Color.black)
-        .navigationTitle(result.map { "Changes · \($0.project)" } ?? "Changes")
+        .navigationTitle(result.map { String(localized: "Changes · \($0.project)") } ?? String(localized: "Changes"))
         .navigationBarTitleDisplayMode(.inline)
         .task {
             do { result = try await route(id).client.diff(route(id).sid) } catch { self.error = error.localizedDescription }
@@ -681,7 +696,7 @@ struct UsageRow: View {
                 let used = min(100, max(0, w.usedPercent))
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
-                        Text("\(Int(used))% used · \(w.label)").font(.caption)
+                        Text("\(Int(used))% used · \(windowName(w.label))").font(.caption)
                         Spacer()
                         if let r = w.resetsAt, r > Date().timeIntervalSince1970 * 1000 {
                             Text("resets ") .font(.caption2).foregroundStyle(.secondary)
@@ -696,7 +711,7 @@ struct UsageRow: View {
                         }
                     }
                     .frame(height: 6)
-                    .accessibilityLabel("\(Int(used)) percent of the \(w.label) limit used")
+                    .accessibilityLabel("\(Int(used)) percent of the \(windowName(w.label)) limit used")
                 }
             }
             if let note = u.note { Text(note).font(.caption).foregroundStyle(.secondary) }
@@ -788,5 +803,15 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .onAppear { computers = Client.all }
+    }
+}
+
+// Usage window names come from the computer in English ("5 hours", "week", "month").
+private func windowName(_ label: String) -> String {
+    switch label {
+    case "5 hours": return String(localized: "5 hours")
+    case "week": return String(localized: "week")
+    case "month": return String(localized: "month")
+    default: return label
     }
 }
