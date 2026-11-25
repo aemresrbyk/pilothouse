@@ -200,5 +200,15 @@ export default {
   'Drafts & queue': 'Borradores y cola',
   'Show in Finder': 'Mostrar en Finder',
   'Show in folder': 'Mostrar en la carpeta',
-  'Agents answer in turns and can read the project, but not change it. It stops early when all agree; the last turn writes the decision to .pilothouse/debate.md.': 'Los agentes responden por turnos y pueden leer el proyecto, pero no cambiarlo. Termina antes si todos están de acuerdo; el último turno escribe la decisión en .pilothouse/debate.md.'
+  'Agents answer in turns and can read the project, but not change it. It stops early when all agree; the last turn writes the decision to .pilothouse/debate.md.': 'Los agentes responden por turnos y pueden leer el proyecto, pero no cambiarlo. Termina antes si todos están de acuerdo; el último turno escribe la decisión en .pilothouse/debate.md.',
+  'Finished': 'Terminado',
+  'Resources': 'Recursos',
+  'Needs you': 'Te necesita',
+  'Failed': 'Falló',
+  'Limit reached': 'Límite alcanzado',
+  'Errors': 'Errores',
+  'Steps': 'Pasos',
+  'Check what was done': 'Comprobar qué se hizo',
+  'Checking…': 'Comprobando…',
+  'Asks your own agent CLI whether each thing you asked for was done (uses your tokens)': 'Pregunta a tu propio CLI de agente si se hizo cada cosa que pediste (usa tus tokens)'
 } as Record<string, string>;

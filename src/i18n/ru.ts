@@ -200,5 +200,15 @@ export default {
   'Drafts & queue': 'Черновики и очередь',
   'Show in Finder': 'Показать в Finder',
   'Show in folder': 'Показать в папке',
-  'Agents answer in turns and can read the project, but not change it. It stops early when all agree; the last turn writes the decision to .pilothouse/debate.md.': 'Агенты отвечают по очереди и могут читать проект, но не менять его. Если все согласны, дебаты заканчиваются раньше; последний ход записывает решение в .pilothouse/debate.md.'
+  'Agents answer in turns and can read the project, but not change it. It stops early when all agree; the last turn writes the decision to .pilothouse/debate.md.': 'Агенты отвечают по очереди и могут читать проект, но не менять его. Если все согласны, дебаты заканчиваются раньше; последний ход записывает решение в .pilothouse/debate.md.',
+  'Finished': 'Готово',
+  'Resources': 'Ресурсы',
+  'Needs you': 'Ждёт вас',
+  'Failed': 'Ошибка',
+  'Limit reached': 'Лимит исчерпан',
+  'Errors': 'Ошибки',
+  'Steps': 'Шаги',
+  'Check what was done': 'Проверить, что сделано',
+  'Checking…': 'Проверяем…',
+  'Asks your own agent CLI whether each thing you asked for was done (uses your tokens)': 'Спрашивает ваш собственный CLI агента, сделано ли всё, что вы просили (тратит ваши токены)'
 } as Record<string, string>;

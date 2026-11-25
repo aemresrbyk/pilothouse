@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { SetupProject } from './setup';
 import type { AgentOptions } from './agentOptions';
-import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile, PtyStatus, TranscriptMessage, HistoryHit, RemoteInfo } from '../src/types';
+import { ProjectItem, AppSettings, TerminalOption, FileItem, ClaudeSession, RunCommand, MemoryFile, PtyStatus, TranscriptMessage, HistoryHit, RemoteInfo, LastTurn, TurnCheck } from '../src/types';
 
 export const electronAPI = {
   getProjects: (): Promise<ProjectItem[]> => ipcRenderer.invoke('projects:get'),
@@ -134,6 +134,8 @@ export const electronAPI = {
     ipcRenderer.invoke('debate:start', projectPath, topic, agents, rounds),
   debateStop: (projectPath: string): Promise<void> => ipcRenderer.invoke('debate:stop', projectPath),
   debateAgents: (): Promise<string[]> => ipcRenderer.invoke('debate:agents'),
+  tabLastTurn: (tabId: string): Promise<LastTurn | null> => ipcRenderer.invoke('tab:lastTurn', tabId),
+  tabCheck: (tabId: string): Promise<{ items?: TurnCheck[]; error?: string }> => ipcRenderer.invoke('tab:check', tabId),
   onDebateUpdate: (callback: (u: { projectPath: string; markdown?: string; done?: boolean; error?: string }) => void): (() => void) => {
     const listener = (_e: any, u: any) => callback(u);
     ipcRenderer.on('debate:update', listener);

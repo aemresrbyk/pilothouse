@@ -200,5 +200,15 @@ export default {
   'Drafts & queue': 'Taslaklar ve sıra',
   'Show in Finder': 'Finder’da göster',
   'Show in folder': 'Klasörde göster',
-  'Agents answer in turns and can read the project, but not change it. It stops early when all agree; the last turn writes the decision to .pilothouse/debate.md.': 'Ajanlar sırayla cevap verir; projeyi okuyabilir ama değiştiremez. Hepsi anlaşınca erken biter; son tur kararı .pilothouse/debate.md’ye yazar.'
+  'Agents answer in turns and can read the project, but not change it. It stops early when all agree; the last turn writes the decision to .pilothouse/debate.md.': 'Ajanlar sırayla cevap verir; projeyi okuyabilir ama değiştiremez. Hepsi anlaşınca erken biter; son tur kararı .pilothouse/debate.md’ye yazar.',
+  'Finished': 'Bitti',
+  'Resources': 'Kaynaklar',
+  'Needs you': 'Seni bekliyor',
+  'Failed': 'Başarısız',
+  'Limit reached': 'Limit doldu',
+  'Errors': 'Hatalar',
+  'Steps': 'Adımlar',
+  'Check what was done': 'Yapılanları kontrol et',
+  'Checking…': 'Kontrol ediliyor…',
+  'Asks your own agent CLI whether each thing you asked for was done (uses your tokens)': 'İstediğin her şeyin yapılıp yapılmadığını kendi ajan CLI’ına sorar (senin token’larını kullanır)'
 } as Record<string, string>;

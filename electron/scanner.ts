@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { ProjectItem, FileItem, GitInfo, ClaudeMetrics, ClaudeSession, RunCommand, MemoryFile, TranscriptMessage, HistoryHit } from '../src/types';
+import { ProjectItem, FileItem, GitInfo, ClaudeMetrics, ClaudeSession, RunCommand, MemoryFile, TranscriptMessage, HistoryHit, LastTurn, TurnStep } from '../src/types';
 
 const execFileAsync = promisify(execFile);
 
@@ -218,6 +218,66 @@ export function readTranscript(file: string): TranscriptMessage[] {
     add(o.type, text, o.timestamp);
   }
   return out;
+}
+
+// One line per tool call, like the agent's own terminal shows it: "Bash(npm test)", "Edit(src/app.ts)".
+const stepTitle = (name: string, input: any): string => {
+  const arg = input?.description || input?.command || input?.file_path || input?.path || input?.pattern || input?.url || input?.query
+    || Object.values(input || {}).find((v) => typeof v === 'string') || '';
+  const short = String(arg).split('\n')[0];
+  return `${name}(${short.length > 80 ? short.slice(0, 80) + '…' : short})`;
+};
+const resultText = (c: any): string => typeof c === 'string' ? c
+  : Array.isArray(c) ? c.filter((b: any) => b?.type === 'text').map((b: any) => b.text).join('\n') : '';
+
+// The last thing the user asked in this session, the agent's final answer, and each tool call in between with its
+// output (errors flagged). shortcut: Codex logs carry no tool calls we read yet, so its turns have no steps.
+export function lastTurn(file: string): LastTurn | null {
+  let raw: string;
+  try { raw = fs.readFileSync(file, 'utf-8'); } catch { return null; }
+  let turn: LastTurn | null = null;
+  let tail: string[] = []; // answer text since the last tool call: the final reply, not the narration before it
+  const byId = new Map<string, TurnStep>();
+  const finish = () => { if (turn && tail.length) turn.reply = tail.join('\n\n'); };
+  for (const line of raw.split('\n')) {
+    if (!line.includes('"type":"user"') && !line.includes('"type":"assistant"') && !line.includes('_message"')) continue;
+    let o: any;
+    try { o = JSON.parse(line); } catch { continue; }
+    if (o.type === 'event_msg') {
+      const p = o.payload || {};
+      if (p.type === 'user_message' && typeof p.message === 'string') { turn = { request: p.message.trim(), reply: '', steps: [] }; tail = []; }
+      else if (p.type === 'agent_message' && typeof p.message === 'string' && turn) tail = [p.message.trim()];
+      finish();
+      continue;
+    }
+    if ((o.type !== 'user' && o.type !== 'assistant') || o.isMeta) continue;
+    const c = o.message?.content;
+    const blocks: any[] = typeof c === 'string' ? [{ type: 'text', text: c }] : Array.isArray(c) ? c : [];
+    if (o.type === 'user') {
+      const text = blocks.filter((b) => b?.type === 'text').map((b) => b.text).join('\n').trim();
+      if (text && !text.startsWith('<')) { turn = { request: text, reply: '', steps: [] }; tail = []; byId.clear(); continue; }
+      for (const b of blocks) {
+        const step = b?.type === 'tool_result' && byId.get(b.tool_use_id);
+        if (!step) continue;
+        const out = resultText(b.content).trim();
+        step.detail += out ? `\n\n${out.length > 4000 ? out.slice(0, 4000) + '\n…' : out}` : '';
+        if (b.is_error) step.error = true;
+      }
+      continue;
+    }
+    if (!turn) continue;
+    for (const b of blocks) {
+      if (b?.type === 'text' && b.text?.trim()) tail.push(b.text.trim());
+      if (b?.type === 'tool_use') {
+        const step: TurnStep = { title: stepTitle(b.name, b.input), detail: String(b.input?.command || b.input?.file_path || JSON.stringify(b.input ?? {})).slice(0, 2000) };
+        turn.steps.push(step);
+        byId.set(b.id, step);
+        tail = [];
+      }
+    }
+    finish();
+  }
+  return turn;
 }
 
 // Case-insensitive search through every session of a project.

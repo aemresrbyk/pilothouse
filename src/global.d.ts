@@ -62,6 +62,8 @@ declare global {
       debateStart: (projectPath: string, topic: string, agents: string[], rounds: number) => Promise<{ ok?: true; error?: string }>;
       debateStop: (projectPath: string) => Promise<void>;
       debateAgents: () => Promise<string[]>;
+      tabLastTurn: (tabId: string) => Promise<import('./types').LastTurn | null>;
+      tabCheck: (tabId: string) => Promise<{ items?: import('./types').TurnCheck[]; error?: string }>;
       onDebateUpdate: (callback: (u: { projectPath: string; markdown?: string; done?: boolean; error?: string }) => void) => () => void;
       agentOptions: (agentId: string) => Promise<AgentOptions>;
       geminiKeyStatus: () => Promise<{ hasKey: boolean; last4?: string }>;

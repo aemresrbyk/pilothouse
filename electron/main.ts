@@ -9,7 +9,7 @@ import { StorageManager } from './store';
 import { Screen } from './screen';
 import { startRelayLink } from './relayLink';
 import { getAvailableTerminals, launchInTerminal, buildClaudeCommand } from './terminal';
-import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions, readTranscript, searchHistory, isSessionFile, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
+import { listProjectFiles, readFileContent, getProjectSessions, getCodexSessions, readTranscript, lastTurn, searchHistory, isSessionFile, saveFileContent, getGitStatusDetails, getSystemHealth, detectRunCommands, listMemoryFiles } from './scanner';
 import { startControlServer, CONTROL_FILE, stripAnsi, pasteText } from './control';
 import { Activity, newActivity, noteOutput, nextStatus, hitLimit } from './activity';
 import { startRemoteServer, remoteApi, webPairingLink, viewOnlyLink, RemoteDeps, pairingLink, resetPairCode, revokeDevice, listDevices, pushTargets, forgetPushTokens, activityTargets, forgetActivityTokens, webPushTargets, forgetWebPush, vapidKeys, sessionView, autoChoice, isRefusal, audit } from './remote';
@@ -18,7 +18,7 @@ import { agentOfCommand, withClaudeStatus, ensureClaudeStatusHook } from './usag
 import http from 'http';
 import { writeHandoff } from './handoff';
 import { detectAgents, scanProjects, findAgentBinary } from './setup';
-import { runDebate, askAgent, DEBATE_AGENTS } from './debate';
+import { runDebate, askAgent, DEBATE_AGENTS, parseCheck } from './debate';
 import type { ChildProcess } from 'child_process';
 import { agentOptions } from './agentOptions';
 import { geminiKeyStatus, setGeminiApiKey } from './geminiKey';
@@ -37,6 +37,14 @@ let storage: StorageManager;
 const ptySessions = new Map<string, pty.IPty>();
 // cwd + recent output per PTY, so the control API can tell which project a terminal belongs to and read it back.
 // screen: made on first request from the phone/web (seeded from buf), so tabs nobody watches cost nothing extra.
+// The agent binary for one-shot headless runs (debate, Inbox check): the path set in Settings, else the one on PATH.
+async function headlessBin(a: string): Promise<string | undefined> {
+  const settings = storage.getSettings();
+  const set = settings.agentPaths?.[a] || (a === 'claude' ? settings.claudePath : '');
+  return set && fs.existsSync(set) ? set : (await findAgentBinary(agentById(a).command)) || undefined;
+}
+const headlessEnv = (bins: string[]) => ({ ...process.env, PATH: [...new Set(bins.map((b) => path.dirname(b))), `${os.homedir()}/.local/bin`, '/opt/homebrew/bin', '/usr/local/bin', process.env.PATH].join(path.delimiter) });
+
 const ptyMeta = new Map<string, { cwd: string; buf: string; act: Activity; sender: Electron.WebContents; limited?: boolean; agent?: string; cols: number; rows: number; screen?: Screen; queue?: string[]; queueBusy?: NodeJS.Timeout }>();
 function screenOf(id: string) {
   const m = ptyMeta.get(id);
@@ -635,18 +643,16 @@ function registerIpcHandlers() {
     topic = String(topic ?? '').trim().slice(0, 4000);
     agents = [...new Set((Array.isArray(agents) ? agents : []).filter((a) => DEBATE_AGENTS.includes(a)))];
     if (!topic || agents.length < 2) return { error: 'Pick at least two agents and write the question' };
-    const settings = storage.getSettings();
     const bins: Record<string, string> = {};
     for (const a of agents) {
-      const set = settings.agentPaths?.[a] || (a === 'claude' ? settings.claudePath : '');
-      const bin = set && fs.existsSync(set) ? set : await findAgentBinary(agentById(a).command);
+      const bin = await headlessBin(a);
       if (!bin) return { error: `${agentById(a).name} is not installed` };
       bins[a] = bin;
     }
     const run = { child: null as ChildProcess | null, stopped: false };
     debates.set(projectPath, run);
     const send = (m: object) => win?.webContents.send('debate:update', { projectPath, ...m });
-    const env = { ...process.env, PATH: [...new Set(Object.values(bins).map((b) => path.dirname(b))), `${os.homedir()}/.local/bin`, '/opt/homebrew/bin', '/usr/local/bin', process.env.PATH].join(path.delimiter) };
+    const env = headlessEnv(Object.values(bins));
     runDebate({
       projectPath, topic, agents, rounds: Number(rounds) || 3,
       ask: (a, prompt) => askAgent(bins[a], a, prompt, projectPath, env, (c) => { run.child = c; }),
@@ -657,13 +663,30 @@ function registerIpcHandlers() {
     return { ok: true };
   });
   // Which debate agents this computer has, so the panel only preselects ones that can answer.
-  ipcMain.handle('debate:agents', async () => {
-    const settings = storage.getSettings();
-    const found = await Promise.all(DEBATE_AGENTS.map(async (a) => {
-      const set = settings.agentPaths?.[a] || (a === 'claude' ? settings.claudePath : '');
-      return (set && fs.existsSync(set)) || !!(await findAgentBinary(agentById(a).command)) ? a : null;
-    }));
-    return found.filter(Boolean);
+  ipcMain.handle('debate:agents', async () => (await Promise.all(DEBATE_AGENTS.map(async (a) => ((await headlessBin(a)) ? a : null)))).filter(Boolean));
+
+  // Inbox summary: the tab's latest request, the agent's answer and its steps, read from the agent's own log.
+  const tabLog = (id: string) => {
+    const m = ptyMeta.get(id);
+    if (!m) return undefined;
+    return m.agent === 'codex' ? getCodexSessions(m.cwd)[0]?.file : m.agent === 'claude' ? getProjectSessions(m.cwd)[0]?.file : undefined;
+  };
+  ipcMain.handle('tab:lastTurn', async (_e, id: string) => { const f = tabLog(id); return f ? lastTurn(f) : null; });
+  // "Was everything done?" asked of the user's own agent CLI (their tokens, only when they press the button).
+  ipcMain.handle('tab:check', async (_e, id: string) => {
+    const f = tabLog(id);
+    const turn = f && lastTurn(f);
+    if (!turn) return { error: 'No conversation found for this tab' };
+    const own = ptyMeta.get(id)?.agent;
+    const agent = own && DEBATE_AGENTS.includes(own) && (await headlessBin(own)) ? own : 'claude';
+    const bin = await headlessBin(agent);
+    if (!bin) return { error: `${agentById(agent).name} is not installed` };
+    const errors = turn.steps.filter((x) => x.error).map((x) => x.title).join('\n');
+    const prompt = `A user gave a coding agent the request below. Using only the agent's final answer and failed steps, list each separate thing the user asked for and whether it was done. Reply with nothing but lines of the form "DONE: <item>" or "NOT DONE: <item> - <short reason>". Keep DONE and NOT DONE in English; write the items in the language of the request.\n\nREQUEST:\n${turn.request.slice(0, 4000)}\n\nFINAL ANSWER:\n${turn.reply.slice(0, 6000)}\n\nFAILED STEPS:\n${errors || '(none)'}`;
+    // Run outside the project so it judges the text only and can't wander through files.
+    const out = await askAgent(bin, agent, prompt, os.tmpdir(), headlessEnv([bin]), () => {});
+    const items = parseCheck(out);
+    return items.length ? { items } : { error: out.slice(0, 300) };
   });
   ipcMain.handle('debate:stop', async (_e, projectPath: string) => {
     const run = debates.get(projectPath);

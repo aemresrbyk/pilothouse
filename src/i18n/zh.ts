@@ -200,5 +200,15 @@ export default {
   'Drafts & queue': '草稿和队列',
   'Show in Finder': '在访达中显示',
   'Show in folder': '在文件夹中显示',
-  'Agents answer in turns and can read the project, but not change it. It stops early when all agree; the last turn writes the decision to .pilothouse/debate.md.': '智能体轮流发言，可以读取项目但不能修改。所有人都同意时会提前结束；最后一轮把结论写入 .pilothouse/debate.md。'
+  'Agents answer in turns and can read the project, but not change it. It stops early when all agree; the last turn writes the decision to .pilothouse/debate.md.': '智能体轮流发言，可以读取项目但不能修改。所有人都同意时会提前结束；最后一轮把结论写入 .pilothouse/debate.md。',
+  'Finished': '已完成',
+  'Resources': '资源',
+  'Needs you': '等你处理',
+  'Failed': '失败',
+  'Limit reached': '已达上限',
+  'Errors': '错误',
+  'Steps': '步骤',
+  'Check what was done': '检查完成情况',
+  'Checking…': '正在检查…',
+  'Asks your own agent CLI whether each thing you asked for was done (uses your tokens)': '让你自己的智能体 CLI 判断你要求的每件事是否完成（消耗你的 token）'
 } as Record<string, string>;

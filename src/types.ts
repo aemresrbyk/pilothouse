@@ -117,6 +117,11 @@ export interface ClaudeSession {
   agent?: string; // AgentProfile id of the agent that wrote it
 }
 
+// The latest request in a tab's conversation and what the agent did about it (Inbox summary).
+export interface TurnStep { title: string; detail: string; error?: boolean }
+export interface LastTurn { request: string; reply: string; steps: TurnStep[] }
+export interface TurnCheck { text: string; done: boolean }
+
 export interface TranscriptMessage {
   role: 'user' | 'assistant';
   text: string;
