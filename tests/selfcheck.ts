@@ -425,7 +425,7 @@ if (bin && hasModel()) {
   assert.equal(riskOf('Bash(npm test)\nDo you want to proceed?'), 'normal');
 
   process.env.PILOTHOUSE_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'ph-remote-'));
-  const writes: string[] = [], opened: string[] = [];
+  const writes: string[] = [], opened: string[] = [], debated: string[] = [];
   let tail = 'Bash(npm test)\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n';
   const r = await startRemoteServer({
     listProjects: () => [{ id: 'p', name: 'demo', path: '/tmp/demo' } as any, { id: 'q', name: 'other', path: '/tmp/other' } as any],
@@ -433,7 +433,8 @@ if (bin && hasModel()) {
     write: (_id, d) => { writes.push(d); return true; },
     screen: (id) => id === 't1' ? new Screen(20, 3, 'hi \x1b[31mred\x1b[0m').snapshot() : null,
     openTab: async (pid) => { opened.push(pid); return 'tab'; },
-    resume: async () => 'tab'
+    resume: async () => 'tab',
+    debate: { agents: async () => ['claude', 'codex'], start: async (pp, topic, ag) => (debated.push(`${pp}|${topic}|${ag}`), ag.length < 2 ? { error: 'two' } : { ok: true }), stop: (pp) => { debated.push(`stop ${pp}`); }, running: () => false }
   }, '127.0.0.1', 0);
   assert.ok('server' in r);
   const port = (r.server.address() as any).port;
@@ -461,6 +462,13 @@ if (bin && hasModel()) {
   assert.deepStrictEqual((await call('/api/projects')).body, [{ id: 'q', name: 'other' }]); // open ones are cards already
   assert.equal((await call('/api/open', { project: 'q' })).status, 200);
   assert.deepStrictEqual(opened, ['q']);
+  // Debate from the phone: read, start (the desktop's own checks decide), stop.
+  assert.deepStrictEqual((await call('/api/debate?project=p')).body, { project: 'demo', agents: ['claude', 'codex'], running: false, markdown: '' });
+  assert.equal((await call('/api/debate', { project: 'p', topic: 'Q', agents: ['claude'] })).status, 400);
+  assert.equal((await call('/api/debate', { project: 'p', topic: 'Q', agents: ['claude', 'codex'] })).status, 200);
+  assert.equal((await call('/api/debate-stop', { project: 'p' })).status, 200);
+  assert.equal((await call('/api/debate?project=zz')).status, 404);
+  assert.deepStrictEqual(debated, ['/tmp/demo|Q|claude', '/tmp/demo|Q|claude,codex', 'stop /tmp/demo']);
   assert.deepStrictEqual(s.choices.map((c: any) => c.key), ['1', '2']);
   assert.equal((await call('/api/choose', { id: 't1', key: '1', sig: 'stale' })).status, 409);
   assert.equal((await call('/api/choose', { id: 't1', key: '1', sig: s.sig })).status, 200);
@@ -471,7 +479,7 @@ if (bin && hasModel()) {
   assert.equal((await call('/api/choose', { id: 't1', key: '1', sig: d.sig })).status, 428);
   assert.equal((await call('/api/choose', { id: 't1', key: '2', sig: d.sig })).status, 200); // No: one tap
   assert.equal((await call('/api/choose', { id: 't1', key: '1', sig: d.sig, confirm: true })).status, 200);
-  assert.equal(fs.readFileSync(auditFile(), 'utf-8').trim().split('\n').length, 6); // refused pair, pair, open, 3 chooses
+  assert.equal(fs.readFileSync(auditFile(), 'utf-8').trim().split('\n').length, 8); // refused pair, pair, open, debate, debate-stop, 3 chooses
 
   // Push token registration, and revoking one device leaves the others working.
   const reg = await call('/api/push-token', { token: 'ab'.repeat(32), sandbox: true });

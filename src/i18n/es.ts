@@ -96,6 +96,8 @@ export default {
   'Save': 'Guardar',
   'Remove': 'Quitar',
   'Remote control': 'Control remoto',
+  "Your phone stays paired until you remove it below or unpair it on the phone. No need to scan again.": "Tu teléfono sigue emparejado hasta que lo quites abajo o lo desemparejes en el teléfono. No hace falta volver a escanear.",
+  "Pair another device": "Emparejar otro dispositivo",
   'Scan with your phone': 'Escanéalo con tu teléfono',
   'The camera opens the web app; the Pilothouse iPhone app scans it too.': 'La cámara abre la app web; la app de Pilothouse para iPhone también lo escanea.',
   'Both screens then show a security code. Click Allow here if they match.': 'Después ambas pantallas muestran un código de seguridad. Pulsa Allow aquí si coinciden.',

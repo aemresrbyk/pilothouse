@@ -96,6 +96,8 @@ export default {
   'Save': 'Kaydet',
   'Remove': 'Kaldır',
   'Remote control': 'Uzaktan kontrol',
+  "Your phone stays paired until you remove it below or unpair it on the phone. No need to scan again.": "Telefonun, aşağıdan kaldırana veya telefondan eşleşmeyi bitirene kadar eşli kalır. Tekrar okutman gerekmez.",
+  "Pair another device": "Başka bir cihaz eşleştir",
   'Scan with your phone': 'Telefonunla okut',
   'The camera opens the web app; the Pilothouse iPhone app scans it too.': 'Kamera web uygulamasını açar; Pilothouse iPhone uygulaması da okutabilir.',
   'Both screens then show a security code. Click Allow here if they match.': 'Sonra iki ekranda da bir güvenlik kodu çıkar. Eşleşiyorsa burada Allow’a bas.',
