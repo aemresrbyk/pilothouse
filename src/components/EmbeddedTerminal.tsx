@@ -41,6 +41,8 @@ export const EmbeddedTerminal: React.FC<EmbeddedTerminalProps> = ({
       lineHeight: 1.25,
       scrollback: 10000,
       theme: theme.terminalTheme,
+      // Codex and other TUIs pick dim greys for a background they guess; xterm lifts any text too close to ours.
+      minimumContrastRatio: 4.5,
       allowTransparency: false
     });
 

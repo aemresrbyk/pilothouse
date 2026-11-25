@@ -96,6 +96,8 @@ export default {
   'Save': 'Сохранить',
   'Remove': 'Удалить',
   'Remote control': 'Удалённое управление',
+  "Your phone stays paired until you remove it below or unpair it on the phone. No need to scan again.": "Телефон остаётся подключённым, пока вы не удалите его ниже или не отключите на самом телефоне. Сканировать заново не нужно.",
+  "Pair another device": "Подключить другое устройство",
   'Scan with your phone': 'Отсканируйте телефоном',
   'The camera opens the web app; the Pilothouse iPhone app scans it too.': 'Камера откроет веб-приложение; приложение Pilothouse для iPhone тоже его сканирует.',
   'Both screens then show a security code. Click Allow here if they match.': 'Затем на обоих экранах появится код безопасности. Если коды совпадают, нажмите здесь Allow.',

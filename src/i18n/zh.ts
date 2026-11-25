@@ -96,6 +96,8 @@ export default {
   'Save': '保存',
   'Remove': '移除',
   'Remote control': '远程控制',
+  "Your phone stays paired until you remove it below or unpair it on the phone. No need to scan again.": "手机会一直保持配对，直到你在下方移除它或在手机上取消配对。无需再次扫码。",
+  "Pair another device": "配对其他设备",
   'Scan with your phone': '用手机扫描',
   'The camera opens the web app; the Pilothouse iPhone app scans it too.': '相机会打开网页版；Pilothouse iPhone 应用也可以扫描。',
   'Both screens then show a security code. Click Allow here if they match.': '随后两个屏幕都会显示安全码。如果一致，请在这里点 Allow。',

@@ -262,6 +262,40 @@ function runNextQueued(id: string) {
   if (!m.sender.isDestroyed()) m.sender.send('queue:changed', { id, queue: m.queue });
 }
 
+// Debate: agents take turns on one question in .pilothouse/debate.md; one debate per project at a time.
+const debates = new Map<string, { child: ChildProcess | null; stopped: boolean }>();
+async function startDebate(projectPath: string, topic: string, agents: string[], rounds: number): Promise<{ ok?: true; error?: string }> {
+  if (!storage.listStoredProjects().some((p) => p.path === projectPath)) return { error: 'Unknown project' };
+  if (debates.has(projectPath)) return { error: 'A debate is already running here' };
+  topic = String(topic ?? '').trim().slice(0, 4000);
+  agents = [...new Set((Array.isArray(agents) ? agents : []).filter((a) => DEBATE_AGENTS.includes(a)))];
+  if (!topic || agents.length < 2) return { error: 'Pick at least two agents and write the question' };
+  const bins: Record<string, string> = {};
+  for (const a of agents) {
+    const bin = await headlessBin(a);
+    if (!bin) return { error: `${agentById(a).name} is not installed` };
+    bins[a] = bin;
+  }
+  const run = { child: null as ChildProcess | null, stopped: false };
+  debates.set(projectPath, run);
+  const send = (m: object) => win?.webContents.send('debate:update', { projectPath, ...m });
+  const env = headlessEnv(Object.values(bins));
+  runDebate({
+    projectPath, topic, agents, rounds: Number(rounds) || 3,
+    ask: (a, prompt) => askAgent(bins[a], a, prompt, projectPath, env, (c) => { run.child = c; }),
+    onUpdate: (markdown) => send({ markdown }),
+    stopped: () => run.stopped
+  }).then(() => send({ done: true }), (err) => send({ done: true, error: String(err?.message || err) }))
+    .finally(() => debates.delete(projectPath));
+  return { ok: true };
+}
+// Which debate agents this computer has, so the panel only preselects ones that can answer.
+const debateAgents = async () => (await Promise.all(DEBATE_AGENTS.map(async (a) => ((await headlessBin(a)) ? a : null)))).filter((a): a is string => !!a);
+function stopDebate(projectPath: string) {
+  const run = debates.get(projectPath);
+  if (run) { run.stopped = true; run.child?.kill(); }
+}
+
 // Remote control (Settings → Remote control). Started and stopped live; the QR link carries a one-time code.
 let remote: { server: http.Server; url: string } | null = null;
 let remoteError = '';
@@ -282,6 +316,7 @@ async function applyRemote(enabled: boolean) {
     write: (id, data) => { const p = ptySessions.get(id); const m = ptyMeta.get(id); if (!p) return false; if (m) m.act.lastInput = Date.now(); p.write(data); return true; },
     screen: screenOf,
     openTab: (projectId) => openTabViaRenderer(projectId),
+    debate: { agents: debateAgents, start: startDebate, stop: stopDebate, running: (p) => debates.has(p) },
     resume: (projectId, agentId, sessionId) => {
       const agent = agentById(agentId);
       return openTabViaRenderer(projectId, buildAgentCommand(agent, agentBinary(agent, storage.getSettings()), [], undefined, sessionId));
@@ -635,35 +670,8 @@ function registerIpcHandlers() {
     return writeHandoff(projectPath, fromAgent, sessionFile);
   });
 
-  // Debate: agents take turns on one question in .pilothouse/debate.md; one debate per project at a time.
-  const debates = new Map<string, { child: ChildProcess | null; stopped: boolean }>();
-  ipcMain.handle('debate:start', async (_e, projectPath: string, topic: string, agents: string[], rounds: number) => {
-    if (!storage.listStoredProjects().some((p) => p.path === projectPath)) return { error: 'Unknown project' };
-    if (debates.has(projectPath)) return { error: 'A debate is already running here' };
-    topic = String(topic ?? '').trim().slice(0, 4000);
-    agents = [...new Set((Array.isArray(agents) ? agents : []).filter((a) => DEBATE_AGENTS.includes(a)))];
-    if (!topic || agents.length < 2) return { error: 'Pick at least two agents and write the question' };
-    const bins: Record<string, string> = {};
-    for (const a of agents) {
-      const bin = await headlessBin(a);
-      if (!bin) return { error: `${agentById(a).name} is not installed` };
-      bins[a] = bin;
-    }
-    const run = { child: null as ChildProcess | null, stopped: false };
-    debates.set(projectPath, run);
-    const send = (m: object) => win?.webContents.send('debate:update', { projectPath, ...m });
-    const env = headlessEnv(Object.values(bins));
-    runDebate({
-      projectPath, topic, agents, rounds: Number(rounds) || 3,
-      ask: (a, prompt) => askAgent(bins[a], a, prompt, projectPath, env, (c) => { run.child = c; }),
-      onUpdate: (markdown) => send({ markdown }),
-      stopped: () => run.stopped
-    }).then(() => send({ done: true }), (err) => send({ done: true, error: String(err?.message || err) }))
-      .finally(() => debates.delete(projectPath));
-    return { ok: true };
-  });
-  // Which debate agents this computer has, so the panel only preselects ones that can answer.
-  ipcMain.handle('debate:agents', async () => (await Promise.all(DEBATE_AGENTS.map(async (a) => ((await headlessBin(a)) ? a : null)))).filter(Boolean));
+  ipcMain.handle('debate:start', (_e, projectPath: string, topic: string, agents: string[], rounds: number) => startDebate(projectPath, topic, agents, rounds));
+  ipcMain.handle('debate:agents', () => debateAgents());
 
   // Inbox summary: the tab's latest request, the agent's answer and its steps, read from the agent's own log.
   const tabLog = (id: string) => {
@@ -688,10 +696,7 @@ function registerIpcHandlers() {
     const items = parseCheck(out);
     return items.length ? { items } : { error: out.slice(0, 300) };
   });
-  ipcMain.handle('debate:stop', async (_e, projectPath: string) => {
-    const run = debates.get(projectPath);
-    if (run) { run.stopped = true; run.child?.kill(); }
-  });
+  ipcMain.handle('debate:stop', (_e, projectPath: string) => stopDebate(projectPath));
 
   ipcMain.handle('pty:resources', async () => {
     const live = [...ptySessions.entries()];

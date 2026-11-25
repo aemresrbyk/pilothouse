@@ -96,6 +96,8 @@ export default {
   'Save': '保存',
   'Remove': '削除',
   'Remote control': 'リモート操作',
+  "Your phone stays paired until you remove it below or unpair it on the phone. No need to scan again.": "下で削除するか、電話側でペアリングを解除するまで、電話はペアリングされたままです。再スキャンは不要です。",
+  "Pair another device": "別のデバイスをペアリング",
   'Scan with your phone': 'スマホで読み取る',
   'The camera opens the web app; the Pilothouse iPhone app scans it too.': 'カメラで読み取ると Web アプリが開きます。Pilothouse の iPhone アプリでも読み取れます。',
   'Both screens then show a security code. Click Allow here if they match.': 'その後、両方の画面にセキュリティコードが表示されます。一致したらここで Allow を押してください。',

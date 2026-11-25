@@ -33,6 +33,8 @@ enum Demo {
         ]])
         case "/api/diff": return json(["project": "storefront", "stat": " src/Checkout.tsx | 24 ++++++++++++++++++------\n 1 file changed, 18 insertions(+), 6 deletions(-)", "untracked": [],
             "diff": "--- a/src/Checkout.tsx\n+++ b/src/Checkout.tsx\n@@ -40,6 +40,12 @@\n   return (\n     <form onSubmit={pay}>\n+      <ApplePayButton\n+        amount={total}\n+        onAuthorized={confirm}\n+      />\n       <CardFields />\n-      <button>Pay</button>\n+      <button type=\"submit\">Pay {format(total)}</button>\n     </form>"])
+        case "/api/debate": return json(["project": "storefront", "agents": ["claude", "codex"], "running": false,
+            "markdown": "# Debate: Stripe or Apple Pay first?\n\n## 1. Claude Code\n\nApple Pay first: most checkouts are on iPhone and it skips the card form.\n\nAGREE\n\n## 2. Codex\n\nAgreed, but keep the card form as the fallback.\n\nAGREE\n\n---\n\n## Decision\n\nShip Apple Pay first, card form as fallback.\n\n## Tasks\n\n1. Add the Apple Pay button\n2. Test a declined payment"])
         case "/api/screen": return json(["cols": 60, "rows": 14, "cursor": ["x": 2, "y": 11], "lines": screen])
         default: return json(["error": "Not in the demo"])
         }

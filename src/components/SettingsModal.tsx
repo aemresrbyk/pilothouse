@@ -64,6 +64,9 @@ const RemoteField: React.FC = () => {
   // Which way in the QR is for: any browser through the encrypted relay, or the iPhone app over Tailscale.
   const [via, setVia] = useState<'web' | 'tailscale'>('web');
   const [viewCopied, setViewCopied] = useState(false);
+  // Like WhatsApp's linked devices: a paired phone stays paired, so the QR only shows when adding another one.
+  const [adding, setAdding] = useState(false);
+  const paired = !!info?.devices?.some((d) => !d.viewOnly);
   // Polled: a pairing code works once and for 10 minutes, so the QR (and the device list) must follow along.
   useEffect(() => {
     const load = () => window.electronAPI.remoteInfo().then(setInfo).catch(() => {});
@@ -95,7 +98,13 @@ const RemoteField: React.FC = () => {
       {info?.enabled && (
         <div className="ml-5 flex flex-col gap-2">
           {/* One QR for everything: the phone's camera opens the web app, the iPhone app pairs with it too. */}
-          {link && (
+          {paired && !adding && (
+            <div className="flex flex-col gap-1.5 text-[11px] text-zinc-400">
+              <span>Your phone stays paired until you remove it below or unpair it on the phone. No need to scan again.</span>
+              <button type="button" onClick={() => setAdding(true)} className="self-start px-2 py-1 rounded border border-zinc-700 text-xs text-zinc-300">Pair another device</button>
+            </div>
+          )}
+          {link && (!paired || adding) && (
             <div className="flex items-center gap-4">
               {qr && <img src={qr} alt={via === 'web' ? 'QR code to pair a phone or browser' : 'QR code to pair the Pilothouse iPhone app over Tailscale'} width={168} height={168} className="rounded-lg bg-white p-1" />}
               <div className="flex flex-col gap-1.5 text-[11px] text-zinc-400 max-w-[220px]">

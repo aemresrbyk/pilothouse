@@ -19,6 +19,7 @@ import { WebPushSub, validWebPush, newVapidKeys } from './push';
 import { REMOTE_ICON_PNG } from './remoteIcon';
 import { claudeUsage, codexUsage, projectTodos, AgentUsage } from './usage';
 import { AGENTS } from '../src/types';
+import { DEBATE_FILE } from './debate';
 import { recentSessions, readTranscript, getProjectSessions, getCodexSessions } from './scanner';
 
 // agent: AGENTS id from the tab's command; limited: the tab printed a usage-limit message.
@@ -36,6 +37,8 @@ export interface RemoteDeps {
   // Asks the person at the computer to let a device in, showing the security code the device shows too.
   // Without it (headless server) pairing needs the QR alone.
   confirmPair?: (p: { name: string; code: string; location?: string; viewOnly: boolean }) => Promise<boolean>;
+  // Debates (.pilothouse/debate.md), keyed by project path; same rules as starting one on the desktop.
+  debate?: { agents: () => Promise<string[]>; start: (path: string, topic: string, agents: string[], rounds: number) => Promise<{ ok?: true; error?: string }>; stop: (path: string) => void; running: (path: string) => boolean };
 }
 
 // The 6-digit security code a pairing device shows. It picks the code itself and sends it inside the
@@ -159,8 +162,11 @@ let cache: { file: string; mtime: number; state: RemoteState } | null = null;
 
 function saveState(s: RemoteState) {
   fs.mkdirSync(dir(), { recursive: true });
-  fs.writeFileSync(remoteFile(), JSON.stringify(s), { mode: 0o600 });
-  fs.chmodSync(remoteFile(), 0o600);
+  // Write then rename: a crash mid-write must never leave a half file, which would unpair every phone.
+  const tmp = `${remoteFile()}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(s), { mode: 0o600 });
+  fs.chmodSync(tmp, 0o600);
+  fs.renameSync(tmp, remoteFile());
   cache = { file: remoteFile(), mtime: fs.statSync(remoteFile()).mtimeMs, state: s };
 }
 
@@ -403,6 +409,21 @@ export function remoteApi(deps: RemoteDeps) {
         const p = projects.find(x => x.id === url.searchParams.get('project'));
         if (!p) return reply(404, { error: 'project not found' });
         return reply(200, { project: p.name, items: await projectTodos(p.path) });
+      }
+      // Debate from the phone: read the live file, start one, stop it.
+      if (route === 'GET /api/debate' || route === 'POST /api/debate' || route === 'POST /api/debate-stop') {
+        const p = projects.find(x => x.id === String(url.searchParams.get('project') || body.project));
+        if (!p || !deps.debate) return reply(404, { error: 'project not found' });
+        if (route === 'GET /api/debate') {
+          let markdown = '';
+          try { markdown = fs.readFileSync(path.join(p.path, DEBATE_FILE), 'utf-8'); } catch {}
+          return reply(200, { project: p.name, agents: await deps.debate.agents(), running: deps.debate.running(p.path), markdown });
+        }
+        if (route === 'POST /api/debate-stop') { deps.debate.stop(p.path); audit(who, 'debate-stop', p.name, ''); return reply(200, { ok: true }); }
+        const r = await deps.debate.start(p.path, String(body.topic || ''), Array.isArray(body.agents) ? body.agents.map(String) : [], Number(body.rounds) || 3);
+        if (r.error) return reply(400, { error: r.error });
+        audit(who, 'debate', p.name, String(body.topic || ''));
+        return reply(200, { ok: true });
       }
       if (route === 'POST /api/open') {
         const p = projects.find(x => x.id === String(body.project));

@@ -72,6 +72,8 @@ struct ChatLog: Codable { let messages: [ChatMessage]; let live: Bool }
 
 struct TodoItem: Codable, Hashable { let file: String; let line: Int; let text: String; let kind: String }
 struct TodoList: Codable { let project: String; let items: [TodoItem] }
+// .pilothouse/debate.md of a project, and which agents this computer can debate with.
+struct DebateState: Codable { let project: String; let agents: [String]; let running: Bool; let markdown: String }
 struct DiffResult: Codable { let project: String; let stat: String; let diff: String; let untracked: [String] }
 // The live terminal: each line is runs of ["text", "#rrggbb" or "" for default, bold?].
 struct ScreenRun: Decodable, Hashable {
@@ -289,6 +291,13 @@ final class Client {
     func todos(_ projectId: String) async throws -> TodoList {
         try await send("GET", "/api/todos?project=\(projectId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? projectId)")
     }
+    func debate(_ projectId: String) async throws -> DebateState {
+        try await send("GET", "/api/debate?project=\(projectId.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? projectId)")
+    }
+    func startDebate(_ projectId: String, topic: String, agents: [String], rounds: Int) async throws {
+        let _: OK = try await send("POST", "/api/debate", ["project": projectId, "topic": topic, "agents": agents, "rounds": rounds])
+    }
+    func stopDebate(_ projectId: String) async throws { let _: OK = try await send("POST", "/api/debate-stop", ["project": projectId]) }
     func diff(_ id: String) async throws -> DiffResult {
         try await send("GET", "/api/diff?id=\(id.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? id)")
     }

@@ -342,6 +342,8 @@ struct SessionView: View {
                 if let s = session, !s.projectId.isEmpty {
                     NavigationLink { TodosView(projectId: "\(s.computer)~\(s.projectId)", name: s.project) } label: { Image(systemName: "checklist") }
                         .accessibilityLabel("To-dos")
+                    NavigationLink { DebateView(projectId: "\(s.computer)~\(s.projectId)", name: s.project) } label: { Image(systemName: "bubble.left.and.bubble.right") }
+                        .accessibilityLabel("Debate")
                 }
             }
         }
@@ -750,9 +752,93 @@ struct TodosView: View {
         }
         .navigationTitle("To-dos · \(name)")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { NavigationLink { DebateView(projectId: projectId, name: name) } label: { Image(systemName: "bubble.left.and.bubble.right") }.accessibilityLabel("Debate") }
         .task {
             do { list = try await route(projectId).client.todos(route(projectId).sid) } catch { self.error = error.localizedDescription }
         }
+    }
+}
+
+// Debate: two or more agents talk one question over on the computer (read-only, each on its own account);
+// the phone starts it, follows .pilothouse/debate.md as it grows, and can stop it.
+struct DebateView: View {
+    let projectId: String
+    let name: String
+    @State private var state: DebateState?
+    @State private var error: String?
+    @State private var topic = ""
+    @State private var picked: Set<String> = []
+    @State private var rounds = 3
+    @State private var starting = false
+    @State private var composing = false
+    private static let names = ["claude": "Claude Code", "codex": "Codex", "gemini": "Gemini CLI", "opencode": "OpenCode"]
+
+    var body: some View {
+        Form {
+            if let error { Text(error).foregroundStyle(.orange) }
+            if let state {
+                if state.running || (!state.markdown.isEmpty && !composing) {
+                    Section {
+                        if state.running {
+                            HStack { ProgressView(); Text("Agents are talking it over…").foregroundStyle(.secondary) }
+                            Button("Stop", role: .destructive) { act { try await c.stopDebate(sid) } }
+                        } else {
+                            Button("New debate") { composing = true }
+                        }
+                    }
+                    Section { Text(rendered(state.markdown)).font(.callout).textSelection(.enabled) }
+                } else {
+                    Section("Question") {
+                        TextField("What should the agents decide?", text: $topic, axis: .vertical).lineLimit(3...8)
+                    }
+                    Section {
+                        ForEach(state.agents, id: \.self) { a in
+                            Toggle(Self.names[a] ?? a, isOn: Binding(get: { picked.contains(a) }, set: { if $0 { picked.insert(a) } else { picked.remove(a) } }))
+                        }
+                        Stepper("Rounds: \(rounds)", value: $rounds, in: 1...5)
+                    } header: { Text("Agents") } footer: {
+                        Text("Each turn uses that agent's own account. They only read the project; no files are changed.")
+                    }
+                    Button {
+                        act { try await c.startDebate(sid, topic: topic, agents: state.agents.filter(picked.contains), rounds: rounds); composing = false }
+                    } label: { if starting { ProgressView() } else { Text("Start debate") } }
+                    .disabled(starting || topic.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || picked.count < 2)
+                }
+            } else if error == nil {
+                ProgressView()
+            }
+        }
+        .navigationTitle(String(localized: "Debate · \(name)"))
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            // Follow the file while this screen is open; a turn takes a while, so every 3 s is plenty.
+            while !Task.isCancelled {
+                do {
+                    let s = try await c.debate(sid)
+                    if state == nil { picked = Set(s.agents.prefix(2)) }
+                    state = s; error = nil
+                } catch { self.error = error.localizedDescription }
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
+    }
+
+    private var c: Client { route(projectId).client }
+    private var sid: String { route(projectId).sid }
+    private func act(_ f: @escaping () async throws -> Void) {
+        starting = true
+        Task {
+            do { try await f(); state = try await c.debate(sid); error = nil } catch { self.error = error.localizedDescription }
+            starting = false
+        }
+    }
+    // Headings and lists as plain lines with bold; full Markdown blocks are not needed for a chat-like log.
+    private func rendered(_ md: String) -> AttributedString {
+        let text = md.split(separator: "\n", omittingEmptySubsequences: false).map { line -> String in
+            if line.hasPrefix("#") { return "**" + line.drop(while: { $0 == "#" }).trimmingCharacters(in: .whitespaces) + "**" }
+            return line == "---" ? "" : String(line)
+        }.joined(separator: "\n")
+        return (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(md)
     }
 }
 

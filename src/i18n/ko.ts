@@ -96,6 +96,8 @@ export default {
   'Save': '저장',
   'Remove': '삭제',
   'Remote control': '원격 제어',
+  "Your phone stays paired until you remove it below or unpair it on the phone. No need to scan again.": "아래에서 제거하거나 휴대폰에서 페어링을 해제할 때까지 휴대폰은 페어링된 상태로 유지됩니다. 다시 스캔할 필요가 없습니다.",
+  "Pair another device": "다른 기기 페어링",
   'Scan with your phone': '휴대폰으로 스캔',
   'The camera opens the web app; the Pilothouse iPhone app scans it too.': '카메라로 찍으면 웹 앱이 열립니다. Pilothouse iPhone 앱으로도 스캔할 수 있습니다.',
   'Both screens then show a security code. Click Allow here if they match.': '그다음 두 화면에 보안 코드가 나옵니다. 같으면 여기서 Allow를 누르세요.',
