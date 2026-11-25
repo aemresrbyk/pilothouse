@@ -9,27 +9,27 @@ How Pilothouse fits together, for anyone who wants to read or change the code. T
   relay on the Cloudflare Workers free plan that passes end-to-end encrypted messages along.
 
 ```mermaid
-flowchart LR
-  subgraph Computer["Your computer (or a server)"]
-    UI["Renderer<br/>React + xterm.js<br/>src/"]
-    Main["Main process<br/>electron/main.ts"]
-    PTY["Terminal tabs<br/>node-pty"]
-    CLI["Agent CLIs<br/>claude · codex · gemini · opencode"]
-    Files["Project folders<br/>+ agent logs"]
-    Remote["Remote API<br/>electron/remote.ts"]
-    UI <-- "IPC (preload.ts)" --> Main
-    Main --> PTY --> CLI --> Files
+flowchart TB
+  subgraph Computer["Your computer (or your own server)"]
+    direction TB
+    UI["Window: React + xterm.js (src/)"]
+    Main["Main process (electron/main.ts)"]
+    PTY["Terminal tabs (node-pty)"]
+    CLI["Agent CLIs: claude, codex, gemini, opencode"]
+    Remote["Remote API (electron/remote.ts)"]
+    UI <-->|"IPC (preload.ts)"| Main
+    Main --> PTY --> CLI
     Main --> Remote
   end
-  Relay["Relay<br/>Cloudflare Worker<br/>relay/worker.js"]
-  Phone["iPhone app<br/>mobile/ios"]
-  Web["Web app<br/>usepilothouse.com/app"]
+  Relay["Relay: Cloudflare Worker (relay/worker.js)<br/>forwards sealed messages, stores nothing"]
+  Phone["iPhone app (mobile/ios)"]
+  Web["Web app (usepilothouse.com/app)"]
   APNs["Apple Push"]
-  Remote <-- "E2E encrypted (AES-256-GCM)" --> Relay
-  Remote <-- "Tailscale (optional)" --> Phone
+  Remote <-->|"end-to-end encrypted"| Relay
+  Remote <-.->|"Tailscale, optional"| Phone
   Relay <--> Phone
   Relay <--> Web
-  Relay -- "sealed notification" --> APNs --> Phone
+  Relay -->|"sealed notification"| APNs --> Phone
 ```
 
 ## Desktop app
