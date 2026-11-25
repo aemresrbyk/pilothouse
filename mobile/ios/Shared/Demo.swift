@@ -16,8 +16,8 @@ enum Demo {
         case "/api/sessions": return json(sessions)
         case "/api/projects": return json([["id": "web", "name": "storefront"], ["id": "api", "name": "billing-api"], ["id": "ios", "name": "ios-app"]])
         case "/api/usage": return json([
-            ["agent": "Claude Code", "plan": "Pro", "windows": [["label": "5-hour", "usedPercent": 42], ["label": "Weekly", "usedPercent": 18]]],
-            ["agent": "Codex", "windows": [["label": "5-hour", "usedPercent": 10]]]
+            ["agent": "Claude Code", "plan": "Pro", "windows": [["label": "5 hours", "usedPercent": 42], ["label": "week", "usedPercent": 18]]],
+            ["agent": "Codex", "windows": [["label": "5 hours", "usedPercent": 10]]]
         ])
         case "/api/conversations": return json([
             ["key": "claude:demo1", "agent": "Claude Code", "project": "storefront", "projectId": "web", "title": "Add Apple Pay to checkout", "updatedAt": now - 120_000, "live": true],
