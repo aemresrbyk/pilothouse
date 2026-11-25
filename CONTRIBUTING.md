@@ -5,6 +5,7 @@ Thanks for wanting to help!
 - **Bugs and ideas:** open an issue with the templates.
 - **Code:** fork, create a branch, open a pull request. Small, focused PRs are
   easiest to review.
+- **Finding your way:** [ARCHITECTURE.md](ARCHITECTURE.md) shows how the pieces fit and which file does what.
 
 ## Run it locally
 
