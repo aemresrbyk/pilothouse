@@ -183,11 +183,38 @@ export function isSessionFile(file: string): boolean {
     [path.join(home, '.claude', 'projects'), path.join(home, '.codex', 'sessions')].some((root) => resolved.startsWith(root + path.sep));
 }
 
+// Logs only grow, and the phone re-reads an open conversation every 2 s; logs reach 100+ MB, so each file is
+// parsed once and later calls read only the bytes appended since (on the main process, a full re-read froze the app).
+const transcripts = new Map<string, { size: number; mtime: number; out: TranscriptMessage[]; rest: Buffer }>();
+
 // The visible conversation of a Claude Code or Codex session: prompts and text answers, no tool calls.
 export function readTranscript(file: string): TranscriptMessage[] {
-  let raw: string;
-  try { raw = fs.readFileSync(file, 'utf-8'); } catch { return []; }
-  const out: TranscriptMessage[] = [];
+  let st: fs.Stats;
+  try { st = fs.statSync(file); } catch { return []; }
+  let c = transcripts.get(file);
+  if (!c || st.size < c.size) c = { size: 0, mtime: 0, out: [], rest: Buffer.alloc(0) }; // rewritten: start over
+  if (st.size === c.size && st.mtimeMs === c.mtime) return c.out.slice();
+  let chunk: Buffer;
+  try {
+    const fd = fs.openSync(file, 'r');
+    try {
+      chunk = Buffer.alloc(st.size - c.size);
+      fs.readSync(fd, chunk, 0, chunk.length, c.size);
+    } finally { fs.closeSync(fd); }
+  } catch { return c.out.slice(); }
+  // Only whole lines are parsed (cut at a newline byte, so a multi-byte character is never split).
+  const buf = Buffer.concat([c.rest, chunk]);
+  let end = buf.lastIndexOf(0x0a) + 1;
+  // A last line without its newline is taken once it is whole JSON (a cut-off object never parses).
+  try { JSON.parse(buf.subarray(end).toString('utf-8')); end = buf.length; } catch {}
+  const raw = buf.subarray(0, end).toString('utf-8');
+  c.rest = Buffer.from(buf.subarray(end));
+  c.size = st.size;
+  c.mtime = st.mtimeMs;
+  transcripts.delete(file);
+  transcripts.set(file, c);
+  if (transcripts.size > 20) transcripts.delete(transcripts.keys().next().value!);
+  const out = c.out;
   const add = (role: 'user' | 'assistant', text: string, time?: string) => {
     text = text.trim();
     if (!text) return;
@@ -217,7 +244,7 @@ export function readTranscript(file: string): TranscriptMessage[] {
     if (o.type === 'user' && text.trimStart().startsWith('<')) continue;
     add(o.type, text, o.timestamp);
   }
-  return out;
+  return out.slice();
 }
 
 // One line per tool call, like the agent's own terminal shows it: "Bash(npm test)", "Edit(src/app.ts)".
@@ -233,8 +260,18 @@ const resultText = (c: any): string => typeof c === 'string' ? c
 // The last thing the user asked in this session, the agent's final answer, and each tool call in between with its
 // output (errors flagged). shortcut: Codex logs carry no tool calls we read yet, so its turns have no steps.
 export function lastTurn(file: string): LastTurn | null {
+  // shortcut: reads the last 8 MB only (logs reach 100+ MB); a turn longer than that shows its tail.
   let raw: string;
-  try { raw = fs.readFileSync(file, 'utf-8'); } catch { return null; }
+  try {
+    const fd = fs.openSync(file, 'r');
+    try {
+      const size = fs.fstatSync(fd).size, len = Math.min(size, 8 * 1024 * 1024);
+      const buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, size - len);
+      raw = buf.toString('utf-8');
+      if (len < size) raw = raw.slice(raw.indexOf('\n') + 1); // drop the partial first line
+    } finally { fs.closeSync(fd); }
+  } catch { return null; }
   let turn: LastTurn | null = null;
   let tail: string[] = []; // answer text since the last tool call: the final reply, not the narration before it
   const byId = new Map<string, TurnStep>();

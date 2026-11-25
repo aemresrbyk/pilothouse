@@ -196,6 +196,14 @@ assert.deepStrictEqual(toFlagList(undefined), []);
     L({ type: 'assistant', message: { content: [{ type: 'text', text: 'Fixed the build. The test still fails.' }] } })
   ].join('\n'));
   const turn = lastTurn(f)!;
+  // readTranscript parses only what was appended since the last call, and a half-written line waits for its end.
+  const first = readTranscript(f).length;
+  fs.appendFileSync(f, '\n' + L({ type: 'user', message: { content: 'and ship it ✓' } }).slice(0, 30));
+  assert.equal(readTranscript(f).length, first, 'partial line is not parsed yet');
+  fs.appendFileSync(f, L({ type: 'user', message: { content: 'and ship it ✓' } }).slice(30) + '\n');
+  assert.equal(readTranscript(f).at(-1)!.text, 'and ship it ✓');
+  fs.writeFileSync(f, L({ type: 'user', message: { content: 'rewritten' } }) + '\n');
+  assert.deepStrictEqual(readTranscript(f).map((m) => m.text), ['rewritten'], 'a shorter file starts over');
   fs.rmSync(f);
   assert.equal(turn.request, 'fix the build and add a test');
   assert.equal(turn.reply, 'Fixed the build. The test still fails.');
