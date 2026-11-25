@@ -153,6 +153,8 @@ On Windows and Linux the app shortcuts add `Shift`, because plain `Ctrl+T/W/K/P/
 
 ## Build from source
 
+How it fits together, file by file: [ARCHITECTURE.md](ARCHITECTURE.md).
+
 Requirements: Node.js 18+ (or [Bun](https://bun.sh)) and at least one supported agent CLI: Claude Code (`npm install -g @anthropic-ai/claude-code`), Codex, Gemini CLI or opencode.
 
 ```bash
