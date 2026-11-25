@@ -159,7 +159,6 @@ export default {
   'Change': 'Değiştir',
   'Choose…': 'Seç…',
   'Add another folder': 'Başka klasör ekle',
-  'Default model': 'Varsayılan model',
   'Continue with': 'Şununla devam et',
   'Takes effect on the next Run.': 'Bir sonraki çalıştırmada geçerli olur.',
   'Terminal': 'Terminal',

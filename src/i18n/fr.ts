@@ -159,7 +159,6 @@ export default {
   'Change': 'Changer',
   'Choose…': 'Choisir…',
   'Add another folder': 'Ajouter un autre dossier',
-  'Default model': 'Modèle par défaut',
   'Continue with': 'Continuer avec',
   'Takes effect on the next Run.': 'Prend effet au prochain lancement.',
   'Terminal': 'Terminal',

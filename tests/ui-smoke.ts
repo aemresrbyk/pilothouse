@@ -95,6 +95,18 @@ await step('drag a tab to reorder; terminals keep running', async () => {
   if (!r.moved || !r.kept) throw new Error(JSON.stringify(r));
 });
 
+await step('agent + model picker under the terminal switches agent', async () => {
+  const pick = (v: string) => run(`const s = [...document.querySelectorAll('select[aria-label="Agent"]')].find((e) => e.offsetParent);
+    s.value = '${v}'; s.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 400));
+    const t = [...document.querySelectorAll('.xterm')].find((e) => e.offsetParent).getBoundingClientRect();
+    return { value: s.value, groups: s.querySelectorAll('optgroup').length, below: s.getBoundingClientRect().top >= t.bottom - 1 };`);
+  const r = await pick('codex|');
+  if (process.env.UI_SHOT) fs.writeFileSync(process.env.UI_SHOT, Buffer.from((await send('Page.captureScreenshot')).data, 'base64'));
+  const back = await pick('claude|');
+  if (r.value !== 'codex|' || back.value !== 'claude|' || r.groups < 3 || !r.below) throw new Error(JSON.stringify({ r, back }));
+});
+
 await step('drafts → debate panel', async () => {
   await run(`${H} btn(/Prompt Drafter/i).click(); return true;`);
   await waitFor('drafts open', `return [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === 'Debate')`);

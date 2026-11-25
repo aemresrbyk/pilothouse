@@ -62,7 +62,7 @@ interface TabWorkspaceProps {
   pendingLaunch?: PendingLaunch; // set by a hand-off or a resume in another agent: restart once with it
   onLaunchUsed: () => void;
   modelChoice?: ModelChoice; // model + effort this project runs the agent with
-  onSetModel: (choice: ModelChoice) => void;
+  onSetModel: (choice: ModelChoice, agentId?: string) => void; // agentId defaults to the project's current agent
   onSaveCustomCommands: (commands: RunCommand[]) => void;
 }
 
@@ -150,17 +150,32 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
   const fullCommand = useMemo(() => buildCommand(), [flags, customInput, agentBinary, agent, modelChoice]);
 
   // Models and effort levels this agent offers with the user's own account (read from the agent on this computer).
-  const [agentOpts, setAgentOpts] = useState<AgentOptions | null>(null);
+  // Every agent's list is loaded, so one picker can switch agent and model together.
+  const [allOpts, setAllOpts] = useState<Record<string, AgentOptions>>({});
   useEffect(() => {
     let live = true;
-    setAgentOpts(null);
-    window.electronAPI.agentOptions(agent.id).then((o) => live && setAgentOpts(o)).catch(() => {});
+    AGENTS.forEach((a) => window.electronAPI.agentOptions(a.id).then((o) => live && setAllOpts((m) => ({ ...m, [a.id]: o }))).catch(() => {}));
     return () => { live = false; };
-  }, [agent.id, agentBinary]);
+  }, [agentBinary]);
+  const agentOpts: AgentOptions | null = allOpts[agent.id] ?? null;
   const pickedModel = agentOpts?.models.find((m) => m.id === modelChoice?.model);
   const effortList = pickedModel?.efforts?.length ? pickedModel.efforts : agentOpts?.efforts || [];
   const isClaude = agent.id === 'claude';
   const mdFile = agent.instructionsFile;
+
+  // "agentId|modelId" from the bottom picker. Another agent's model switches agent too (restarting the terminal);
+  // the same agent's model applies on the next Run, like before. Effort is kept only if the new model has it.
+  const pickAgentModel = (value: string) => {
+    const i = value.indexOf('|');
+    const agentId = value.slice(0, i);
+    const model = value.slice(i + 1) || undefined;
+    const opts = allOpts[agentId];
+    const own = opts?.models.find((m) => m.id === model)?.efforts;
+    const levels = own?.length ? own : opts?.efforts || [];
+    const effort = project.agentModels?.[agentId]?.effort;
+    onSetModel({ model, effort: effort && levels.includes(effort) ? effort : undefined }, agentId);
+    if (agentId !== agent.id) handleSwitchAgent(agentId);
+  };
 
   // Switching agent restarts the terminal with the new agent's command.
   const handleSwitchAgent = (agentId: string) => {
@@ -408,54 +423,6 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
 
         {/* Center: Essential Flags & Quick Omnibar */}
         <div className="flex items-center gap-1.5 flex-1 max-w-xl justify-start">
-          {/* Agent picker */}
-          <select
-            value={agent.id}
-            onChange={(e) => handleSwitchAgent(e.target.value)}
-            title="Which terminal AI agent this project runs"
-            aria-label="Agent"
-            className="text-[11px] font-medium px-1.5 py-1 rounded border outline-none cursor-pointer flex-shrink-0"
-            style={{ backgroundColor: themeConfig.bgMain, borderColor: themeConfig.border, color: themeConfig.textPrimary }}
-          >
-            {AGENTS.map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
-          </select>
-
-          {/* Model and effort from the user's own account; "Default" leaves the agent's own setting. Applies on Run. */}
-          {!!agentOpts?.models.length && (
-            <select
-              value={modelChoice?.model || ''}
-              onChange={(e) => {
-                const model = e.target.value || undefined;
-                const next = agentOpts.models.find((m) => m.id === model);
-                const levels = next?.efforts?.length ? next.efforts : agentOpts.efforts;
-                // Keep the effort only if the new model has it.
-                onSetModel({ model, effort: modelChoice?.effort && levels.includes(modelChoice.effort) ? modelChoice.effort : undefined });
-              }}
-              title={`${agent.name} model (press Run to restart with it)`}
-              aria-label="Model"
-              className="text-[11px] px-1.5 py-1 rounded border outline-none cursor-pointer flex-shrink-0 max-w-[140px]"
-              style={{ backgroundColor: themeConfig.bgMain, borderColor: themeConfig.border, color: modelChoice?.model ? themeConfig.textPrimary : themeConfig.textMuted }}
-            >
-              <option value="">Default model</option>
-              {agentOpts.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-            </select>
-          )}
-          {!!effortList.length && (
-            <select
-              value={modelChoice?.effort || ''}
-              onChange={(e) => onSetModel({ ...modelChoice, effort: e.target.value || undefined })}
-              title={`${agent.name} effort: how hard it thinks (press Run to restart with it)`}
-              aria-label="Effort"
-              className="text-[11px] px-1.5 py-1 rounded border outline-none cursor-pointer flex-shrink-0"
-              style={{ backgroundColor: themeConfig.bgMain, borderColor: themeConfig.border, color: modelChoice?.effort ? themeConfig.textPrimary : themeConfig.textMuted }}
-            >
-              <option value="">{pickedModel?.defaultEffort ? `Effort: ${pickedModel.defaultEffort}` : 'Default effort'}</option>
-              {effortList.map((e) => <option key={e} value={e}>{e}</option>)}
-            </select>
-          )}
-
           {/* Hand off: the next agent starts with what this one did (conversation, changes, memory). */}
           <div className="relative flex-shrink-0">
             <button
@@ -752,17 +719,50 @@ export const TabWorkspace: React.FC<TabWorkspaceProps> = ({
       <div className="relative flex-1 w-full h-full min-h-0 min-w-0 overflow-hidden flex">
         {/* Main Terminal Canvas (Always alive in DOM!) */}
         <div
-          className="flex-1 w-full h-full relative"
-          style={{ display: viewMode === 'terminal' ? 'block' : 'none' }}
+          className="flex-1 w-full h-full relative flex-col"
+          style={{ display: viewMode === 'terminal' ? 'flex' : 'none' }}
         >
-          <EmbeddedTerminal
-            key={`term-${tabSession.id}-${termSessionKey}`}
-            tabId={tabSession.id}
-            projectPath={project.path}
-            initialCommand={launchCommand ?? tabSession.initialCommand ?? fullCommand}
-            theme={themeConfig}
-            isActive={isActive && viewMode === 'terminal'}
-          />
+          <div className="flex-1 min-h-0 relative">
+            <EmbeddedTerminal
+              key={`term-${tabSession.id}-${termSessionKey}`}
+              tabId={tabSession.id}
+              projectPath={project.path}
+              initialCommand={launchCommand ?? tabSession.initialCommand ?? fullCommand}
+              theme={themeConfig}
+              isActive={isActive && viewMode === 'terminal'}
+            />
+          </div>
+          {/* Agent + model in one menu: each agent is a group, its models (from the user's own account) under it. */}
+          <div className="flex items-center gap-1.5 px-2 py-1 border-t flex-shrink-0" style={{ backgroundColor: themeConfig.bgHeader, borderColor: themeConfig.border }}>
+            <select
+              value={`${agent.id}|${modelChoice?.model || ''}`}
+              onChange={(e) => pickAgentModel(e.target.value)}
+              title="Which terminal AI agent this project runs"
+              aria-label="Agent"
+              className="text-[11px] font-medium px-1.5 py-1 rounded border outline-none cursor-pointer max-w-[260px]"
+              style={{ backgroundColor: themeConfig.bgMain, borderColor: themeConfig.border, color: themeConfig.textPrimary }}
+            >
+              {AGENTS.map((a) => (
+                <optgroup key={a.id} label={a.name}>
+                  <option value={`${a.id}|`}>{a.name}</option>
+                  {(allOpts[a.id]?.models || []).map((m) => <option key={m.id} value={`${a.id}|${m.id}`}>{a.name} · {m.label}</option>)}
+                </optgroup>
+              ))}
+            </select>
+            {!!effortList.length && (
+              <select
+                value={modelChoice?.effort || ''}
+                onChange={(e) => onSetModel({ ...modelChoice, effort: e.target.value || undefined })}
+                title={`${agent.name} effort: how hard it thinks (press Run to restart with it)`}
+                aria-label="Effort"
+                className="text-[11px] px-1.5 py-1 rounded border outline-none cursor-pointer flex-shrink-0"
+                style={{ backgroundColor: themeConfig.bgMain, borderColor: themeConfig.border, color: modelChoice?.effort ? themeConfig.textPrimary : themeConfig.textMuted }}
+              >
+                <option value="">{pickedModel?.defaultEffort ? `Effort: ${pickedModel.defaultEffort}` : 'Default effort'}</option>
+                {effortList.map((e) => <option key={e} value={e}>{e}</option>)}
+              </select>
+            )}
+          </div>
         </div>
 
         {/* Collapsible Scratchpad / Prompt Drafter Sidebar */}
