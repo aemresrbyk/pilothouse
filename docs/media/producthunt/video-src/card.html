@@ -1,0 +1,22 @@
+<!doctype html><meta charset="utf-8"><style>
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent;font-family:-apple-system,"SF Pro Display",Helvetica,sans-serif;color:#F4F6F8;-webkit-font-smoothing:antialiased}
+.full{position:absolute;inset:0;background:#0B0D10;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.full img{width:150px;height:150px;margin-bottom:36px}
+h1{font-size:96px;font-weight:800;letter-spacing:-3px;margin:0;line-height:1.02}
+.lime{color:#C8FF2E}
+.sub{font-size:36px;color:#A9B0B8;margin-top:28px;font-weight:500}
+.tag{display:inline-block;border:1px solid #C8FF2E;color:#C8FF2E;border-radius:999px;padding:8px 22px;font-size:24px;font-weight:600;margin-bottom:28px}
+.top{position:absolute;left:0;right:0;top:44px;text-align:center}
+.top h2{font-size:54px;font-weight:750;letter-spacing:-1.5px;margin:0;text-shadow:0 2px 20px #0B0D10}
+.left{position:absolute;left:150px;top:0;bottom:0;width:860px;display:flex;flex-direction:column;justify-content:center}
+.left .k{font-size:26px;font-weight:700;color:#C8FF2E;letter-spacing:3px;text-transform:uppercase;margin-bottom:22px}
+.left h2{font-size:78px;font-weight:800;letter-spacing:-2.5px;line-height:1.05;margin:0}
+.left p{font-size:32px;color:#A9B0B8;line-height:1.4;margin-top:28px}
+.links{font-size:34px;margin-top:40px;color:#F4F6F8;font-weight:600}
+</style><body><div id=c></div><script>
+const q=decodeURIComponent(location.hash.slice(1)).split('|'),c=document.getElementById('c'),t=q[0];
+if(t==='title')c.innerHTML=`<div class=full><img src="logo.png"><h1>One window for<br><span class=lime>every coding agent</span></h1><div class=sub>Claude Code · Codex · Gemini CLI · opencode · Antigravity</div></div>`;
+else if(t==='end')c.innerHTML=`<div class=full><img src="logo.png"><div class=tag>Free · open source · no account</div><h1>Pilothouse</h1><div class=links>usepilothouse.com</div><div class=sub>macOS · Windows · Linux · iPhone · any browser</div></div>`;
+else if(t==='top')c.innerHTML=`<div class=top><h2>${q[1]}</h2></div>`;
+else c.innerHTML=`<div class=left><div class=k>${q[1]}</div><h2>${q[2]}</h2><p>${q[3]||''}</p></div>`;
+</script>

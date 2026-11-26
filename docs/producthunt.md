@@ -11,7 +11,7 @@ Follows Product Hunt's [Launch Guide](https://help.producthunt.com/en/collection
 | Tagline (60, no hype) | One window for your coding agents. Approve from your phone. (59) |
 | Logo (240×240, ≤2 MB) | [`media/producthunt/logo-240.png`](media/producthunt/logo-240.png) |
 | Gallery (1270×760, 3+) | [`media/producthunt`](media/producthunt) gallery-1 … gallery-5 (2540×1520, same ratio). Made from usepilothouse.com so they match the app; regenerate with the headless-Chrome capture after site changes. |
-| Video | optional: 30–45 s screen recording, agent asks → phone buzzes → approve → done |
+| Video | `docs/media/producthunt/video.mp4` (46 s, 1920×1080, no sound). PH takes a YouTube link: upload it unlisted/public and paste the URL. Rebuild: `docs/media/producthunt/video-src/` (rec.sh records the iOS `-shots` demo walk in the simulator, card.html is rendered with headless Chrome for the captions, build.sh cuts it with ffmpeg) |
 | Launch tags (max 3) | Developer Tools, Artificial Intelligence, Open Source |
 | Pricing | Free |
 | Role | I made this |
