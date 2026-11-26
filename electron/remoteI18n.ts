@@ -2,6 +2,14 @@
 // Desktop strings live in src/i18n; keep wording the same where it overlaps.
 export const REMOTE_I18N: Record<string, Record<string, string>> = {
  "tr": {
+  "Debate": "Tartışma",
+  "New debate": "Yeni tartışma",
+  "Start debate": "Tartışmayı başlat",
+  "What should the agents decide?": "Ajanlar neye karar versin?",
+  "Rounds": "Tur",
+  "Agents are talking it over\u2026": "Ajanlar tartışıyor…",
+  "Each turn uses that agent's own account. They only read the project; no files are changed.": "Her tur o ajanın kendi hesabını kullanır. Ajanlar projeyi yalnızca okur; hiçbir dosya değişmez.",
+  "lines of code hidden": "satır kod gizlendi",
   "Connecting…": "Bağlanıyor…",
   "Security code": "Güvenlik kodu",
   "Your computer shows a code too. Click Allow there if they match.": "Bilgisayarında da bir kod görünüyor. Eşleşiyorsa orada Allow’a bas.",
@@ -42,6 +50,14 @@ export const REMOTE_I18N: Record<string, Record<string, string>> = {
   "🔔 Notify me": "🔔 Bildir"
  },
  "es": {
+  "Debate": "Debate",
+  "New debate": "Nuevo debate",
+  "Start debate": "Iniciar debate",
+  "What should the agents decide?": "¿Qué deben decidir los agentes?",
+  "Rounds": "Rondas",
+  "Agents are talking it over\u2026": "Los agentes lo están debatiendo…",
+  "Each turn uses that agent's own account. They only read the project; no files are changed.": "Cada turno usa la cuenta propia de ese agente. Solo leen el proyecto; no se cambia ningún archivo.",
+  "lines of code hidden": "líneas de código ocultas",
   "Connecting…": "Conectando…",
   "Security code": "Código de seguridad",
   "Your computer shows a code too. Click Allow there if they match.": "Tu ordenador también muestra un código. Pulsa Allow allí si coinciden.",
@@ -82,6 +98,14 @@ export const REMOTE_I18N: Record<string, Record<string, string>> = {
   "🔔 Notify me": "🔔 Avisarme"
  },
  "pt": {
+  "Debate": "Debate",
+  "New debate": "Novo debate",
+  "Start debate": "Iniciar debate",
+  "What should the agents decide?": "O que os agentes devem decidir?",
+  "Rounds": "Rodadas",
+  "Agents are talking it over\u2026": "Os agentes estão debatendo…",
+  "Each turn uses that agent's own account. They only read the project; no files are changed.": "Cada vez usa a conta do próprio agente. Eles só leem o projeto; nenhum arquivo é alterado.",
+  "lines of code hidden": "linhas de código ocultas",
   "Connecting…": "Conectando…",
   "Security code": "Código de segurança",
   "Your computer shows a code too. Click Allow there if they match.": "Seu computador também mostra um código. Clique em Allow lá se forem iguais.",
@@ -122,6 +146,14 @@ export const REMOTE_I18N: Record<string, Record<string, string>> = {
   "🔔 Notify me": "🔔 Me avisar"
  },
  "de": {
+  "Debate": "Debatte",
+  "New debate": "Neue Debatte",
+  "Start debate": "Debatte starten",
+  "What should the agents decide?": "Was sollen die Agenten entscheiden?",
+  "Rounds": "Runden",
+  "Agents are talking it over\u2026": "Die Agenten beraten sich…",
+  "Each turn uses that agent's own account. They only read the project; no files are changed.": "Jede Runde nutzt das eigene Konto des Agenten. Sie lesen das Projekt nur; keine Datei wird geändert.",
+  "lines of code hidden": "Zeilen Code ausgeblendet",
   "Connecting…": "Verbinde…",
   "Security code": "Sicherheitscode",
   "Your computer shows a code too. Click Allow there if they match.": "Dein Computer zeigt auch einen Code. Klicke dort auf Allow, wenn sie übereinstimmen.",
@@ -162,6 +194,14 @@ export const REMOTE_I18N: Record<string, Record<string, string>> = {
   "🔔 Notify me": "🔔 Benachrichtigen"
  },
  "fr": {
+  "Debate": "Débat",
+  "New debate": "Nouveau débat",
+  "Start debate": "Lancer le débat",
+  "What should the agents decide?": "Que doivent décider les agents ?",
+  "Rounds": "Tours",
+  "Agents are talking it over\u2026": "Les agents en discutent…",
+  "Each turn uses that agent's own account. They only read the project; no files are changed.": "Chaque tour utilise le compte de l'agent. Ils lisent seulement le projet ; aucun fichier n'est modifié.",
+  "lines of code hidden": "lignes de code masquées",
   "Connecting…": "Connexion…",
   "Security code": "Code de sécurité",
   "Your computer shows a code too. Click Allow there if they match.": "Votre ordinateur affiche aussi un code. Cliquez sur Allow s’ils sont identiques.",
@@ -202,6 +242,14 @@ export const REMOTE_I18N: Record<string, Record<string, string>> = {
   "🔔 Notify me": "🔔 Me prévenir"
  },
  "ru": {
+  "Debate": "Дебаты",
+  "New debate": "Новые дебаты",
+  "Start debate": "Начать дебаты",
+  "What should the agents decide?": "Что должны решить агенты?",
+  "Rounds": "Раунды",
+  "Agents are talking it over\u2026": "Агенты обсуждают…",
+  "Each turn uses that agent's own account. They only read the project; no files are changed.": "Каждый ход идёт с аккаунта самого агента. Агенты только читают проект; файлы не меняются.",
+  "lines of code hidden": "строк кода скрыто",
   "Connecting…": "Подключение…",
   "Security code": "Код безопасности",
   "Your computer shows a code too. Click Allow there if they match.": "Компьютер тоже показывает код. Если коды совпадают, нажмите там Allow.",
@@ -242,6 +290,14 @@ export const REMOTE_I18N: Record<string, Record<string, string>> = {
   "🔔 Notify me": "🔔 Уведомлять"
  },
  "zh": {
+  "Debate": "辩论",
+  "New debate": "新辩论",
+  "Start debate": "开始辩论",
+  "What should the agents decide?": "要让智能体决定什么？",
+  "Rounds": "轮数",
+  "Agents are talking it over\u2026": "智能体正在讨论…",
+  "Each turn uses that agent's own account. They only read the project; no files are changed.": "每一轮都使用该智能体自己的账户。它们只读取项目，不会更改任何文件。",
+  "lines of code hidden": "行代码已隐藏",
   "Connecting…": "正在连接…",
   "Security code": "安全码",
   "Your computer shows a code too. Click Allow there if they match.": "电脑上也会显示一个码。如果一致，请在电脑上点 Allow。",
@@ -282,6 +338,14 @@ export const REMOTE_I18N: Record<string, Record<string, string>> = {
   "🔔 Notify me": "🔔 通知我"
  },
  "ja": {
+  "Debate": "ディベート",
+  "New debate": "新しいディベート",
+  "Start debate": "ディベートを開始",
+  "What should the agents decide?": "エージェントに何を決めてもらいますか？",
+  "Rounds": "ラウンド",
+  "Agents are talking it over\u2026": "エージェントが話し合っています…",
+  "Each turn uses that agent's own account. They only read the project; no files are changed.": "各ターンはそのエージェント自身のアカウントを使います。プロジェクトは読むだけで、ファイルは変更されません。",
+  "lines of code hidden": "行のコードを非表示",
   "Connecting…": "接続中…",
   "Security code": "セキュリティコード",
   "Your computer shows a code too. Click Allow there if they match.": "コンピュータにもコードが表示されます。一致したらそちらで Allow を押してください。",
@@ -322,6 +386,14 @@ export const REMOTE_I18N: Record<string, Record<string, string>> = {
   "🔔 Notify me": "🔔 通知する"
  },
  "ko": {
+  "Debate": "토론",
+  "New debate": "새 토론",
+  "Start debate": "토론 시작",
+  "What should the agents decide?": "에이전트가 무엇을 결정할까요?",
+  "Rounds": "라운드",
+  "Agents are talking it over\u2026": "에이전트들이 논의 중입니다…",
+  "Each turn uses that agent's own account. They only read the project; no files are changed.": "각 차례는 해당 에이전트의 계정을 사용합니다. 프로젝트를 읽기만 하며 파일은 변경되지 않습니다.",
+  "lines of code hidden": "줄 코드 숨김",
   "Connecting…": "연결 중…",
   "Security code": "보안 코드",
   "Your computer shows a code too. Click Allow there if they match.": "컴퓨터에도 코드가 표시됩니다. 같으면 컴퓨터에서 Allow를 누르세요.",

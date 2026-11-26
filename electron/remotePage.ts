@@ -37,13 +37,23 @@ export const REMOTE_PAGE = `<!doctype html>
   .row { display:flex; gap:6px; margin-top:10px; }
   input, textarea { resize:none; flex:1; min-width:0; font:inherit; color:var(--text); background:#07090c; border:1px solid var(--line); border-radius:10px; padding:10px; min-height:44px; }
   .row button { flex-shrink:0; text-align:center; }
+  /* Phone width: the message box and Send share a line; Changes, Terminal, Debate, Stop wrap below it. */
+  .card .row { flex-wrap:wrap; }
+  .card .row textarea { flex:1 1 calc(100% - 90px); }
   h2 { font-size:14px; color:var(--dim); margin:20px 0 8px; font-weight:600; }
   .proj { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0 6px 12px; }
   details summary { color:var(--dim); font-size:13px; margin-top:8px; }
   #pcode { text-align:center; padding:18px 12px; } #pcode b { display:block; font:600 34px/1.2 ui-monospace,Menlo,monospace; letter-spacing:.08em; color:var(--lime); margin:6px 0; } #pcode span { color:var(--dim); font-size:13px; }
   #setup ol { padding-left:20px; margin:10px 0; color:var(--dim); } #setup b { color:var(--text); } .fine { color:var(--dim); font-size:12px; margin:10px 0 0; }
   #term { position:fixed; inset:0; background:var(--bg); display:flex; flex-direction:column; padding:calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)); z-index:10; }
-  #term[hidden] { display:none; }
+  #term[hidden], #deb[hidden] { display:none; }
+  #deb { position:fixed; inset:0; background:var(--bg); display:flex; flex-direction:column; padding:calc(10px + env(safe-area-inset-top)) 12px calc(10px + env(safe-area-inset-bottom)); z-index:10; }
+  #dbody { flex:1; overflow:auto; }
+  #dbody pre { background:none; padding:0; font:15px/1.45 -apple-system, system-ui, sans-serif; max-height:none; color:var(--text); }
+  #dbody pre i { color:var(--dim); }
+  #dbody label { display:flex; align-items:center; gap:8px; min-height:44px; }
+  #dbody input[type=checkbox] { flex:none; min-height:0; width:20px; height:20px; accent-color:var(--lime); }
+  #dbody select { font:inherit; color:var(--text); background:#07090c; border:1px solid var(--line); border-radius:10px; padding:10px; min-height:44px; }
   #term .head { margin-bottom:8px; }
   #scr { flex:1; margin:0; max-height:none; white-space:pre; overflow:auto; line-height:1.25; }
   #scr .cur { background:var(--lime); color:#0B0D10; }
@@ -78,6 +88,10 @@ export const REMOTE_PAGE = `<!doctype html>
   <div class="keys" id="tkeys"></div>
   <div class="row"><textarea id="tin" rows="1" placeholder="Type, then Send (Shift+Enter: new line)"></textarea><button id="tsend">Send</button></div>
 </div>
+<div id="deb" hidden>
+  <div class="head"><span class="name" id="dname"></span><button id="dclose">Close</button></div>
+  <div id="dbody"></div>
+</div>
 <script>
 // Interface language: the browser's, when there is a translation (electron/remoteI18n.ts). Swaps whole strings that
 // match exactly, in text and placeholders/titles; agent output (pre, inputs) is never touched.
@@ -89,10 +103,11 @@ export const REMOTE_PAGE = `<!doctype html>
   function text(n) {
     if (!n.parentElement || n.parentElement.closest('pre, textarea, script, style')) return;
     var k = (n.nodeValue || '').trim();
-    if (k && dict[k]) n.nodeValue = n.nodeValue.replace(k, dict[k]);
+    // Only when it changes: writing the same text fires the observer again, forever ("Terminal" is "Terminal" in Turkish).
+    if (k && dict[k] && dict[k] !== k) n.nodeValue = n.nodeValue.replace(k, dict[k]);
   }
   function attrs(e) {
-    ['placeholder', 'title', 'aria-label'].forEach(function (a) { var v = e.getAttribute(a); if (v && dict[v]) e.setAttribute(a, dict[v]); });
+    ['placeholder', 'title', 'aria-label'].forEach(function (a) { var v = e.getAttribute(a); if (v && dict[v] && dict[v] !== v) e.setAttribute(a, dict[v]); });
   }
   function walk(r) {
     if (r.nodeType === 3) return text(r);
@@ -258,6 +273,7 @@ export const REMOTE_PAGE = `<!doctype html>
     };
     row.appendChild(diffBtn);
     var termBtn = el('button', null, 'Terminal'); termBtn.onclick = function () { openTerm(s); }; row.appendChild(termBtn);
+    if (s.projectId) { var debBtn = el('button', null, 'Debate'); debBtn.onclick = function () { openDebate(s.projectId, s.project, s.c); }; row.appendChild(debBtn); }
     if (s.status === 'running' && !ro) { var stop = el('button', null, 'Stop'); stop.onclick = function () { api('POST', '/api/stop', { id: s.id }, s.c).then(load); }; row.appendChild(stop); }
     c.appendChild(row);
     c.appendChild(diffBox);
@@ -319,6 +335,78 @@ export const REMOTE_PAGE = `<!doctype html>
   document.getElementById('tsend').onclick = sendTerm;
   tin.onkeydown = function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendTerm(); } };
 
+  // Debate: agents talk one question over on the computer (read-only, each on its own account); this follows
+  // .pilothouse/debate.md as it grows. Agent text goes in a <pre> (never translated); code blocks fold to one line.
+  var debP = null, debC = null, debName = '', debTimer = null, dbody = document.getElementById('dbody');
+  var AGENT_NAMES = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini CLI', opencode: 'OpenCode' };
+  function readable(md) {
+    var out = el('pre'), inCode = false, n = 0;
+    function note() { out.appendChild(el('i', null, '‹/› ' + n + ' ' + T('lines of code hidden'))); out.appendChild(document.createTextNode('\\n')); n = 0; }
+    md.split('\\n').forEach(function (line) {
+      var t = line.trim();
+      if (/^(\\x60{3}|~~~)/.test(t)) { if (inCode) note(); inCode = !inCode; return; }
+      if (inCode) { n++; return; }
+      if (t === '---') return;
+      if (/^#/.test(t)) out.appendChild(el('b', null, t.replace(/^#+\\s*/, '')));
+      else out.appendChild(document.createTextNode(line));
+      out.appendChild(document.createTextNode('\\n'));
+    });
+    if (inCode) note();
+    return out;
+  }
+  function showDebate(st) {
+    var ro = !!(debC && debC.viewOnly), parts = [];
+    if (st.running) {
+      parts.push(el('p', 'fine', 'Agents are talking it over…'));
+      if (!ro) { var stop = el('button', null, 'Stop'); stop.onclick = function () { api('POST', '/api/debate-stop', { project: debP }, debC).then(pollDebate); }; parts.push(stop); }
+    } else if (!ro) {
+      var again = el('button', 'primary', 'New debate'); again.onclick = function () { composeDebate(st); }; parts.push(again);
+    }
+    parts.push(readable(st.markdown));
+    dbody.replaceChildren.apply(dbody, parts);
+  }
+  function composeDebate(st) {
+    clearInterval(debTimer);
+    var q = el('textarea'); q.rows = 4; q.placeholder = 'What should the agents decide?';
+    var boxes = st.agents.map(function (a, i) {
+      var l = el('label'), c = el('input'); c.type = 'checkbox'; c.value = a; c.checked = i < 2;
+      l.appendChild(c); l.appendChild(el('span', null, AGENT_NAMES[a] || a)); return l;
+    });
+    var rounds = el('select');
+    [1, 2, 3, 4, 5].forEach(function (n) { var o = el('option', null, String(n)); o.value = n; if (n === 3) o.selected = true; rounds.appendChild(o); });
+    var rl = el('label'); rl.appendChild(el('span', null, 'Rounds')); rl.appendChild(rounds);
+    var go = el('button', 'primary', 'Start debate');
+    go.onclick = function () {
+      var agents = boxes.map(function (l) { return l.firstChild; }).filter(function (c) { return c.checked; }).map(function (c) { return c.value; });
+      go.disabled = true;
+      api('POST', '/api/debate', { project: debP, topic: q.value, agents: agents, rounds: Number(rounds.value) }, debC).then(function (r) {
+        go.disabled = false;
+        if (r.status !== 200) { msg.textContent = r.body.error || 'Failed'; return; }
+        pollDebate(); debTimer = setInterval(pollDebate, 3000);
+      });
+    };
+    var row = el('div', 'row'); row.appendChild(q);
+    dbody.replaceChildren.apply(dbody, [row].concat(boxes, [rl, go, el('p', 'fine', "Each turn uses that agent's own account. They only read the project; no files are changed.")]));
+    q.focus();
+  }
+  function pollDebate() {
+    if (!debP) return;
+    api('GET', '/api/debate?project=' + encodeURIComponent(debP), null, debC).then(function (r) {
+      if (!debP) return;
+      if (r.status !== 200) { dbody.replaceChildren(el('p', 'fine', r.body.error || 'Failed')); return; }
+      if (!r.body.running && !r.body.markdown && !(debC && debC.viewOnly)) return composeDebate(r.body);
+      showDebate(r.body);
+    }).catch(function () {});
+  }
+  function openDebate(projectId, name, c) {
+    debP = projectId; debC = c; debName = name;
+    document.getElementById('dname').textContent = name;
+    dbody.replaceChildren(); deb.hidden = false;
+    pollDebate(); debTimer = setInterval(pollDebate, 3000);
+  }
+  var deb = document.getElementById('deb');
+  document.getElementById('dclose').onclick = function () { debP = null; clearInterval(debTimer); deb.hidden = true; last = ''; load(); };
+
   // Every computer's sessions in one list (web relay); a computer that does not answer is named in the status line.
   function fetchAll(path) {
     var targets = relayMode ? comps : [null];
@@ -332,7 +420,7 @@ export const REMOTE_PAGE = `<!doctype html>
     // Re-rendering would wipe what the user is typing.
     var tag = document.activeElement && document.activeElement.tagName;
     // Not while you type or read, and not while the page is in the background (battery): it catches up on return.
-    if (document.hidden || diffOpen || termId || tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (document.hidden || diffOpen || termId || debP || tag === 'INPUT' || tag === 'TEXTAREA') return;
     fetchAll('/api/sessions').then(function (results) {
       var all = [], notes = [];
       results.forEach(function (x) {
@@ -398,6 +486,7 @@ export const REMOTE_PAGE = `<!doctype html>
           });
         };
         row.appendChild(b);
+        var db = el('button', null, 'Debate'); db.onclick = function () { openDebate(x.p.id, x.p.name, x.c); }; row.appendChild(db);
         return row;
       }));
     });
