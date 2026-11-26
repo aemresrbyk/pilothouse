@@ -25,7 +25,7 @@ enum Demo {
         ])
         case "/api/conversation", "/api/tab-chat": return json(["live": true, "messages": [
             ["role": "user", "text": "Add Apple Pay to the checkout page."],
-            ["role": "assistant", "text": "Added the Apple Pay button and the payment request in Checkout.tsx. The tests pass. Shall I run the build?"]
+            ["role": "assistant", "text": "## Done\n\nAdded the **Apple Pay** button and the payment request in `Checkout.tsx`:\n\n```tsx\n<ApplePayButton\n  amount={total}\n  onAuthorized={confirm}\n/>\n```\n\nThe tests pass. Shall I run the build?"]
         ]])
         case "/api/todos": return json(["project": "storefront", "items": [
             ["file": "src/Checkout.tsx", "line": 88, "text": "handle declined cards", "kind": "TODO"],

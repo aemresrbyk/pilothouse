@@ -8,6 +8,11 @@ import UIKit
 
 enum Shots {
     @MainActor static func run(_ model: Model) async {
+        // Chat text check: code blocks fold to one note (also while the block is still open), headings turn bold.
+        if Locale.current.language.languageCode == "en" {
+            assert(readableText("## Hi\nsee:\n```ts\na\nb\n```\nok") == "**Hi**\nsee:\n*‹/› 2 lines of code hidden*\nok")
+            assert(readableText("x\n```\na") == "x\n*‹/› 1 line of code hidden*")
+        }
         try? await Task.sleep(for: .seconds(2))
         await snap("1-pair")
         Client.startDemo()
@@ -24,10 +29,14 @@ enum Shots {
         NotificationCenter.default.post(name: changes, object: nil)
         try? await Task.sleep(for: .seconds(3))
         await snap("5-changes")
+        NotificationCenter.default.post(name: debate, object: nil)
+        try? await Task.sleep(for: .seconds(3))
+        await snap("6-debate")
     }
 
     static let terminal = Notification.Name("shots.terminal")
     static let changes = Notification.Name("shots.changes")
+    static let debate = Notification.Name("shots.debate")
 
     // Waits (up to 20 s) until the script has taken the picture.
     private static func snap(_ name: String) async {

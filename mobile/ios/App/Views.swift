@@ -278,9 +278,11 @@ struct SessionView: View {
     @State private var busy = false
     @State private var chat: ChatLog?
     @State private var showTerminal = false
+    @State private var approvalHeight: CGFloat = 0
     @FocusState private var typing: Bool
     #if DEBUG
     @State private var shotsDiff = false
+    @State private var shotsDebate = false
     #endif
 
     private var session: Session? { model.sessions.first { $0.id == id } }
@@ -353,35 +355,27 @@ struct SessionView: View {
         .onReceive(NotificationCenter.default.publisher(for: Shots.terminal)) { _ in showTerminal = true }
         .onReceive(NotificationCenter.default.publisher(for: Shots.changes)) { _ in shotsDiff = true }
         .navigationDestination(isPresented: $shotsDiff) { DiffView(id: id) }
+        .onReceive(NotificationCenter.default.publisher(for: Shots.debate)) { _ in
+            shotsDiff = false
+            Task { try? await Task.sleep(for: .seconds(1)); shotsDebate = true }
+        }
+        .navigationDestination(isPresented: $shotsDebate) { DebateView(projectId: "\(Demo.id)~web", name: "storefront") }
         #endif
     }
 
+    // iPhone SE / mini: the approval buttons get a little shorter so the chat keeps room (still 44 pt tap targets).
+    private var screenHeight: CGFloat { (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.height ?? 900 }
+    private var compact: Bool { screenHeight < 820 }
+
     @ViewBuilder private var controls: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: compact ? 6 : 8) {
             if let s = session, s.waiting, !s.choices.isEmpty {
-                // What the agent asks, on its own: the chat above does not show approval prompts.
-                Text(s.summary.isEmpty ? "The agent asks for approval." : s.summary)
-                    .font(.system(size: 13, design: .monospaced))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-                    .background(Color.amber.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                if s.risky {
-                    Label("Risky command: deletes, force-pushes, deploys, sudo or secrets. Check it before approving.", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading)
+                // Big text or a small phone: the prompt and its options scroll inside 40% of the screen, so the chat stays.
+                ScrollView {
+                    approval(s).onGeometryChange(for: CGFloat.self) { $0.size.height } action: { approvalHeight = $0 }
                 }
-                ForEach(Array(s.choices.enumerated()), id: \.element) { i, c in
-                    let isArmed = armed == c.key
-                    Button { choose(s, c) } label: {
-                        Text(isArmed ? LocalizedStringKey("Tap again to approve: \(c.label)") : LocalizedStringKey(stringLiteral: "\(c.key.trimmingCharacters(in: .whitespacesAndNewlines)). \(c.label)"))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 4)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(isArmed ? .red : (i == 0 ? .lime : Color(white: 0.22)))
-                    .foregroundStyle(i == 0 && !isArmed ? Color.black : Color.white)
-                    .disabled(busy)
-                }
+                .scrollBounceBehavior(.basedOnSize)
+                .frame(height: approvalHeight == 0 ? nil : min(approvalHeight, screenHeight * 0.4))
             }
             if let s = session, s.waiting, !s.choices.isEmpty { ChangesPeek(id: s.id) }
             if chat == nil || showTerminal { KeyBar(id: id) }
@@ -399,6 +393,36 @@ struct SessionView: View {
                 Button { send() } label: { Image(systemName: "arrow.up.circle.fill").font(.title2) }
                     .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy)
                     .accessibilityLabel("Send")
+            }
+        }
+    }
+
+    private func approval(_ s: Session) -> some View {
+        VStack(spacing: compact ? 6 : 8) {
+            // What the agent asks, on its own: the chat above does not show approval prompts.
+            Text(s.summary.isEmpty ? "The agent asks for approval." : s.summary)
+                .font(.system(size: 13, design: .monospaced))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(Color.amber.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            if s.risky {
+                Label("Risky command: deletes, force-pushes, deploys, sudo or secrets. Check it before approving.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            ForEach(Array(s.choices.enumerated()), id: \.element) { i, c in
+                let isArmed = armed == c.key
+                Button { choose(s, c) } label: {
+                    // The label is the agent's own text: verbatim, so a "%" in it is not read as a format.
+                    Group { if isArmed { Text("Tap again to approve: \(c.label)") } else { Text(verbatim: "\(c.key.trimmingCharacters(in: .whitespacesAndNewlines)). \(c.label)") } }
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, minHeight: compact ? 30 : nil, alignment: .leading)
+                        .padding(.vertical, compact ? 1 : 4)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(isArmed ? .red : (i == 0 ? .lime : Color(white: 0.22)))
+                .foregroundStyle(i == 0 && !isArmed ? Color.black : Color.white)
+                .disabled(busy)
             }
         }
     }
@@ -663,13 +687,38 @@ struct ConversationView: View {
     }
 }
 
+// Agent text for a phone screen: code blocks (nothing to do with them on a phone) become one short note, headings
+// become bold lines, the rest keeps its inline Markdown (bold, links, `code`) and line breaks.
+func readableText(_ md: String) -> String {
+    var out: [String] = [], code = 0, inCode = false
+    for line in md.split(separator: "\n", omittingEmptySubsequences: false) {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        if t.hasPrefix("```") || t.hasPrefix("~~~") {
+            if inCode { out.append("*" + String(localized: "‹/› \(code) lines of code hidden") + "*"); code = 0 }
+            inCode.toggle(); continue
+        }
+        if inCode { code += 1; continue }
+        if t.hasPrefix("#") { out.append("**" + t.drop(while: { $0 == "#" }).trimmingCharacters(in: .whitespaces) + "**"); continue }
+        out.append(t == "---" || t == "***" ? "" : String(line))
+    }
+    if inCode { out.append("*" + String(localized: "‹/› \(code) lines of code hidden") + "*") } // still being written
+    // No runs of blank lines where code was.
+    return out.joined(separator: "\n").replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+func readable(_ md: String) -> AttributedString {
+    let text = readableText(md)
+    return (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
+}
+
 struct Bubble: View {
     let m: ChatMessage
     var body: some View {
         let mine = m.role == "user"
         HStack {
             if mine { Spacer(minLength: 40) }
-            Text(LocalizedStringKey(m.text))
+            Text(readable(m.text))
                 .font(.callout)
                 .textSelection(.enabled)
                 .padding(10)
@@ -786,7 +835,7 @@ struct DebateView: View {
                             Button("New debate") { composing = true }
                         }
                     }
-                    Section { Text(rendered(state.markdown)).font(.callout).textSelection(.enabled) }
+                    Section { Text(readable(state.markdown)).font(.callout).textSelection(.enabled) }
                 } else {
                     Section("Question") {
                         TextField("What should the agents decide?", text: $topic, axis: .vertical).lineLimit(3...8)
@@ -831,14 +880,6 @@ struct DebateView: View {
             do { try await f(); state = try await c.debate(sid); error = nil } catch { self.error = error.localizedDescription }
             starting = false
         }
-    }
-    // Headings and lists as plain lines with bold; full Markdown blocks are not needed for a chat-like log.
-    private func rendered(_ md: String) -> AttributedString {
-        let text = md.split(separator: "\n", omittingEmptySubsequences: false).map { line -> String in
-            if line.hasPrefix("#") { return "**" + line.drop(while: { $0 == "#" }).trimmingCharacters(in: .whitespaces) + "**" }
-            return line == "---" ? "" : String(line)
-        }.joined(separator: "\n")
-        return (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(md)
     }
 }
 
