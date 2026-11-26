@@ -825,6 +825,8 @@ assert.equal(shortCommand('npm run dev'), 'npm run dev');
   const webKeys = Object.keys(REMOTE_I18N.tr).sort();
   for (const [lang, d] of Object.entries(REMOTE_I18N)) assert.deepStrictEqual(Object.keys(d).sort(), webKeys, `web ${lang} keys`);
   const pageSrc = fs.readFileSync(path.join(import.meta.dir, '../electron/remotePage.ts'), 'utf-8');
+  // A translation equal to its key ("Terminal") must not be written back, or the page's observer loops and freezes it.
+  assert.ok(REMOTE_PAGE.includes('dict[k] !== k') && Object.values(REMOTE_I18N).some((d) => Object.entries(d).some(([k, v]) => k === v)));
   for (const k of webKeys) assert.ok(pageSrc.includes(k.replace('%n waiting', ' waiting').replace(/^%n/, '')) || REMOTE_PAGE.includes(k), `web key not in page: ${k}`);
   const langs = ['tr', 'es', 'pt', 'de', 'fr', 'ru', 'zh', 'ja', 'ko'];
   const dicts = await Promise.all(langs.map(async (l) => (await import(`../src/i18n/${l}.ts`)).default as Record<string, string>));
