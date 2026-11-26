@@ -15,7 +15,7 @@ Follows Product Hunt's [Launch Guide](https://help.producthunt.com/en/collection
 | Launch tags (max 3) | Developer Tools, Artificial Intelligence, Open Source |
 | Pricing | Free |
 | Role | I made this |
-| Links | https://github.com/aemresrbyk/pilothouse · App Store link once approved |
+| Links | https://github.com/aemresrbyk/pilothouse · https://apps.apple.com/app/id6835669130 |
 
 **Description (500):**
 

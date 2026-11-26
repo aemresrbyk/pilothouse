@@ -97,7 +97,7 @@ This puts the AppImage in `~/.local/bin` and adds Pilothouse to your app menu (U
 
 ## From your phone or any browser
 
-<p align="center"><em>The iOS app, or <a href="https://usepilothouse.com/app/">usepilothouse.com/app</a> in any browser. One QR code, no account, no VPN to set up, end-to-end encrypted.</em></p>
+<p align="center"><em>The <a href="https://apps.apple.com/app/id6835669130">iPhone app</a> (App Store), or <a href="https://usepilothouse.com/app/">usepilothouse.com/app</a> in any browser. One QR code, no account, no VPN to set up, end-to-end encrypted.</em></p>
 
 - **Every agent, every computer, one list.** What needs you is on top, with the agent each tab runs and its last message. The iPhone app and the web app can each follow several computers and servers.
 - **The live terminal**, exactly as on the desktop, with a key bar (Esc, Tab, arrows, Enter, Ctrl+C) and multi-line messages.
@@ -113,7 +113,7 @@ This puts the AppImage in `~/.local/bin` and adds Pilothouse to your app menu (U
 
 **Security** ([full write-up](https://usepilothouse.com/security.html))**:** two ways in, the same API. Through the [relay](relay) (`relay.usepilothouse.com`), every request and reply is sealed with AES-256-GCM using a key that only your computer and that device hold, bound to the device id, with a timestamp and nonce against replays; the relay only passes sealed messages and stores nothing. Or over Tailscale: the computer listens only on its Tailscale address, never on your Wi-Fi network, and checks the `Host` header against DNS rebinding. Either way the computer stores only a hash of each device's token and refuses actions from view-only devices.
 
-The iOS app lives in [`mobile/ios`](mobile/ios) (SwiftUI + WidgetKit; generate the project with `xcodegen`).
+Get it on the [App Store](https://apps.apple.com/app/id6835669130). The iOS app lives in [`mobile/ios`](mobile/ios) (SwiftUI + WidgetKit; generate the project with `xcodegen`).
 
 ---
 
