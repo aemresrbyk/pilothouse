@@ -1,8 +1,10 @@
 <!doctype html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:Inter;src:url(fonts/inter-latin-wght-normal.woff2) format('woff2');font-weight:100 900}@font-face{font-family:'JetBrains Mono';src:url(fonts/jetbrains-mono-latin-wght-normal.woff2) format('woff2');font-weight:100 800}
+
 :root{--bg:#0B0D10;--panel:#12161f;--panel2:#0e1118;--line:#232a3a;--text:#e9ecf2;--dim:#7b8496;--lime:#C8FF2E;--amber:#ffc24a;--red:#ff6b6b;--blue:#79c0ff}
 *{box-sizing:border-box}
-html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:var(--bg);color:var(--text);font-family:-apple-system,"SF Pro Display",Helvetica,sans-serif;-webkit-font-smoothing:antialiased}
-.mono{font-family:"SF Mono",Menlo,monospace}
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:var(--bg);color:var(--text);font-family:Inter,sans-serif;-webkit-font-smoothing:antialiased}
+.mono{font-family:"JetBrains Mono",monospace}
 .abs{position:absolute}
 .scene{position:absolute;inset:0;opacity:0}
 #glow{position:absolute;inset:0;background:radial-gradient(900px 600px at 50% 40%,rgba(200,255,46,.07),transparent 70%)}
@@ -15,7 +17,7 @@ html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:var(--b
 .win{position:absolute;background:var(--panel2);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 40px 120px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.02)}
 .tbar{height:46px;display:flex;align-items:center;gap:8px;padding:0 16px;background:#141922;border-bottom:1px solid var(--line)}
 .tbar i{width:12px;height:12px;border-radius:50%;display:inline-block}
-.term{font-family:"SF Mono",Menlo,monospace;font-size:19px;line-height:1.55;padding:18px 22px;white-space:pre;color:#cfd5df}
+.term{font-family:"JetBrains Mono",monospace;font-size:19px;line-height:1.55;padding:18px 22px;white-space:pre;color:#cfd5df}
 .dot{width:11px;height:11px;border-radius:50%;display:inline-block;flex:none}
 .tab{display:flex;align-items:center;gap:10px;height:34px;padding:0 16px;border-radius:9px;font-size:17px;color:var(--dim);white-space:nowrap}
 .tab.on{background:#1b2130;color:var(--text)}
@@ -106,7 +108,7 @@ html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:var(--b
 <!-- 7 voice -->
 <div class=scene id=s7>
   <div class=cap>Or just say it.<small>Speech is recognised on your computer. Nothing leaves it.</small></div>
-  <div class=abs id=mic style="left:860px;top:300px;width:200px;height:200px;border-radius:50%;background:var(--lime);display:flex;align-items:center;justify-content:center;font-size:84px;color:#111">🎙</div>
+  <div class=abs id=mic style="left:860px;top:300px;width:200px;height:200px;border-radius:50%;background:var(--lime);display:flex;align-items:center;justify-content:center;font-size:84px;color:#111"><svg width="96" height="96" viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v4"/></svg></div>
   <div class=abs id=wave style="left:560px;top:560px;width:800px;height:120px;display:flex;align-items:center;justify-content:center;gap:9px"></div>
   <div class=abs style="left:0;right:0;top:720px;text-align:center;font-size:46px;font-weight:600" class=mono><span style="color:var(--dim)">“Hey Pilothouse,</span> <span id=said></span><span id=caret style="color:var(--lime)">▍</span></div>
 </div>
@@ -174,7 +176,7 @@ MESS.forEach((m,i)=>{const w=document.createElement('div');w.className='win';w.i
 // wave bars
 for(let i=0;i<40;i++){const b=document.createElement('i');b.style.cssText='width:10px;border-radius:5px;background:var(--lime);display:block';$('wave').appendChild(b);}
 // chips
-const CH=[['⑂','Worktree tabs'],['±','Diff & tests'],['✓','Auto-approve rules'],['⌕','History & search'],['▤','CPU & memory'],['⌘','Command palette'],['◐','4 themes'],['文','10 languages'],['◉','Live Activity'],['▦','Widgets'],['🔒','View-only links'],['⚙','Linux server mode']];
+const CH=[['⑂','Worktree tabs'],['±','Diff & tests'],['✓','Auto-approve rules'],['⌕','History & search'],['▤','CPU & memory'],['⌘','Command palette'],['◐','4 themes'],['文','10 languages'],['◉','Live Activity'],['▦','Widgets'],['⊘','View-only links'],['⚙','Linux server mode']];
 const CP=[[170,330],[690,320],[1150,330],[250,470],[760,480],[1230,470],[140,620],[520,630],[880,620],[1290,630],[380,780],[900,780]];
 CH.forEach((c,i)=>{const e=document.createElement('div');e.className='chip';e.id='c'+i;e.innerHTML=`<b>${c[0]}</b>${c[1]}`;e.style.left=CP[i][0]+'px';e.style.top=CP[i][1]+'px';$('chips').appendChild(e);});
 

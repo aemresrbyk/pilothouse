@@ -54,6 +54,10 @@
         {
           "from": "vendor/whisper/whisper-cli",
           "to": "whisper-cli"
+        },
+        {
+          "from": "THIRD_PARTY_NOTICES.md",
+          "to": "THIRD_PARTY_NOTICES.md"
         }
       ]
     },
@@ -67,6 +71,10 @@
         {
           "from": "vendor/whisper/whisper-cli.exe",
           "to": "whisper-cli.exe"
+        },
+        {
+          "from": "THIRD_PARTY_NOTICES.md",
+          "to": "THIRD_PARTY_NOTICES.md"
         }
       ]
     },
@@ -81,6 +89,10 @@
         {
           "from": "vendor/whisper/whisper-cli",
           "to": "whisper-cli"
+        },
+        {
+          "from": "THIRD_PARTY_NOTICES.md",
+          "to": "THIRD_PARTY_NOTICES.md"
         }
       ],
       "artifactName": "Pilothouse-${arch}-linux.${ext}",
@@ -101,6 +113,10 @@
       {
         "from": "resources/tray",
         "to": "tray"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
       }
     ],
     "nsis": {
