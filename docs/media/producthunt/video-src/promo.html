@@ -1,0 +1,285 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+:root{--bg:#0B0D10;--panel:#12161f;--panel2:#0e1118;--line:#232a3a;--text:#e9ecf2;--dim:#7b8496;--lime:#C8FF2E;--amber:#ffc24a;--red:#ff6b6b;--blue:#79c0ff}
+*{box-sizing:border-box}
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:var(--bg);color:var(--text);font-family:-apple-system,"SF Pro Display",Helvetica,sans-serif;-webkit-font-smoothing:antialiased}
+.mono{font-family:"SF Mono",Menlo,monospace}
+.abs{position:absolute}
+.scene{position:absolute;inset:0;opacity:0}
+#glow{position:absolute;inset:0;background:radial-gradient(900px 600px at 50% 40%,rgba(200,255,46,.07),transparent 70%)}
+#grid{position:absolute;inset:-100px;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:60px 60px}
+.big{font-size:150px;font-weight:850;letter-spacing:-6px;line-height:1}
+.h1{font-size:96px;font-weight:820;letter-spacing:-3.5px;line-height:1.02;text-align:center}
+.lime{color:var(--lime)}
+.cap{position:absolute;left:0;right:0;top:46px;text-align:center;font-size:50px;font-weight:780;letter-spacing:-1.6px}
+.cap small{display:block;font-size:26px;color:var(--dim);font-weight:500;letter-spacing:0;margin-top:10px}
+.win{position:absolute;background:var(--panel2);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 40px 120px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.02)}
+.tbar{height:46px;display:flex;align-items:center;gap:8px;padding:0 16px;background:#141922;border-bottom:1px solid var(--line)}
+.tbar i{width:12px;height:12px;border-radius:50%;display:inline-block}
+.term{font-family:"SF Mono",Menlo,monospace;font-size:19px;line-height:1.55;padding:18px 22px;white-space:pre;color:#cfd5df}
+.dot{width:11px;height:11px;border-radius:50%;display:inline-block;flex:none}
+.tab{display:flex;align-items:center;gap:10px;height:34px;padding:0 16px;border-radius:9px;font-size:17px;color:var(--dim);white-space:nowrap}
+.tab.on{background:#1b2130;color:var(--text)}
+.tab em{font-style:normal;color:#5d6678;font-size:15px}
+.pane{position:absolute;background:var(--panel2);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.pane .ph{height:38px;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--line);font-size:16px;color:var(--dim);background:#11151d}
+.pane .ph b{color:var(--text);font-weight:600}
+.pill{font-size:14px;padding:3px 10px;border-radius:99px;border:1px solid var(--line);color:var(--dim)}
+.btn{display:block;border-radius:12px;padding:15px 20px;font-size:21px;background:#1b2130;margin-top:10px;border:1px solid var(--line)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px}
+.chip{position:absolute;padding:18px 30px;border-radius:999px;background:#131823;border:1px solid #2a3245;font-size:34px;font-weight:650;white-space:nowrap}
+.chip b{color:var(--lime);margin-right:12px}
+.bubble{border-radius:18px;padding:24px 30px;font-size:30px;line-height:1.4;background:var(--panel);border:1px solid var(--line);max-width:760px}
+.who{font-size:18px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+#cursor{position:absolute;width:34px;height:34px;z-index:99;filter:drop-shadow(0 4px 10px rgba(0,0,0,.6))}
+#ripple{position:absolute;width:70px;height:70px;border-radius:50%;border:3px solid var(--lime);z-index:98;opacity:0}
+.phone{position:absolute;width:460px;height:1000px;border-radius:64px;overflow:hidden;box-shadow:0 0 0 12px #1a1d24,0 0 0 14px #2c313c,0 50px 120px rgba(0,0,0,.6)}
+.phone video{width:100%;height:100%;display:block}
+.stamp{display:inline-flex;align-items:center;gap:10px;font-size:20px;font-weight:700;color:var(--lime);border:1px solid rgba(200,255,46,.5);border-radius:99px;padding:6px 16px}
+</style></head><body>
+<div id=grid></div><div id=glow></div>
+
+<!-- 1 hook -->
+<div class=scene id=s1>
+  <div class="abs big" id=w1 style="left:170px;top:250px">Claude Code.</div>
+  <div class="abs big" id=w2 style="left:170px;top:420px">Codex.</div>
+  <div class="abs big" id=w3 style="left:170px;top:590px">Gemini CLI.</div>
+  <div id=mess></div>
+  <div class="abs h1" id=hq style="left:0;right:0;top:440px">Which one <span class=lime>needs you?</span></div>
+</div>
+
+<!-- 2 reveal -->
+<div class=scene id=s2>
+  <div class=abs id=ring style="left:860px;top:250px;width:200px;height:200px;border-radius:50%;border:3px solid var(--lime)"></div>
+  <img class=abs id=logo src="logo.png" style="left:885px;top:275px;width:150px;height:150px">
+  <div class="abs h1" id=name style="left:0;right:0;top:500px;font-size:130px">Pilothouse</div>
+  <div class=abs id=tag style="left:0;right:0;top:665px;text-align:center;font-size:44px;color:#aab2be;font-weight:550">One window for every coding agent.</div>
+  <div class=abs id=agents style="left:0;right:0;top:750px;text-align:center;font-size:28px;color:var(--dim)">Claude Code · Codex · Gemini CLI · opencode · Antigravity</div>
+</div>
+
+<!-- 3-5 the app -->
+<div class=scene id=sApp>
+  <div class=abs id=cam style="inset:0"><div class=win id=app style="left:150px;top:170px;width:1620px;height:870px">
+    <div class=tbar><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>
+      <b style="margin-left:14px;font-size:17px;letter-spacing:.5px">PILOTHOUSE</b>
+      <div style="display:flex;gap:6px;margin-left:22px" id=tabs></div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:18px;color:var(--dim);font-size:16px">
+        <span id=gridbtn style="width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;border:1px solid var(--line)">▦</span>
+        <span id=inboxbtn style="position:relative;padding:5px 12px;border-radius:8px;border:1px solid var(--line)">Inbox<b id=badge style="position:absolute;right:-9px;top:-9px;background:var(--amber);color:#111;border-radius:99px;font-size:13px;padding:1px 7px;opacity:0">1</b></span>
+      </div>
+    </div>
+    <div class=abs id=panes style="left:0;top:46px;right:0;bottom:0"></div>
+    <div class=abs id=inbox style="top:46px;right:0;bottom:0;width:560px;background:#10141c;border-left:1px solid var(--line);padding:24px">
+      <div style="font-size:22px;font-weight:700;margin-bottom:18px">Inbox</div>
+      <div class=card id=ask>
+        <div style="display:flex;align-items:center;gap:10px;font-size:19px"><i class=dot style="background:var(--amber)"></i><b>landing-page</b><span style="color:var(--dim)">· Codex</span><span class=pill style="margin-left:auto;color:var(--amber);border-color:var(--amber)">needs you</span></div>
+        <div class=term style="padding:14px 0 6px;font-size:17px;color:#aeb5c1">Tests pass (48). Run the build?
+<span style="color:var(--dim)">$</span> npm run build</div>
+        <div class=btn id=yes>1. Yes</div><div class=btn>2. Yes, don't ask again</div><div class=btn>3. No</div>
+      </div>
+      <div class=card id=done style="margin-top:16px;font-size:20px;color:var(--lime);opacity:0">✓ Approved · landing-page is building</div>
+      <div class=card id=limit style="margin-top:16px;opacity:0">
+        <div style="display:flex;align-items:center;gap:10px;font-size:19px"><i class=dot style="background:var(--red)"></i><b>weather-api</b><span style="color:var(--dim)">· Claude Code</span></div>
+        <div style="font-size:19px;color:#c3c9d3;margin:12px 0 4px">Usage limit reached. Resets 18:00.</div>
+        <div class=btn id=cont style="background:var(--lime);color:#111;font-weight:700;border-color:var(--lime)">⇄ Continue with Codex</div>
+      </div>
+    </div>
+  </div>
+  <svg id=cursor viewBox="0 0 24 24"><path d="M4 2l15 11-6.5 1.2L16 21l-3 1.4-3.6-7.1L4 19z" fill="#fff" stroke="#111" stroke-width="1.2"/></svg>
+  <div id=ripple></div></div>
+  <div class=cap id=cap3 style="z-index:5;top:0;padding:46px 0 46px;background:linear-gradient(#0B0D10 72%,rgba(11,13,16,0))"></div>
+</div>
+
+<!-- 6 debate -->
+<div class=scene id=s6>
+  <div class=cap>Let two agents agree on a plan.<small>Read-only, each on your own account.</small></div>
+  <div class=abs style="left:260px;top:220px;font-size:26px;color:var(--dim)">Debate · <b style="color:var(--text)">Postgres or SQLite for v1?</b></div>
+  <div class=abs id=b1 style="left:260px;top:290px"><div class=who style="color:#e8a06a">Claude Code</div><div class=bubble>SQLite. One user per install, no server to run. Move when we add accounts.</div></div>
+  <div class=abs id=b2 style="right:260px;top:470px;text-align:right"><div class=who style="color:#7ab8ff">Codex</div><div class=bubble style="text-align:left">Agreed. Keep the queries in one module so the switch stays small.</div></div>
+  <div class=abs id=agree style="left:260px;top:660px;display:flex;gap:14px"><span class=stamp>✓ Claude agrees</span><span class=stamp>✓ Codex agrees</span></div>
+  <div class="abs card" id=dec style="left:260px;right:260px;top:740px;padding:26px 30px">
+    <div style="font-size:18px;font-weight:700;letter-spacing:1px;color:var(--lime)">DECISION</div>
+    <div style="font-size:30px;font-weight:700;margin:8px 0 14px">SQLite now, Postgres when accounts ship.</div>
+    <div style="font-size:22px;color:#aab2be">1. Put queries in db/ &nbsp;·&nbsp; 2. Add a migration test &nbsp;·&nbsp; <span class=lime>Use as draft →</span></div>
+  </div>
+</div>
+
+<!-- 7 voice -->
+<div class=scene id=s7>
+  <div class=cap>Or just say it.<small>Speech is recognised on your computer. Nothing leaves it.</small></div>
+  <div class=abs id=mic style="left:860px;top:300px;width:200px;height:200px;border-radius:50%;background:var(--lime);display:flex;align-items:center;justify-content:center;font-size:84px;color:#111">🎙</div>
+  <div class=abs id=wave style="left:560px;top:560px;width:800px;height:120px;display:flex;align-items:center;justify-content:center;gap:9px"></div>
+  <div class=abs style="left:0;right:0;top:720px;text-align:center;font-size:46px;font-weight:600" class=mono><span style="color:var(--dim)">“Hey Pilothouse,</span> <span id=said></span><span id=caret style="color:var(--lime)">▍</span></div>
+</div>
+
+<!-- 8 anywhere -->
+<div class=scene id=s8>
+  <div class=cap id=cap8>Away from your desk?<small>Your phone or any browser. End-to-end encrypted.</small></div>
+  <div class=abs id=browser style="left:110px;top:230px;width:1100px">
+    <img src="web.png" style="width:1100px;display:block;border-radius:16px">
+  </div>
+  <div class=phone id=phone style="left:1340px;top:150px;transform-origin:50% 0"><video id=vid src="phone.mp4" muted></video></div>
+</div>
+
+<!-- 9 more -->
+<div class=scene id=s9>
+  <div class="abs h1" id=more style="left:0;right:0;top:110px">And a lot more.</div>
+  <div id=chips></div>
+</div>
+
+<!-- 10 end -->
+<div class=scene id=s10>
+  <img class=abs src="logo.png" id=elogo style="left:900px;top:200px;width:120px;height:120px">
+  <div class="abs h1" style="left:0;right:0;top:360px;font-size:120px">Pilothouse</div>
+  <div class=abs style="left:0;right:0;top:515px;text-align:center"><span class=stamp style="font-size:26px;padding:10px 24px">Free · open source · no account</span></div>
+  <div class=abs style="left:0;right:0;top:615px;text-align:center;font-size:56px;font-weight:750;letter-spacing:-1px">usepilothouse.com</div>
+  <div class=abs style="left:0;right:0;top:710px;text-align:center;font-size:30px;color:var(--dim)">macOS · Windows · Linux · iPhone · any browser</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const cl=(x,a=0,b=1)=>Math.max(a,Math.min(b,x));
+const seg=(t,a,b)=>cl((t-a)/(b-a));
+const out=x=>1-Math.pow(1-x,3), io=x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2;
+const back=x=>{const c=1.9;return 1+(c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2)};
+const lerp=(a,b,k)=>a+(b-a)*k;
+function show(el,t,a,b,fi=.35,fo=.35){ // scene visibility with a zoom-through transition
+  const i=out(seg(t,a,a+fi)), o=io(seg(t,b-fo,b));
+  el.style.opacity=t<a||t>b?0:Math.min(i,1-o);
+  el.style.transform=`scale(${lerp(1.06,1,i)*lerp(1,.94,o)})`;
+  el.style.filter=o>0?`blur(${o*10}px)`:i<1?`blur(${(1-i)*10}px)`:'none';
+  return t>=a&&t<=b;
+}
+function pop(el,t,a,d=.45,dy=40){const k=seg(t,a,a+d);el.style.opacity=out(k);el.style.transform=`translateY(${(1-back(k))*dy}px) scale(${lerp(.96,1,out(k))})`;}
+
+// ---------- data ----------
+const AG={claude:['Claude Code','#e8a06a'],codex:['Codex','#7ab8ff'],gemini:['Gemini CLI','#8ab4f8'],open:['opencode','#c792ea']};
+const P=[
+ {name:'weather-api',ag:'claude',lines:['<span class=lime>›</span> make the server return 404 for unknown cities','','<span class=lime>⏺</span> Read src/server.js','<span class=lime>⏺</span> Update src/forecast.js  <span style="color:#7ee787">+12</span> <span style="color:#ff7b72">-3</span>','<span class=lime>⏺</span> npm test  <span style="color:#7ee787">31 passed</span>','','Unknown cities now get a 404 with a short message.']},
+ {name:'landing-page',ag:'codex',lines:['<span class=lime>›</span> add a pricing section','','• Editing index.html','• Editing styles.css  <span style="color:#7ee787">+48</span>','• Running tests  <span style="color:#7ee787">48 passed</span>','','Tests pass. Run the build?']},
+ {name:'habit-tracker',ag:'gemini',lines:['<span class=lime>›</span> streaks should survive time zones','','✦ Reading habits.py','✦ Writing tests/test_streaks.py','✦ pytest  <span style="color:#7ee787">12 passed</span>','','Streaks use the local date now.']},
+ {name:'mobile-app',ag:'open',lines:['<span class=lime>›</span> dark mode for settings','','◇ Edit Settings.tsx','◇ Edit theme.ts  <span style="color:#7ee787">+20</span>','◇ npm run lint  <span style="color:#7ee787">ok</span>','','Done. Settings follow the system theme.']},
+];
+// tabs + panes
+P.forEach((p,i)=>{
+  const t=document.createElement('div');t.className='tab'+(i==0?' on':'');t.id='tab'+i;
+  t.innerHTML=`<i class=dot id=td${i}></i>${p.name} <em id=tg${i}>${AG[p.ag][0]}</em>`;$('tabs').appendChild(t);
+  const d=document.createElement('div');d.className='pane';d.id='pane'+i;
+  d.innerHTML=`<div class=ph><i class=dot id=pd${i}></i><b>${p.name}</b><span id=pa${i} style="color:${AG[p.ag][1]}">${AG[p.ag][0]}</span><span style="margin-left:auto">~/code/${p.name}</span></div><div class=term id=pt${i}></div>`;
+  $('panes').appendChild(d);
+});
+// hook: messy terminals
+const MESS=[[120,120,'claude'],[1180,90,'codex'],[300,620,'gemini'],[1240,600,'open'],[720,330,'claude'],[60,380,'codex']];
+MESS.forEach((m,i)=>{const w=document.createElement('div');w.className='win';w.id='m'+i;Object.assign(w.style,{left:m[0]+'px',top:m[1]+'px',width:'620px',height:'360px'});
+  w.innerHTML=`<div class=tbar><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span style="margin-left:12px;color:var(--dim);font-size:15px">user@mac: ~/code/${P[i%4].name} — ${AG[m[2]][0]}</span></div><div class=term style="font-size:16px">${P[i%4].lines.slice(0,6).join('\n')}</div>`;$('mess').appendChild(w);});
+// wave bars
+for(let i=0;i<40;i++){const b=document.createElement('i');b.style.cssText='width:10px;border-radius:5px;background:var(--lime);display:block';$('wave').appendChild(b);}
+// chips
+const CH=[['⑂','Worktree tabs'],['±','Diff & tests'],['✓','Auto-approve rules'],['⌕','History & search'],['▤','CPU & memory'],['⌘','Command palette'],['◐','4 themes'],['文','10 languages'],['◉','Live Activity'],['▦','Widgets'],['🔒','View-only links'],['⚙','Linux server mode']];
+const CP=[[170,330],[690,320],[1150,330],[250,470],[760,480],[1230,470],[140,620],[520,630],[880,620],[1290,630],[380,780],[900,780]];
+CH.forEach((c,i)=>{const e=document.createElement('div');e.className='chip';e.id='c'+i;e.innerHTML=`<b>${c[0]}</b>${c[1]}`;e.style.left=CP[i][0]+'px';e.style.top=CP[i][1]+'px';$('chips').appendChild(e);});
+
+// ---------- cursor path: [t,x,y,click] ----------
+const CUR=[[8.6,1500,980],[9.6,1649,191],[9.75,1649,191,1],[12.9,1500,700],[13.6,1714,191],[13.75,1714,191,1],[15.2,1300,700],[16.3,1440,439],[16.45,1440,439,1],[19.4,1300,560],[20.6,1440,402],[20.75,1440,402,1],[23.2,1600,1000]];
+function cursor(t){
+  const c=$('cursor'),r=$('ripple');
+  if(t<CUR[0][0]-.01||t>CUR[CUR.length-1][0]+.4){c.style.opacity=0;r.style.opacity=0;return}
+  c.style.opacity=cl((t-CUR[0][0])*4)*cl((CUR[CUR.length-1][0]+.4-t)*3);
+  let x=CUR[0][1],y=CUR[0][2];
+  for(let i=1;i<CUR.length;i++){const a=CUR[i-1],b=CUR[i];if(t>=a[0]&&t<=b[0]){const k=io(seg(t,a[0],b[0]));x=lerp(a[1],b[1],k);y=lerp(a[2],b[2],k);break}if(t>b[0]){x=b[1];y=b[2]}}
+  let press=0,rp=0,rk=-1;
+  CUR.forEach(p=>{if(p[3]){const d=t-p[0];if(d>=-.08&&d<.12)press=1;if(d>=0&&d<.5){rk=d/.5;rp=p}}});
+  c.style.left=x+'px';c.style.top=y+'px';c.style.transform=`scale(${press?.82:1})`;
+  if(rk>=0){r.style.opacity=1-rk;const s=lerp(.3,1.4,out(rk));r.style.left=(rp[1]-35)+'px';r.style.top=(rp[2]-35)+'px';r.style.transform=`scale(${s})`}else r.style.opacity=0;
+}
+
+// ---------- render ----------
+function typeLines(p,k){ // reveal lines and characters by progress k (0..1)
+  const all=p.lines, total=all.reduce((s,l)=>s+l.replace(/<[^>]+>/g,'').length+4,0);let left=k*total,o=[];
+  for(const l of all){const plain=l.replace(/<[^>]+>/g,'');if(left<=0)break;if(left>=plain.length+4){o.push(l)}else{o.push(plain.slice(0,Math.floor(left)))}left-=plain.length+4}
+  return o.join('\n');
+}
+function render(t){
+  $('glow').style.opacity=.6+.4*Math.sin(t*1.3);
+  $('grid').style.transform=`translate(${-(t*12)%60}px,${-(t*8)%60}px)`;
+  // 1 hook 0-4.1
+  if(show($('s1'),t,0,4.1,.05,.5)){
+    [['w1',.25],['w2',.75],['w3',1.25]].forEach(([id,a])=>{const k=seg(t,a,a+.3),e=$(id);e.style.opacity=out(k)*(1-seg(t,1.95,2.2)*.85);e.style.transform=`scale(${lerp(1.25,1,back(k))})`;e.style.color=t>a+.5?'#596172':'#fff'});
+    MESS.forEach((m,i)=>{const e=$('m'+i),a=1.8+i*.13,k=seg(t,a,a+.35),f=io(seg(t,3.5,4.1));e.style.opacity=out(k)*(1-f*.6);
+      e.style.transform=`translate(${(960-310-m[0])*f}px,${(540-180-m[1])*f}px) scale(${lerp(.7,1,back(k))*lerp(1,.25,f)}) rotate(${(i%2?-1:1)*(1-k)*4}deg)`});
+    const q=$('hq'),k=seg(t,2.6,2.95);q.style.opacity=out(k)*(1-seg(t,3.45,3.7));q.style.transform=`scale(${lerp(1.3,1,back(k))})`;q.style.textShadow='0 0 40px #0B0D10,0 0 80px #0B0D10';
+  }
+  // 2 reveal 4.0-7.6
+  if(show($('s2'),t,4.0,7.6,.25,.4)){
+    const k=seg(t,4.0,4.6);$('logo').style.transform=`scale(${back(k)}) rotate(${(1-out(k))*-90}deg)`;
+    const r=seg(t,4.1,5.1);$('ring').style.opacity=(1-r)*.9;$('ring').style.transform=`scale(${lerp(.6,2.2,out(r))})`;
+    pop($('name'),t,4.45,.5,50);pop($('tag'),t,4.85);pop($('agents'),t,5.25);
+  }
+  // app 7.4-24.6
+  if(show($('sApp'),t,7.4,24.6,.45,.45)){
+    const caps=[[7.4,'Every agent in its own tab.<small>Claude Code, Codex, Gemini CLI, opencode, Antigravity.</small>'],[9.8,'See them all at once.<small>The dot tells you who is working, done, or waiting.</small>'],[13.8,'Everything they ask, in one Inbox.<small>Their own options as buttons. Nothing is approved for you.</small>'],[19.4,'Plan ran out? Keep going.<small>The next agent gets the conversation, the changes and the commits.</small>']];
+    let ci=0;caps.forEach((c,i)=>{if(t>=c[0])ci=i});const c3=$('cap3');if(c3.dataset.i!=ci){c3.innerHTML=caps[ci][1];c3.dataset.i=ci}
+    const ck=seg(t,caps[ci][0]+.05,caps[ci][0]+.45);c3.style.opacity=out(ck);c3.style.transform=`translateY(${(1-out(ck))*-20}px)`;
+    // camera: zoom into the Inbox, then into the hand-off
+    const z1=io(seg(t,14.7,15.4))*(1-io(seg(t,17.6,18.3))), z2=io(seg(t,19.5,20.2))*(1-io(seg(t,23.4,24.2)));
+    const cam=$('cam');cam.style.transformOrigin=t<18.9?'1500px 470px':'1000px 400px';cam.style.transform=`scale(${1+.5*z1+.18*z2})`;
+    const ak=seg(t,7.4,8.1);$('app').style.transform=`translateY(${(1-out(ak))*120}px) scale(${lerp(.92,1,out(ak))})`;
+    // layout: single -> grid at 9.8
+    const g=io(seg(t,9.8,10.5)), inb=io(seg(t,13.8,14.4));
+    const W=1620-(inb*560), H=870-46, pad=16, gw=(W-pad*3)/2, gh=(H-pad*3)/2;
+    P.forEach((p,i)=>{const e=$('pane'+i);
+      const s={x:pad,y:pad,w:W-pad*2,h:H-pad*2}, gr={x:pad+(i%2)*(gw+pad),y:pad+Math.floor(i/2)*(gh+pad),w:gw,h:gh};
+      let r=i==0?s:{x:gr.x+60,y:gr.y+40,w:gr.w,h:gr.h};
+      const R={x:lerp(r.x,gr.x,g),y:lerp(r.y,gr.y,g),w:lerp(r.w,gr.w,g),h:lerp(r.h,gr.h,g)};
+      Object.assign(e.style,{left:R.x+'px',top:R.y+'px',width:R.w+'px',height:R.h+'px',opacity:i==0?1:g});
+      // terminal text
+      const start=i==0?7.9:10.2+i*.25;let k=seg(t,start,start+3.2);
+      let txt=typeLines(p,k);
+      if(i==0&&t>19.6){txt=p.lines.join('\n')+'\n\n<span style="color:var(--red)">⚠ Claude usage limit reached · resets 18:00</span>';}
+      if(i==0&&t>20.9){const h=seg(t,21.2,23.5);txt='<span style="color:#7ab8ff">Codex</span> <span style="color:var(--dim)">· picked up from .pilothouse/handoff.md</span>\n\n'+typeLines({lines:['• Last conversation with Claude Code','• 2 uncommitted files, 3 recent commits','• CLAUDE.md and project memory','','<span class=lime>›</span> Continuing: add the 404 test for unknown cities…']},h)}
+      $('pt'+i).innerHTML=txt;$('pt'+i).style.fontSize=lerp(i==0?20:17,17,g)+'px';
+      // status dots
+      let col='var(--lime)',pulse=true;
+      if(i==1&&t>12.2&&t<16.5){col='var(--amber)';pulse=false}
+      if(i==0&&t>19.6&&t<20.9){col='var(--red)';pulse=false}
+      if(i==2&&t>13.2){col='#3ddc84';pulse=false}
+      const a=pulse?.45+.55*Math.abs(Math.sin(t*3+i)):1;
+      [$('pd'+i),$('td'+i)].forEach(d=>{d.style.background=col;d.style.opacity=a;d.style.boxShadow=`0 0 ${pulse?10:14}px ${col}`});
+    });
+    const ag0=t>20.9?'codex':'claude';$('pa0').textContent=AG[ag0][0];$('pa0').style.color=AG[ag0][1];$('tg0').textContent=AG[ag0][0];
+    $('badge').style.opacity=t>12.2&&t<16.5?1:0;$('badge').style.transform=`scale(${back(seg(t,12.2,12.5))})`;
+    const gb=$('gridbtn');gb.style.background=t>9.8?'rgba(200,255,46,.15)':'none';gb.style.color=t>9.8?'var(--lime)':'';
+    // inbox
+    const ib=$('inbox');ib.style.transform=`translateX(${(1-inb)*600}px)`;
+    const yk=seg(t,16.45,16.7);$('yes').style.background=t>16.45?'var(--lime)':'#1b2130';$('yes').style.color=t>16.45?'#111':'';
+    const ask=$('ask'),dk=io(seg(t,17.0,17.5));ask.style.opacity=1-dk;ask.style.transform=`translateX(${dk*-80}px)`;ask.style.display=t>17.5?'none':'block';
+    $('done').style.opacity=t<17.3?0:out(seg(t,17.3,17.7))*(1-seg(t,19.2,19.5));$('done').style.display=t>19.5?'none':'block';
+    pop($('limit'),t,19.6,.45,30);if(t<19.6)$('limit').style.opacity=0;
+    $('cont').style.filter=t>20.75&&t<21.0?'brightness(1.4)':'none';
+    $('limit').style.transform+=t>21.3?` translateX(${io(seg(t,21.3,21.8))*600}px)`:'';
+  }
+  // 6 debate 24.4-30.2
+  if(show($('s6'),t,24.4,30.2)){pop($('b1'),t,25.0);pop($('b2'),t,26.3);pop($('agree'),t,27.4,.4,20);pop($('dec'),t,28.0,.5,60)}
+  // 7 voice 30.0-34.2
+  if(show($('s7'),t,30.0,34.2)){
+    const m=$('mic');m.style.transform=`scale(${back(seg(t,30.2,30.7))*(1+.05*Math.sin(t*9))})`;m.style.boxShadow=`0 0 0 ${18+14*Math.abs(Math.sin(t*4))}px rgba(200,255,46,.12),0 0 80px rgba(200,255,46,.35)`;
+    [...$('wave').children].forEach((b,i)=>{const v=t<31.2||t>33.4?.08:Math.abs(Math.sin(t*7+i*.55)*Math.sin(t*3.1+i*.21));b.style.height=(10+v*110)+'px';b.style.opacity=.35+v*.65});
+    const s='add dark mode to settings.”';$('said').textContent=s.slice(0,Math.floor(seg(t,31.2,33.2)*s.length));$('caret').style.opacity=Math.sin(t*12)>0?1:0;
+  }
+  // 8 anywhere 34.0-41.6
+  if(show($('s8'),t,34.0,41.6)){
+    const bk=seg(t,34.4,35.1);$('browser').style.opacity=out(bk);$('browser').style.transform=`translateX(${(1-out(bk))*-200}px) perspective(1800px) rotateY(${lerp(14,6,out(bk))}deg)`;
+    const pk=seg(t,34.8,35.5);$('phone').style.opacity=out(pk);$('phone').style.transform=`translateY(${(1-back(pk))*300}px) scale(.86)`;
+  }
+  // 9 more 41.4-45.6
+  if(show($('s9'),t,41.4,45.6)){pop($('more'),t,41.6,.45,40);CH.forEach((c,i)=>{const e=$('c'+i),a=42.0+i*.12,k=seg(t,a,a+.4);e.style.opacity=out(k);e.style.transform=`translateY(${(1-back(k))*60}px) scale(${lerp(.8,1,out(k))})`;e.style.borderColor=t>a+.1&&t<a+.5?'var(--lime)':'#2a3245'})}
+  // 10 end 45.4-51
+  if(show($('s10'),t,45.4,51,.45,.01)){$('elogo').style.transform=`scale(${back(seg(t,45.5,46.1))})`}
+  cursor(t);
+}
+const vid=$('vid');
+window.seek=async t=>{render(t);
+  if(t>=34&&t<=41.6){const vt=cl(t-34.2,0,13.5);if(Math.abs(vid.currentTime-vt)>.001){await new Promise(r=>{vid.onseeked=r;vid.currentTime=vt})}}
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));};
+window.DURATION=51;
+if(location.hash)render(parseFloat(location.hash.slice(1)));
+</script></body></html>

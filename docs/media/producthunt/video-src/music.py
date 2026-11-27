@@ -4,13 +4,14 @@
 import math, random, struct, sys, wave
 SR = 32000; out, secs = sys.argv[1], float(sys.argv[2]); N = int(SR * secs)
 BEAT = 0.5; BAR = 4 * BEAT; DROP = 4.0; random.seed(7)
-mix = [0.0] * N
+mix = [0.0] * N; kick = [0.0] * N  # the kick sits on its own bus so everything else can duck under it
 def hz(m): return 440 * 2 ** ((m - 69) / 12)
 CH = [[45, 48, 52], [41, 45, 48], [48, 52, 55], [43, 47, 50]]  # Am F C G (MIDI)
 def chord(t): return CH[int(t // BAR) % 4]
-def add(start, dur, fn, gain):
+def add(start, dur, fn, gain, buf=None):
+    buf = mix if buf is None else buf
     a = int(start * SR); b = min(N, a + int(dur * SR))
-    for i in range(a, b): mix[i] += gain * fn((i - a) / SR)
+    for i in range(a, b): buf[i] += gain * fn((i - a) / SR)
 def saw(f, t): x = f * t; return 2 * (x - math.floor(x + 0.5))
 def lp_saw(f, dur, cut0, cut1, gain, start):  # saw through a one-pole low-pass whose cutoff falls
     a = int(start * SR); b = min(N, a + int(dur * SR)); y = 0.0
@@ -29,7 +30,7 @@ while t < secs:
         f = hz(ch[[0, 1, 2, 1][step % 4]] + 24 + (12 if step >= 12 else 0))
         add(t, 0.12, lambda x, f=f: (1 if math.sin(2 * math.pi * f * x) > 0 else -1) * math.exp(-x * 22), 0.045)
     if t >= DROP:
-        if step % 4 == 0: add(t, 0.35, lambda x: math.sin(2 * math.pi * (45 * x + 105 * (1 - math.exp(-x * 30)) / 30)) * math.exp(-x * 9), 0.75)  # kick
+        if step % 4 == 0: add(t, 0.35, lambda x: math.sin(2 * math.pi * (45 * x + 105 * (1 - math.exp(-x * 30)) / 30)) * math.exp(-x * 9), 0.8, kick)  # kick
         if step % 8 == 4: add(t, 0.2, lambda x: (random.random() * 2 - 1) * math.exp(-x * 20) + 0.4 * math.sin(2 * math.pi * 190 * x) * math.exp(-x * 30), 0.28)  # snare
         if step % 4 == 2: add(t, 0.05, lambda x: (random.random() * 2 - 1) * math.exp(-x * 90), 0.12)  # open-ish hat
         elif step % 2 == 1: add(t, 0.03, lambda x: (random.random() * 2 - 1) * math.exp(-x * 160), 0.05)
@@ -46,6 +47,9 @@ add(DROP - 2, 2, lambda x: (random.random() * 2 - 1) * (x / 2) ** 2, 0.18)
 # master: soft clip, fade the tail
 w = wave.open(out, 'wb'); w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)
 fade = 3 * SR
-w.writeframes(b''.join(struct.pack('<h', int(32000 * math.tanh(1.3 * v) * min(1, (N - i) / fade) * min(1, i / (SR * 0.5)))) for i, v in enumerate(mix)))
+def duck(i):  # sidechain pump: dip on every beat after the drop
+    t = i / SR
+    return 1 if t < DROP else 1 - 0.6 * math.exp(-((t - DROP) % BEAT) * 10)
+w.writeframes(b''.join(struct.pack('<h', int(32000 * math.tanh(1.1 * (v * duck(i) + kick[i])) * min(1, (N - i) / fade) * min(1, i / (SR * 0.5)))) for i, v in enumerate(mix)))
 assert w.getnframes() == N
 w.close(); print('ok', secs)
