@@ -196,3 +196,7 @@ Local `npm run pack` / `dist:mac` builds stay unsigned on purpose.
 ## License
 
 MIT, made by **[Ali Emre Sarıbıyık (aemresrbyk)](https://github.com/aemresrbyk)**.
+
+Third-party software shipped with the app and its licenses: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The "Hey Pilothouse" wake word model has its own license ([resources/wakeword/LICENSE.md](resources/wakeword/LICENSE.md)).
+
+Pilothouse is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, Google or the makers of opencode. Claude Code, Codex, Gemini CLI, Antigravity and opencode are trademarks of their respective owners and are named only to say which tools Pilothouse works with.
